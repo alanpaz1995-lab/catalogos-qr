@@ -3,7 +3,8 @@ import { createBrowserClient } from "@supabase/ssr";
 const supabaseUrlCruda =
   process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-const supabaseAnonKeyCruda =
+const supabaseKeyCruda =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const supabaseUrl = supabaseUrlCruda
@@ -11,12 +12,12 @@ const supabaseUrl = supabaseUrlCruda
   .replace(/\/rest\/v1\/?$/i, "")
   .replace(/\/+$/, "");
 
-const supabaseAnonKey =
-  supabaseAnonKeyCruda?.replace(/\s+/g, "");
+const supabaseKey =
+  supabaseKeyCruda?.replace(/\s+/g, "");
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseKey) {
   throw new Error(
-    "Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY."
+    "Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
   );
 }
 
@@ -41,5 +42,5 @@ if (
 
 export const supabase = createBrowserClient(
   urlValidada.toString().replace(/\/$/, ""),
-  supabaseAnonKey
+  supabaseKey
 );
