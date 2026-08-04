@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import LogoComerSys from "@/components/brand/LogoComerSys";
 import { supabase } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -265,6 +265,28 @@ export default function LoginPage() {
             ← Volver al inicio
           </Link>
         </section>
+      </div>
+    </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<CargandoLogin />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function CargandoLogin() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-6">
+      <div className="text-center">
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
+
+        <p className="mt-4 font-semibold text-slate-500">
+          Cargando ComerSys...
+        </p>
       </div>
     </main>
   );

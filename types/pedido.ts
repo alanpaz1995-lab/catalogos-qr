@@ -7,41 +7,8 @@ export interface ItemPedido {
 
 export interface Pedido {
   id: number;
-
   empresa_id: number;
 
-  cliente_id?: number;
-
-  cliente_nombre: string;
-
-  cliente_telefono: string;
-
-  cliente_direccion?: string | null;
-
-  observaciones?: string | null;
-
-  subtotal: number;
-
-  total: number;
-
-  estado: string;
-
-  estado_pago: string;
-
-  origen: string;
-
-  created_at?: string;
-}
-import { Producto } from "./producto";
-
-export interface ItemPedido {
-  producto: Producto;
-  cantidad: number;
-}
-
-export interface Pedido {
-  id: number;
-  empresa_id: number;
   cliente_id?: number | null;
 
   cliente_nombre: string;

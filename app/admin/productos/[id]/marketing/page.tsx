@@ -183,7 +183,7 @@ export default function MarketingProductoPage() {
       .slice(0, 7)
       .map((palabra) => `#${palabra}`);
 
-    return hashtags.join(" ");
+    return palabras.join(" ");
   }
 
   function construirTextoDesarrollo() {

@@ -105,17 +105,10 @@ export default function CheckoutModal({
       });
 
       if (accion === "finalizar-whatsapp") {
-        const mensaje = generarMensajePedido({
-          empresaNombre: empresa.nombre,
-          numeroPedido: resultado.numero_pedido,
-          clienteNombre: nombreLimpio,
-          clienteTelefono: telefonoLimpio,
-          direccion: direccion.trim(),
-          observaciones: observaciones.trim(),
-          items,
-          total: resultado.total_pedido,
-          formatearPrecio,
-        });
+        const mensaje = generarMensajePedido(
+          resultado.numero_pedido,
+          nombreLimpio
+        );
 
         const enlace = crearEnlaceWhatsApp(
           empresa.whatsapp || "",
