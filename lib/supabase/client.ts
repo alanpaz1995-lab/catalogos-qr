@@ -11,7 +11,8 @@ const supabaseUrl = supabaseUrlCruda
   .replace(/\/rest\/v1\/?$/i, "")
   .replace(/\/+$/, "");
 
-const supabaseAnonKey = supabaseAnonKeyCruda?.trim();
+const supabaseAnonKey =
+  supabaseAnonKeyCruda?.replace(/\s+/g, "");
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
