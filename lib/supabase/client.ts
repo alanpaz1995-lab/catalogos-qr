@@ -1,10 +1,17 @@
 import { createBrowserClient } from "@supabase/ssr";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrlCruda =
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-console.log("SUPABASE_URL =", JSON.stringify(supabaseUrl));
-console.log("SUPABASE_KEY =", supabaseAnonKey?.substring(0, 20));
+const supabaseAnonKeyCruda =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabaseUrl = supabaseUrlCruda
+  ?.trim()
+  .replace(/\/rest\/v1\/?$/i, "")
+  .replace(/\/+$/, "");
+
+const supabaseAnonKey = supabaseAnonKeyCruda?.trim();
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
@@ -12,7 +19,26 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+let urlValidada: URL;
+
+try {
+  urlValidada = new URL(supabaseUrl);
+} catch {
+  throw new Error(
+    "NEXT_PUBLIC_SUPABASE_URL no contiene una URL válida."
+  );
+}
+
+if (
+  urlValidada.protocol !== "https:" &&
+  urlValidada.protocol !== "http:"
+) {
+  throw new Error(
+    "NEXT_PUBLIC_SUPABASE_URL debe comenzar con http:// o https://."
+  );
+}
+
 export const supabase = createBrowserClient(
-  supabaseUrl,
+  urlValidada.toString().replace(/\/$/, ""),
   supabaseAnonKey
 );
