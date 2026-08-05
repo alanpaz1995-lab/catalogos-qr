@@ -21,8 +21,6 @@ import {
   validarTexto,
 } from "@/lib/validaciones";
 
-const EMPRESA_ID = 1;
-
 type Categoria = {
   id: number;
   nombre: string;
@@ -36,6 +34,9 @@ type ImagenSubida = {
 export default function NuevoProductoManualPage() {
   const router = useRouter();
   const inputImagenRef = useRef<HTMLInputElement>(null);
+
+  const [empresaId, setEmpresaId] =
+    useState<number | null>(null);
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [cargandoCategorias, setCargandoCategorias] =
@@ -64,14 +65,53 @@ export default function NuevoProductoManualPage() {
   const [mensaje, setMensaje] = useState("");
 
   useEffect(() => {
-    async function cargarCategorias() {
+    async function cargarEmpresaYCategorias() {
       setCargandoCategorias(true);
+      setError("");
 
-      const { data, error: errorCategorias } = await supabase
-        .from("categorias")
-        .select("id, nombre")
-        .eq("empresa_id", EMPRESA_ID)
-        .order("nombre", { ascending: true });
+      const {
+        data: { user },
+        error: errorUsuario,
+      } = await supabase.auth.getUser();
+
+      if (errorUsuario || !user) {
+        setError(
+          errorUsuario?.message ||
+            "Tu sesión no está activa. Iniciá sesión nuevamente."
+        );
+        setCategorias([]);
+        setCargandoCategorias(false);
+        return;
+      }
+
+      const {
+        data: empresaData,
+        error: errorEmpresa,
+      } = await supabase
+        .from("empresas")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+      if (errorEmpresa || !empresaData) {
+        setError(
+          errorEmpresa?.message ||
+            "No encontramos una empresa asociada a tu cuenta."
+        );
+        setCategorias([]);
+        setCargandoCategorias(false);
+        return;
+      }
+
+      const idEmpresa = Number(empresaData.id);
+      setEmpresaId(idEmpresa);
+
+      const { data, error: errorCategorias } =
+        await supabase
+          .from("categorias")
+          .select("id, nombre")
+          .eq("empresa_id", idEmpresa)
+          .order("nombre", { ascending: true });
 
       if (errorCategorias) {
         console.warn(
@@ -87,7 +127,7 @@ export default function NuevoProductoManualPage() {
       setCargandoCategorias(false);
     }
 
-    cargarCategorias();
+    cargarEmpresaYCategorias();
   }, []);
 
   useEffect(() => {
@@ -170,6 +210,12 @@ export default function NuevoProductoManualPage() {
     let imagenActual: ImagenSubida | null = imagenSubida;
 
     try {
+      if (!empresaId) {
+        throw new Error(
+          "No encontramos la empresa asociada a tu cuenta."
+        );
+      }
+
       const nombreLimpio = nombre.trim();
       const categoriaLimpia = categoria.trim();
       const descripcionLimpia = descripcion.trim();
@@ -196,14 +242,14 @@ export default function NuevoProductoManualPage() {
       }
 
       if (archivo && !imagenActual) {
-        imagenActual = await subirImagenProducto(archivo, EMPRESA_ID);
+        imagenActual = await subirImagenProducto(archivo, empresaId);
         setImagenSubida(imagenActual);
       }
 
       const { data: productoCreado, error: errorProducto } = await supabase
         .from("productos")
         .insert({
-          empresa_id: EMPRESA_ID,
+          empresa_id: empresaId,
           nombre: nombreLimpio,
           categoria: categoriaLimpia,
           descripcion: descripcionLimpia || null,
@@ -214,9 +260,9 @@ export default function NuevoProductoManualPage() {
           estado,
           visible_catalogo: visibleCatalogo,
           nuevo_ingreso: nuevoIngreso,
-          oferta,
+          en_oferta: oferta,
           destacado,
-          actualizado_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .select("id")
         .single();
@@ -231,7 +277,7 @@ export default function NuevoProductoManualPage() {
         const { error: errorMultimedia } = await supabase
           .from("producto_multimedia")
           .insert({
-            empresa_id: EMPRESA_ID,
+            empresa_id: empresaId,
             producto_id: productoId,
             tipo: "Original",
             url: imagenActual.url,
@@ -555,14 +601,16 @@ export default function NuevoProductoManualPage() {
 
             <button
               type="submit"
-              disabled={guardando}
+              disabled={guardando || !empresaId}
               className="rounded-xl bg-[#2563EB] px-7 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {guardando
-                ? archivo
-                  ? "Subiendo y guardando..."
-                  : "Guardando producto..."
-                : "Guardar producto"}
+              {!empresaId
+                ? "Cargando empresa..."
+                : guardando
+                  ? archivo
+                    ? "Subiendo y guardando..."
+                    : "Guardando producto..."
+                  : "Guardar producto"}
             </button>
           </div>
         </form>

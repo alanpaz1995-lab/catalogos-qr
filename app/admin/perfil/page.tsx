@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 const BUCKET_EMPRESAS = "empresas";
 
@@ -144,6 +145,8 @@ const perfilInicial: PerfilEmpresa = {
 };
 
 export default function PerfilEmpresaPage() {
+  const router = useRouter();
+
   const [perfil, setPerfil] =
     useState<PerfilEmpresa>(perfilInicial);
 
@@ -370,6 +373,11 @@ export default function PerfilEmpresaPage() {
       setMensaje(
         "El perfil de la empresa se guardó correctamente."
       );
+
+      setTimeout(() => {
+        router.push("/admin");
+        router.refresh();
+      }, 800);
     } catch (errorDesconocido) {
       console.error(
         "Error al guardar el perfil:",

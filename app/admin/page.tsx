@@ -78,7 +78,23 @@ type PagoPedido = {
   caja_id?: number | null;
 };
 
-const EMPRESA_ID = 1;
+type EmpresaDashboard = {
+  id: number;
+  nombre: string;
+  slug: string;
+  descripcion?: string | null;
+  rubro?: string | null;
+  logo?: string | null;
+  portada?: string | null;
+  whatsapp?: string | null;
+  direccion?: string | null;
+  ciudad?: string | null;
+  provincia?: string | null;
+  horarios_semana?: unknown;
+  color_principal?: string | null;
+  color_secundario?: string | null;
+};
+
 const STOCK_BAJO = 5;
 const HORAS_PEDIDO_DEMORADO = 24;
 
@@ -99,6 +115,8 @@ export default function DashboardPage() {
     useState<Caja | null>(null);
   const [pagosCaja, setPagosCaja] =
     useState<PagoPedido[]>([]);
+  const [empresa, setEmpresa] =
+    useState<EmpresaDashboard | null>(null);
 
   const [cargando, setCargando] =
     useState(true);
@@ -107,6 +125,46 @@ export default function DashboardPage() {
   const cargarDashboard = useCallback(async () => {
     setCargando(true);
     setError("");
+
+    const {
+      data: { user },
+      error: errorUsuario,
+    } = await supabase.auth.getUser();
+
+    if (errorUsuario || !user) {
+      setError(
+        errorUsuario?.message ||
+          "Tu sesión no está activa. Iniciá sesión nuevamente."
+      );
+      setCargando(false);
+      return;
+    }
+
+    const {
+      data: empresaData,
+      error: empresaError,
+    } = await supabase
+      .from("empresas")
+      .select(
+        "id, nombre, slug, descripcion, rubro, logo, portada, whatsapp, direccion, ciudad, provincia, horarios_semana, color_principal, color_secundario"
+      )
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (empresaError || !empresaData) {
+      setError(
+        empresaError?.message ||
+          "No encontramos una empresa asociada a tu cuenta."
+      );
+      setCargando(false);
+      return;
+    }
+
+    const empresaActual =
+      empresaData as EmpresaDashboard;
+    const empresaId = empresaActual.id;
+
+    setEmpresa(empresaActual);
 
     const inicioHoy = obtenerInicioDelDia();
     const inicioMes = obtenerInicioDelMes();
@@ -124,7 +182,7 @@ export default function DashboardPage() {
         .select(
           "id, numero, total, estado, estado_pago, cliente_id, cliente_nombre, created_at"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .gte("created_at", inicioHoy)
         .order("created_at", { ascending: false }),
 
@@ -133,7 +191,7 @@ export default function DashboardPage() {
         .select(
           "id, numero, total, estado, estado_pago, cliente_id, cliente_nombre, created_at"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .gte("created_at", inicioMes)
         .order("created_at", { ascending: false }),
 
@@ -142,7 +200,7 @@ export default function DashboardPage() {
         .select(
           "id, numero, total, estado, estado_pago, cliente_id, cliente_nombre, created_at"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .in("estado", [
           "Pendiente",
           "Confirmado",
@@ -157,7 +215,7 @@ export default function DashboardPage() {
         .select(
           "id, nombre, total_comprado, total_pagado, saldo_pendiente, ultima_compra, created_at"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .order("total_comprado", {
           ascending: false,
         }),
@@ -167,7 +225,7 @@ export default function DashboardPage() {
         .select(
           "id, nombre, stock, estado, created_at"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .eq("estado", "Activo")
         .order("created_at", {
           ascending: false,
@@ -178,7 +236,7 @@ export default function DashboardPage() {
         .select(
           "id, estado, saldo_inicial, abierta_at"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .eq("estado", "Abierta")
         .order("abierta_at", {
           ascending: false,
@@ -249,7 +307,7 @@ export default function DashboardPage() {
         .select(
           "id, pedido_id, importe, metodo_pago, anulado, created_at, caja_id"
         )
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .eq("caja_id", cajaActual.id)
         .eq("anulado", false)
         .order("created_at", {
@@ -863,6 +921,23 @@ export default function DashboardPage() {
           fecha={nombreDia}
           cargando={cargando}
           onActualizar={cargarDashboard}
+          nombreEmpresa={empresa?.nombre}
+          descripcionEmpresa={empresa?.descripcion}
+          rubroEmpresa={empresa?.rubro}
+          logo={empresa?.logo}
+          portada={empresa?.portada}
+          colorPrincipal={
+            empresa?.color_principal || "#2563EB"
+          }
+          colorSecundario={
+            empresa?.color_secundario || "#7C3AED"
+          }
+          slugEmpresa={empresa?.slug}
+          whatsapp={empresa?.whatsapp}
+          direccion={empresa?.direccion}
+          ciudad={empresa?.ciudad}
+          provincia={empresa?.provincia}
+          horariosSemana={empresa?.horarios_semana}
         />
 
         {error && (

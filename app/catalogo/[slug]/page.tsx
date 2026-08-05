@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import CheckoutModal from "./components/CheckoutModal";
+import HeroCatalogo from "./components/HeroCatalogo";
 import { Empresa } from "@/types/empresa";
 import { Producto } from "@/types/producto";
 import { ItemPedido } from "@/types/pedido";
@@ -27,6 +28,8 @@ export default function CatalogoEmpresaPage() {
 
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [avisoActualizacion, setAvisoActualizacion] =
+    useState("");
 
   useEffect(() => {
     async function cargarCatalogo() {
@@ -71,6 +74,12 @@ export default function CatalogoEmpresaPage() {
         return;
       }
 
+      if (empresaEncontrada.catalogo_activo === false) {
+        setError("Este catálogo está temporalmente desactivado.");
+        setCargando(false);
+        return;
+      }
+
       setEmpresa(empresaEncontrada);
 
       const { data: productosData, error: productosError } =
@@ -100,6 +109,131 @@ export default function CatalogoEmpresaPage() {
 
     cargarCatalogo();
   }, [slugParametro]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+
+    const canal = supabase
+      .channel(`catalogo-productos-${empresa.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "productos",
+          filter: `empresa_id=eq.${empresa.id}`,
+        },
+        (evento) => {
+          const productoNuevo =
+            evento.new as Producto;
+          const productoAnterior =
+            evento.old as Partial<Producto>;
+
+          if (evento.eventType === "INSERT") {
+            if (productoNuevo.estado === "Activo") {
+              setProductos((actuales) => [
+                productoNuevo,
+                ...actuales.filter(
+                  (producto) =>
+                    producto.id !== productoNuevo.id
+                ),
+              ]);
+            }
+
+            setAvisoActualizacion(
+              "El catálogo se actualizó automáticamente."
+            );
+          }
+
+          if (evento.eventType === "UPDATE") {
+            setProductos((actuales) => {
+              if (productoNuevo.estado !== "Activo") {
+                return actuales.filter(
+                  (producto) =>
+                    producto.id !== productoNuevo.id
+                );
+              }
+
+              const existe = actuales.some(
+                (producto) =>
+                  producto.id === productoNuevo.id
+              );
+
+              if (!existe) {
+                return [productoNuevo, ...actuales];
+              }
+
+              return actuales.map((producto) =>
+                producto.id === productoNuevo.id
+                  ? productoNuevo
+                  : producto
+              );
+            });
+
+            setCarrito((actual) =>
+              actual
+                .map((item) =>
+                  item.producto.id === productoNuevo.id
+                    ? {
+                        ...item,
+                        producto: productoNuevo,
+                      }
+                    : item
+                )
+                .filter(
+                  (item) =>
+                    item.producto.estado === "Activo"
+                )
+            );
+
+            setAvisoActualizacion(
+              "Se actualizaron precios o datos del catálogo."
+            );
+          }
+
+          if (evento.eventType === "DELETE") {
+            const productoId = Number(
+              productoAnterior.id
+            );
+
+            setProductos((actuales) =>
+              actuales.filter(
+                (producto) =>
+                  producto.id !== productoId
+              )
+            );
+
+            setCarrito((actual) =>
+              actual.filter(
+                (item) =>
+                  item.producto.id !== productoId
+              )
+            );
+
+            setAvisoActualizacion(
+              "Un producto dejó de estar disponible."
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (!avisoActualizacion) return;
+
+    const temporizador = window.setTimeout(() => {
+      setAvisoActualizacion("");
+    }, 4500);
+
+    return () => {
+      window.clearTimeout(temporizador);
+    };
+  }, [avisoActualizacion]);
 
   const productosFiltrados = productos.filter((producto) => {
     const textoBuscado = busqueda.trim().toLowerCase();
@@ -210,6 +344,15 @@ export default function CatalogoEmpresaPage() {
     0
   );
 
+  const permitirCompras =
+    empresa?.permitir_compras !== false;
+
+  const mostrarPrecios =
+    empresa?.mostrar_precios !== false;
+
+  const mostrarStock =
+    empresa?.mostrar_stock !== false;
+
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
@@ -242,16 +385,29 @@ export default function CatalogoEmpresaPage() {
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] text-[#1E293B]">
-      <button
-        type="button"
-        onClick={() => setCarritoAbierto(!carritoAbierto)}
-        className="fixed right-6 top-6 z-50 flex items-center gap-2 rounded-full bg-[#2563EB] px-5 py-3 font-semibold text-white shadow-xl transition hover:scale-105 hover:bg-blue-700"
-      >
-        <span>🛒</span>
-        <span>{cantidadCarrito}</span>
-      </button>
+      {avisoActualizacion && (
+        <div className="fixed left-1/2 top-5 z-[70] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-blue-200 bg-white px-5 py-4 text-center text-sm font-bold text-slate-700 shadow-2xl">
+          🔄 {avisoActualizacion}
+        </div>
+      )}
+      {permitirCompras && (
+        <button
+          type="button"
+          onClick={() =>
+            setCarritoAbierto(!carritoAbierto)
+          }
+          className="fixed right-6 top-6 z-50 flex items-center gap-2 rounded-full px-5 py-3 font-semibold text-white shadow-xl transition hover:scale-105"
+          style={{
+            backgroundColor:
+              empresa.color_principal || "#2563EB",
+          }}
+        >
+          <span>🛒</span>
+          <span>{cantidadCarrito}</span>
+        </button>
+      )}
 
-      {carritoAbierto && (
+      {permitirCompras && carritoAbierto && (
         <>
           <button
             type="button"
@@ -432,37 +588,7 @@ export default function CatalogoEmpresaPage() {
         onPedidoCreado={pedidoCreado}
       />
 
-      <header className="bg-[#2563EB] text-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-10 sm:flex-row sm:items-center">
-          {empresa.logo ? (
-            <img
-              src={empresa.logo}
-              alt={`Logo de ${empresa.nombre}`}
-              className="h-24 w-24 rounded-2xl bg-white object-cover shadow-lg"
-            />
-          ) : (
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-4xl font-bold shadow-lg">
-              {empresa.nombre.charAt(0).toUpperCase()}
-            </div>
-          )}
-
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wider text-blue-100">
-              Catálogo digital
-            </p>
-
-            <h1 className="mt-2 text-4xl font-bold sm:text-5xl">
-              {empresa.nombre}
-            </h1>
-
-            {empresa.descripcion && (
-              <p className="mt-3 max-w-2xl text-lg text-blue-100">
-                {empresa.descripcion}
-              </p>
-            )}
-          </div>
-        </div>
-      </header>
+      <HeroCatalogo empresa={empresa} />
 
       <section className="mx-auto max-w-7xl px-6 py-10">
         <div className="mb-8">
@@ -498,9 +624,18 @@ export default function CatalogoEmpresaPage() {
                 }
                 className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                   categoriaSeleccionada === categoria
-                    ? "bg-[#2563EB] text-white"
+                    ? "text-white"
                     : "bg-slate-200 text-slate-700 hover:bg-slate-300"
                 }`}
+                style={
+                  categoriaSeleccionada === categoria
+                    ? {
+                        backgroundColor:
+                          empresa.color_principal ||
+                          "#2563EB",
+                      }
+                    : undefined
+                }
               >
                 {categoria}
               </button>
@@ -552,7 +687,14 @@ export default function CatalogoEmpresaPage() {
                     )}
 
                     <div className="flex flex-1 flex-col p-5">
-                      <p className="text-sm font-semibold text-[#2563EB]">
+                      <p
+                        className="text-sm font-semibold"
+                        style={{
+                          color:
+                            empresa.color_principal ||
+                            "#2563EB",
+                        }}
+                      >
                         {producto.categoria || "Sin categoría"}
                       </p>
 
@@ -567,36 +709,56 @@ export default function CatalogoEmpresaPage() {
                       )}
 
                       <div className="mt-auto pt-5">
-                        <p className="text-2xl font-bold">
-                          {formatearPrecio(
-                            Number(producto.precio)
-                          )}
-                        </p>
+                        {mostrarPrecios && (
+                          <p className="text-2xl font-bold">
+                            {formatearPrecio(
+                              Number(producto.precio)
+                            )}
+                          </p>
+                        )}
 
-                        {typeof producto.stock === "number" && (
+                        {mostrarStock &&
+                          typeof producto.stock ===
+                            "number" && (
                           <p className="mt-1 text-sm text-slate-500">
                             Stock disponible: {producto.stock}
                           </p>
                         )}
 
                         <div className="mt-5 space-y-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              agregarAlCarrito(producto)
-                            }
-                            className="w-full rounded-xl bg-[#2563EB] px-4 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
-                          >
-                            🛒 Agregar al carrito
-                          </button>
+                          {permitirCompras && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                agregarAlCarrito(
+                                  producto
+                                )
+                              }
+                              className="w-full rounded-xl px-4 py-3 text-center font-semibold text-white transition hover:brightness-95"
+                              style={{
+                                backgroundColor:
+                                  empresa.color_principal ||
+                                  "#2563EB",
+                              }}
+                            >
+                              🛒 Agregar al carrito
+                            </button>
+                          )}
 
                           <a
                             href={enlaceWhatsApp}
                             target="_blank"
                             rel="noreferrer"
-                            className="block w-full rounded-xl bg-[#F97316] px-4 py-3 text-center font-semibold text-white transition hover:bg-orange-600"
+                            className="block w-full rounded-xl px-4 py-3 text-center font-semibold text-white transition hover:brightness-95"
+                            style={{
+                              backgroundColor:
+                                empresa.color_secundario ||
+                                "#F97316",
+                            }}
                           >
-                            Comprar ahora
+                            {permitirCompras
+                              ? "Consultar por WhatsApp"
+                              : "Consultar producto"}
                           </a>
                         </div>
                       </div>
