@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
+import { Plus, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type Pedido = {
   id: number;
@@ -16,7 +18,6 @@ type Pedido = {
   empresa_id: number;
 };
 
-const EMPRESA_ID = 1;
 
 const ESTADOS = [
   "Pendiente",
@@ -29,6 +30,12 @@ const ESTADOS = [
 ];
 
 export default function PedidosPage() {
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
+
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [estadoSeleccionado, setEstadoSeleccionado] =
     useState("Todos");
@@ -36,17 +43,21 @@ export default function PedidosPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarPedidos();
-  }, []);
+  }, [empresa?.id]);
 
   async function cargarPedidos() {
+    if (!empresa?.id) return;
+
     setCargando(true);
     setError("");
 
     const { data, error } = await supabase
       .from("pedidos")
       .select("*")
-      .eq("empresa_id", EMPRESA_ID)
+      .eq("empresa_id", empresa.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -64,6 +75,8 @@ export default function PedidosPage() {
     pedidoId: number,
     nuevoEstado: string
   ) {
+    if (!empresa?.id) return;
+
     const estadoAnterior = pedidos.find(
       (pedido) => pedido.id === pedidoId
     )?.estado;
@@ -83,7 +96,7 @@ export default function PedidosPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", pedidoId)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (error) {
       console.error("Error al cambiar estado:", error);
@@ -171,15 +184,38 @@ export default function PedidosPage() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={cargarPedidos}
-              className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Actualizar
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={cargarPedidos}
+                disabled={cargando || !empresa?.id}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    cargando ? "animate-spin" : ""
+                  }`}
+                />
+
+                Actualizar
+              </button>
+
+              <Link
+                href="/admin/pedidos/nuevo"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Plus className="h-5 w-5" />
+                Nuevo pedido
+              </Link>
+            </div>
           </div>
         </header>
+
+        {(errorEmpresa || error) && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            {errorEmpresa || error}
+          </div>
+        )}
 
         <section className="mb-6 grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -240,13 +276,7 @@ export default function PedidosPage() {
             </select>
           </div>
 
-          {error && (
-            <div className="m-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-              {error}
-            </div>
-          )}
-
-          {cargando ? (
+          {cargandoEmpresa || cargando ? (
             <div className="p-10 text-center text-slate-500">
               Cargando pedidos...
             </div>
@@ -257,8 +287,16 @@ export default function PedidosPage() {
               </p>
 
               <p className="mt-2 text-sm text-slate-500">
-                Los pedidos del catálogo aparecerán aquí.
+                Los pedidos del catálogo y los cargados manualmente aparecerán aquí.
               </p>
+
+              <Link
+                href="/admin/pedidos/nuevo"
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+              >
+                <Plus className="h-5 w-5" />
+                Crear primer pedido
+              </Link>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -306,12 +344,12 @@ export default function PedidosPage() {
                       <p className="text-2xl font-bold">
                         {formatearPrecio(Number(pedido.total))}
                       </p>
-<Link
-  href={`/admin/pedidos/${pedido.id}`}
-  className="rounded-xl bg-[#2563EB] px-4 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
->
-  Ver detalle
-</Link>
+                      <Link
+                        href={`/admin/pedidos/${pedido.id}`}
+                        className="rounded-xl bg-[#2563EB] px-4 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
+                      >
+                        Ver detalle
+                      </Link>
                       <select
                         value={pedido.estado}
                         onChange={(event) =>
