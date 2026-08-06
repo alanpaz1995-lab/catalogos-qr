@@ -231,7 +231,9 @@ export default function NuevoPedidoPage() {
       cantidad > stockDisponible
     ) {
       setError(
-        `Solo hay ${stockDisponible} unidad(es) disponibles de ${itemActual.producto.nombre}.`
+        `Solo hay ${stockDisponible} unidad(es) disponibles de ${
+          itemActual?.producto.nombre || "este producto"
+        }.`
       );
       return;
     }
