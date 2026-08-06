@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type Caja = {
   id: number;
@@ -54,7 +55,6 @@ type PagoPedido = {
 
 type TipoFormulario = "Ingreso" | "Egreso";
 
-const EMPRESA_ID = 1;
 
 const METODOS_PAGO = [
   "Efectivo",
@@ -79,6 +79,12 @@ const CATEGORIAS_EGRESO = [
 ];
 
 export default function CajaPage() {
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
+
   const [caja, setCaja] = useState<Caja | null>(null);
   const [pagos, setPagos] = useState<PagoPedido[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoCaja[]>([]);
@@ -107,13 +113,15 @@ export default function CajaPage() {
   const [procesando, setProcesando] = useState(false);
 
   const cargarCaja = useCallback(async () => {
+    if (!empresa?.id) return;
+
     setCargando(true);
     setError("");
 
     const { data: cajaData, error: cajaError } = await supabase
       .from("cajas")
       .select("*")
-      .eq("empresa_id", EMPRESA_ID)
+      .eq("empresa_id", empresa.id)
       .eq("estado", "Abierta")
       .order("abierta_at", { ascending: false })
       .limit(1)
@@ -142,13 +150,13 @@ export default function CajaPage() {
       supabase
         .from("pagos_pedido")
         .select("*")
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresa.id)
         .eq("caja_id", cajaActual.id)
         .order("created_at", { ascending: false }),
       supabase
         .from("movimientos_caja")
         .select("*")
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresa.id)
         .eq("caja_id", cajaActual.id)
         .order("created_at", { ascending: false }),
     ]);
@@ -169,11 +177,13 @@ export default function CajaPage() {
     setPagos((pagosData as PagoPedido[]) || []);
     setMovimientos((movimientosData as MovimientoCaja[]) || []);
     setCargando(false);
-  }, []);
+  }, [empresa?.id]);
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarCaja();
-  }, [cargarCaja]);
+  }, [empresa?.id, cargarCaja]);
 
   const pagosActivos = useMemo(
     () => pagos.filter((pago) => !pago.anulado),
@@ -271,6 +281,11 @@ export default function CajaPage() {
   async function abrirCaja(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
+
     const saldo = convertirImporte(saldoInicial);
 
     if (!Number.isFinite(saldo) || saldo < 0) {
@@ -283,7 +298,7 @@ export default function CajaPage() {
     setMensaje("");
 
     const { error: aperturaError } = await supabase.from("cajas").insert({
-      empresa_id: EMPRESA_ID,
+      empresa_id: empresa.id,
       saldo_inicial: saldo,
       observaciones_apertura: observacionesApertura.trim() || null,
     });
@@ -304,6 +319,11 @@ export default function CajaPage() {
 
   async function registrarMovimiento(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
 
     if (!caja) return;
 
@@ -327,7 +347,7 @@ export default function CajaPage() {
       .from("movimientos_caja")
       .insert({
         caja_id: caja.id,
-        empresa_id: EMPRESA_ID,
+        empresa_id: empresa.id,
         tipo: tipoMovimiento,
         categoria: categoriaMovimiento,
         concepto: conceptoMovimiento.trim(),
@@ -357,6 +377,11 @@ export default function CajaPage() {
   }
 
   async function anularMovimiento(movimientoId: number) {
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
+
     const confirmar = window.confirm("¿Querés anular este movimiento?");
     if (!confirmar) return;
 
@@ -367,7 +392,7 @@ export default function CajaPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", movimientoId)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (anulacionError) {
       setError(`No se pudo anular el movimiento: ${anulacionError.message}`);
@@ -380,6 +405,11 @@ export default function CajaPage() {
 
   async function cerrarCaja(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
 
     if (!caja) return;
 
@@ -408,7 +438,7 @@ export default function CajaPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", caja.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (cierreError) {
       setError(`No se pudo cerrar la caja: ${cierreError.message}`);
@@ -444,7 +474,7 @@ export default function CajaPage() {
     }).format(new Date(fecha));
   }
 
-  if (cargando) {
+  if (cargandoEmpresa || cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
         <div className="text-center">
@@ -472,15 +502,16 @@ export default function CajaPage() {
           <button
             type="button"
             onClick={cargarCaja}
-            className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold shadow-sm"
+            disabled={cargando || !empresa?.id}
+            className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
           >
             Actualizar
           </button>
         </header>
 
-        {error && (
+        {(errorEmpresa || error) && (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
-            {error}
+            {errorEmpresa || error}
           </div>
         )}
 
