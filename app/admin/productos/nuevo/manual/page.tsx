@@ -46,6 +46,9 @@ export default function NuevoProductoManualPage() {
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [precio, setPrecio] = useState("");
+  const [precioMayorista, setPrecioMayorista] = useState("");
+  const [cantidadMinimaMayorista, setCantidadMinimaMayorista] =
+    useState("10");
   const [stock, setStock] = useState("");
   const [stockMinimo, setStockMinimo] = useState("0");
   const [estado, setEstado] = useState("Activo");
@@ -54,6 +57,7 @@ export default function NuevoProductoManualPage() {
   const [nuevoIngreso, setNuevoIngreso] = useState(true);
   const [oferta, setOferta] = useState(false);
   const [destacado, setDestacado] = useState(false);
+  const [controlarStock, setControlarStock] = useState(true);
 
   const [archivo, setArchivo] = useState<File | null>(null);
   const [vistaPrevia, setVistaPrevia] = useState("");
@@ -228,7 +232,23 @@ export default function NuevoProductoManualPage() {
       }
 
       const precioNumero = convertirPrecio(precio);
-      const stockNumero = convertirEntero(stock, "El stock");
+
+      const precioMayoristaNumero =
+        precioMayorista.trim()
+          ? convertirPrecio(precioMayorista)
+          : null;
+
+      const cantidadMinimaMayoristaNumero =
+        convertirEntero(
+          cantidadMinimaMayorista,
+          "La cantidad mínima mayorista"
+        );
+
+      const stockNumero = convertirEntero(
+        stock,
+        "El stock"
+      );
+
       const stockMinimoNumero = convertirEntero(
         stockMinimo,
         "El stock mínimo"
@@ -238,7 +258,24 @@ export default function NuevoProductoManualPage() {
       validarStock(stockMinimoNumero);
 
       if (precioNumero < 0) {
-        throw new Error("El precio no puede ser negativo.");
+        throw new Error(
+          "El precio minorista no puede ser negativo."
+        );
+      }
+
+      if (
+        precioMayoristaNumero !== null &&
+        precioMayoristaNumero < 0
+      ) {
+        throw new Error(
+          "El precio mayorista no puede ser negativo."
+        );
+      }
+
+      if (cantidadMinimaMayoristaNumero < 1) {
+        throw new Error(
+          "La cantidad mínima mayorista debe ser al menos 1."
+        );
       }
 
       if (archivo && !imagenActual) {
@@ -254,6 +291,10 @@ export default function NuevoProductoManualPage() {
           categoria: categoriaLimpia,
           descripcion: descripcionLimpia || null,
           precio: precioNumero,
+          precio_mayorista:
+            precioMayoristaNumero,
+          cantidad_minima_mayorista:
+            cantidadMinimaMayoristaNumero,
           stock: stockNumero,
           stock_minimo: stockMinimoNumero,
           imaguen: imagenActual?.url || null,
@@ -262,6 +303,7 @@ export default function NuevoProductoManualPage() {
           nuevo_ingreso: nuevoIngreso,
           en_oferta: oferta,
           destacado,
+          controlar_stock: controlarStock,
           updated_at: new Date().toISOString(),
         })
         .select("id")
@@ -418,13 +460,40 @@ export default function NuevoProductoManualPage() {
 
                 <CampoTexto
                   id="precio"
-                  label="Precio"
+                  label="Precio minorista"
                   value={precio}
                   onChange={setPrecio}
                   placeholder="Ejemplo: 25000"
                   inputMode="decimal"
                   required
                 />
+
+                <CampoTexto
+                  id="precio-mayorista"
+                  label="Precio mayorista"
+                  value={precioMayorista}
+                  onChange={setPrecioMayorista}
+                  placeholder="Opcional. Ejemplo: 22000"
+                  inputMode="decimal"
+                />
+
+                <CampoTexto
+                  id="cantidad-minima-mayorista"
+                  label="Mayorista desde"
+                  value={cantidadMinimaMayorista}
+                  onChange={setCantidadMinimaMayorista}
+                  placeholder="Ejemplo: 10"
+                  inputMode="numeric"
+                  required
+                />
+
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-700">
+                  Si dejás vacío el precio mayorista,
+                  el producto utilizará siempre el precio
+                  minorista. El beneficio se aplica por
+                  producto cuando alcanza la cantidad
+                  mínima configurada.
+                </div>
 
                 <CampoTexto
                   id="stock"
@@ -547,6 +616,13 @@ export default function NuevoProductoManualPage() {
                 <h2 className="text-xl font-bold">Publicación y etiquetas</h2>
 
                 <div className="mt-5 space-y-3">
+                  <Opcion
+                    label="Controlar stock disponible"
+                    descripcion="Activado: limita y descuenta stock. Desactivado: permite vender cualquier cantidad y no descuenta stock."
+                    checked={controlarStock}
+                    onChange={setControlarStock}
+                  />
+
                   <Opcion
                     label="Visible en catálogo"
                     descripcion="El público podrá ver este producto."

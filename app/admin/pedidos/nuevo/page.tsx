@@ -31,7 +31,10 @@ type Producto = {
   id: number;
   nombre: string;
   precio: number;
+  precio_mayorista?: number | null;
+  cantidad_minima_mayorista?: number | null;
   stock?: number | null;
+  controlar_stock?: boolean | null;
   categoria?: string | null;
   imaguen?: string | null;
   estado?: string | null;
@@ -95,7 +98,7 @@ export default function NuevoPedidoPage() {
       supabase
         .from("productos")
         .select(
-          "id, nombre, precio, stock, categoria, imaguen, estado"
+          "id, nombre, precio, precio_mayorista, cantidad_minima_mayorista, stock, controlar_stock, categoria, imaguen, estado"
         )
         .eq("empresa_id", empresa.id)
         .eq("estado", "Activo")
@@ -151,12 +154,57 @@ export default function NuevoPedidoPage() {
       .slice(0, 12);
   }, [productos, busquedaProducto, items]);
 
+  function controlaStock(producto: Producto) {
+    return producto.controlar_stock !== false;
+  }
+
+  function precioAplicado(
+    producto: Producto,
+    cantidad: number
+  ) {
+    const minimo = Math.max(
+      1,
+      Number(producto.cantidad_minima_mayorista ?? 10)
+    );
+
+    const mayorista = Number(producto.precio_mayorista);
+
+    if (
+      producto.precio_mayorista != null &&
+      Number.isFinite(mayorista) &&
+      mayorista > 0 &&
+      cantidad >= minimo
+    ) {
+      return mayorista;
+    }
+
+    return Number(producto.precio);
+  }
+
+  function usaPrecioMayorista(
+    producto: Producto,
+    cantidad: number
+  ) {
+    return (
+      producto.precio_mayorista != null &&
+      Number(producto.precio_mayorista) > 0 &&
+      cantidad >=
+        Math.max(
+          1,
+          Number(
+            producto.cantidad_minima_mayorista ?? 10
+          )
+        )
+    );
+  }
+
   const total = useMemo(
     () =>
       items.reduce(
         (acumulado, item) =>
           acumulado +
-          Number(item.producto.precio) * item.cantidad,
+          precioAplicado(item.producto, item.cantidad) *
+            item.cantidad,
         0
       ),
     [items]
@@ -188,6 +236,7 @@ export default function NuevoPedidoPage() {
 
   function agregarProducto(producto: Producto) {
     if (
+      controlaStock(producto) &&
       typeof producto.stock === "number" &&
       producto.stock <= 0
     ) {
@@ -227,6 +276,8 @@ export default function NuevoPedidoPage() {
       itemActual?.producto.stock;
 
     if (
+      itemActual != null &&
+      controlaStock(itemActual.producto) &&
       typeof stockDisponible === "number" &&
       cantidad > stockDisponible
     ) {
@@ -339,6 +390,7 @@ export default function NuevoPedidoPage() {
 
     const itemSinStock = items.find(
       (item) =>
+        controlaStock(item.producto) &&
         typeof item.producto.stock === "number" &&
         item.cantidad > item.producto.stock
     );
@@ -625,6 +677,7 @@ export default function NuevoPedidoPage() {
                           agregarProducto(producto)
                         }
                         disabled={
+                          controlaStock(producto) &&
                           typeof producto.stock === "number" &&
                           producto.stock <= 0
                         }
@@ -648,29 +701,44 @@ export default function NuevoPedidoPage() {
                           </span>
 
                           <span className="mt-1 block text-sm text-slate-500">
+                            Minorista:{" "}
                             {formatearPrecio(
                               Number(producto.precio)
                             )}
                           </span>
 
+                          {producto.precio_mayorista != null &&
+                            Number(producto.precio_mayorista) > 0 && (
+                              <span className="mt-1 block text-xs font-bold text-emerald-600">
+                                Mayorista:{" "}
+                                {formatearPrecio(
+                                  Number(producto.precio_mayorista)
+                                )}{" "}
+                                desde{" "}
+                                {Math.max(
+                                  1,
+                                  Number(
+                                    producto.cantidad_minima_mayorista ??
+                                      10
+                                  )
+                                )} u.
+                              </span>
+                            )}
+
                           <span
                             className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
-                              typeof producto.stock !== "number"
-                                ? "bg-slate-100 text-slate-600"
-                                : producto.stock <= 0
-                                  ? "bg-red-100 text-red-700"
-                                  : producto.stock <= 5
-                                    ? "bg-amber-100 text-amber-700"
-                                    : "bg-green-100 text-green-700"
+                              !controlaStock(producto) ||
+                              typeof producto.stock !== "number" ||
+                              producto.stock > 0
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
                             }`}
                           >
-                            {typeof producto.stock !== "number"
-                              ? "Stock no informado"
-                              : producto.stock <= 0
-                                ? "Sin stock"
-                                : producto.stock <= 5
-                                  ? `Solo ${producto.stock} disponibles`
-                                  : `${producto.stock} disponibles`}
+                            {!controlaStock(producto) ||
+                            typeof producto.stock !== "number" ||
+                            producto.stock > 0
+                              ? "Disponible"
+                              : "No disponible"}
                           </span>
                         </span>
 
@@ -708,13 +776,42 @@ export default function NuevoPedidoPage() {
 
                           <p className="mt-1 text-sm text-slate-500">
                             {formatearPrecio(
-                              Number(item.producto.precio)
+                              precioAplicado(
+                                item.producto,
+                                item.cantidad
+                              )
                             )}{" "}
                             por unidad
                           </p>
 
-                          {typeof item.producto.stock ===
-                            "number" && (
+                          {usaPrecioMayorista(
+                            item.producto,
+                            item.cantidad
+                          ) ? (
+                            <p className="mt-2 text-xs font-black text-emerald-600">
+                              ✓ Precio mayorista aplicado
+                            </p>
+                          ) : item.producto.precio_mayorista != null &&
+                            Number(item.producto.precio_mayorista) > 0 ? (
+                            <p className="mt-2 text-xs font-semibold text-slate-400">
+                              Mayorista desde{" "}
+                              {Math.max(
+                                1,
+                                Number(
+                                  item.producto
+                                    .cantidad_minima_mayorista ?? 10
+                                )
+                              )}{" "}
+                              unidades
+                            </p>
+                          ) : null}
+
+                          {!controlaStock(item.producto) ? (
+                            <p className="mt-2 text-xs font-bold text-blue-600">
+                              ∞ Sin límite de venta por stock
+                            </p>
+                          ) : typeof item.producto.stock ===
+                            "number" ? (
                             <p
                               className={`mt-2 text-xs font-bold ${
                                 item.producto.stock <= 5
@@ -725,7 +822,7 @@ export default function NuevoPedidoPage() {
                               Stock disponible:{" "}
                               {item.producto.stock}
                             </p>
-                          )}
+                          ) : null}
                         </div>
 
                         <div className="flex items-center justify-between gap-4">
@@ -747,8 +844,9 @@ export default function NuevoPedidoPage() {
                               type="number"
                               min="1"
                               max={
+                                controlaStock(item.producto) &&
                                 typeof item.producto.stock ===
-                                "number"
+                                  "number"
                                   ? item.producto.stock
                                   : undefined
                               }
@@ -778,8 +876,10 @@ export default function NuevoPedidoPage() {
 
                           <p className="min-w-28 text-right font-black text-slate-900">
                             {formatearPrecio(
-                              Number(item.producto.precio) *
+                              precioAplicado(
+                                item.producto,
                                 item.cantidad
+                              ) * item.cantidad
                             )}
                           </p>
 

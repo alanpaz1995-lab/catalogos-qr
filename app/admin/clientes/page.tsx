@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type ClienteResumen = {
   id: number;
@@ -22,9 +23,14 @@ type ClienteResumen = {
   ultima_compra?: string | null;
 };
 
-const EMPRESA_ID = 1;
 
 export default function ClientesPage() {
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
+
   const [clientes, setClientes] = useState<ClienteResumen[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState<
@@ -34,17 +40,24 @@ export default function ClientesPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarClientes();
-  }, []);
+  }, [empresa?.id]);
 
   async function cargarClientes() {
+    if (!empresa?.id) {
+      setCargando(false);
+      return;
+    }
+
     setCargando(true);
     setError("");
 
     const { data, error: errorConsulta } = await supabase
       .from("clientes_resumen")
       .select("*")
-      .eq("empresa_id", EMPRESA_ID)
+      .eq("empresa_id", empresa.id)
       .order("nombre", { ascending: true });
 
     if (errorConsulta) {
@@ -147,6 +160,41 @@ export default function ClientesPage() {
       texto: "Cuenta al día",
       clases: "bg-green-100 text-green-700",
     };
+  }
+
+  if (cargandoEmpresa) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
+          <p className="mt-4 text-slate-500">
+            Cargando empresa...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorEmpresa || !empresa?.id) {
+    return (
+      <main className="min-h-screen bg-[#F8FAFC] p-8 text-[#1E293B]">
+        <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-bold">
+            No se pudo cargar la empresa
+          </h1>
+          <p className="mt-3 text-red-600">
+            {errorEmpresa ||
+              "No encontramos la empresa asociada a tu cuenta."}
+          </p>
+          <Link
+            href="/admin"
+            className="mt-6 inline-flex rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white"
+          >
+            Volver al inicio
+          </Link>
+        </div>
+      </main>
+    );
   }
 
   return (

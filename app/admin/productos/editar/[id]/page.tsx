@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type Producto = {
   id: number;
@@ -16,6 +17,8 @@ type Producto = {
   nombre: string;
   categoria: string | null;
   precio: number;
+  precio_mayorista: number | null;
+  cantidad_minima_mayorista: number;
   stock: number;
   stock_minimo: number;
   descripcion: string | null;
@@ -25,14 +28,19 @@ type Producto = {
   nuevo_ingreso: boolean;
   oferta: boolean;
   destacado: boolean;
+  controlar_stock: boolean;
   actualizado_at?: string | null;
 };
 
-const EMPRESA_ID = 1;
 
 export default function EditarProductoPage() {
   const params = useParams();
   const router = useRouter();
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
 
   const idParametro = Array.isArray(params.id)
     ? params.id[0]
@@ -46,6 +54,8 @@ export default function EditarProductoPage() {
   const [nombre, setNombre] = useState("");
   const [categoria, setCategoria] = useState("");
   const [precio, setPrecio] = useState("");
+  const [precioMayorista, setPrecioMayorista] = useState("");
+  const [cantidadMinimaMayorista, setCantidadMinimaMayorista] = useState("10");
   const [stock, setStock] = useState("");
   const [stockMinimo, setStockMinimo] = useState("0");
   const [descripcion, setDescripcion] = useState("");
@@ -59,6 +69,8 @@ export default function EditarProductoPage() {
   const [oferta, setOferta] = useState(false);
   const [destacado, setDestacado] =
     useState(false);
+  const [controlarStock, setControlarStock] =
+    useState(true);
 
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -68,6 +80,8 @@ export default function EditarProductoPage() {
 
   useEffect(() => {
     async function cargarProducto() {
+      if (!empresa?.id) return;
+
       if (!id || Number.isNaN(id)) {
         setMensaje(
           "El identificador del producto no es válido."
@@ -86,6 +100,8 @@ export default function EditarProductoPage() {
           nombre,
           categoria,
           precio,
+          precio_mayorista,
+          cantidad_minima_mayorista,
           stock,
           stock_minimo,
           descripcion,
@@ -95,11 +111,12 @@ export default function EditarProductoPage() {
           nuevo_ingreso,
           oferta,
           destacado,
+          controlar_stock,
           actualizado_at
           `
         )
         .eq("id", id)
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresa.id)
         .maybeSingle();
 
       if (error) {
@@ -131,6 +148,14 @@ export default function EditarProductoPage() {
       setNombre(producto.nombre || "");
       setCategoria(producto.categoria || "");
       setPrecio(String(producto.precio ?? ""));
+      setPrecioMayorista(
+        producto.precio_mayorista == null
+          ? ""
+          : String(producto.precio_mayorista)
+      );
+      setCantidadMinimaMayorista(
+        String(producto.cantidad_minima_mayorista ?? 10)
+      );
       setStock(String(producto.stock ?? 0));
       setStockMinimo(
         String(producto.stock_minimo ?? 0)
@@ -146,11 +171,12 @@ export default function EditarProductoPage() {
       );
       setOferta(producto.oferta ?? false);
       setDestacado(producto.destacado ?? false);
+      setControlarStock(producto.controlar_stock ?? true);
       setCargando(false);
     }
 
     cargarProducto();
-  }, [id]);
+  }, [empresa?.id, id]);
 
   const stockBajo = useMemo(() => {
     const stockNumero = Number(stock);
@@ -180,6 +206,14 @@ export default function EditarProductoPage() {
   ) {
     event.preventDefault();
 
+    if (!empresa?.id) {
+      setMensaje(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      setTipoMensaje("error");
+      return;
+    }
+
     setGuardando(true);
     setMensaje("");
     setTipoMensaje("");
@@ -190,6 +224,12 @@ export default function EditarProductoPage() {
     const imagenLimpia = imagen.trim();
 
     const precioNumero = convertirNumero(precio);
+    const precioMayoristaNumero =
+      precioMayorista.trim() === ""
+        ? null
+        : convertirNumero(precioMayorista);
+    const cantidadMinimaMayoristaNumero =
+      convertirNumero(cantidadMinimaMayorista);
     const stockNumero = convertirNumero(stock);
     const stockMinimoNumero =
       convertirNumero(stockMinimo);
@@ -208,6 +248,33 @@ export default function EditarProductoPage() {
       precioNumero < 0
     ) {
       setMensaje("Ingresá un precio válido.");
+      setTipoMensaje("error");
+      setGuardando(false);
+      return;
+    }
+
+    if (
+      precioMayoristaNumero !== null &&
+      (
+        !Number.isFinite(precioMayoristaNumero) ||
+        precioMayoristaNumero < 0
+      )
+    ) {
+      setMensaje(
+        "Ingresá un precio mayorista válido o dejalo vacío."
+      );
+      setTipoMensaje("error");
+      setGuardando(false);
+      return;
+    }
+
+    if (
+      !Number.isInteger(cantidadMinimaMayoristaNumero) ||
+      cantidadMinimaMayoristaNumero < 1
+    ) {
+      setMensaje(
+        "La cantidad mínima mayorista debe ser un número entero de al menos 1."
+      );
       setTipoMensaje("error");
       setGuardando(false);
       return;
@@ -245,6 +312,9 @@ export default function EditarProductoPage() {
         nombre: nombreLimpio,
         categoria: categoriaLimpia,
         precio: precioNumero,
+        precio_mayorista: precioMayoristaNumero,
+        cantidad_minima_mayorista:
+          cantidadMinimaMayoristaNumero,
         stock: stockNumero,
         stock_minimo: stockMinimoNumero,
         descripcion: descripcionLimpia || null,
@@ -254,10 +324,11 @@ export default function EditarProductoPage() {
         nuevo_ingreso: nuevoIngreso,
         oferta,
         destacado,
+        controlar_stock: controlarStock,
         actualizado_at: actualizadoAt,
       })
       .eq("id", id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (error) {
       console.error(
@@ -280,6 +351,9 @@ export default function EditarProductoPage() {
             nombre: nombreLimpio,
             categoria: categoriaLimpia,
             precio: precioNumero,
+            precio_mayorista: precioMayoristaNumero,
+            cantidad_minima_mayorista:
+              cantidadMinimaMayoristaNumero,
             stock: stockNumero,
             stock_minimo: stockMinimoNumero,
             descripcion: descripcionLimpia || null,
@@ -289,6 +363,7 @@ export default function EditarProductoPage() {
             nuevo_ingreso: nuevoIngreso,
             oferta,
             destacado,
+            controlar_stock: controlarStock,
             actualizado_at: actualizadoAt,
           }
         : productoActual
@@ -299,9 +374,12 @@ export default function EditarProductoPage() {
     );
     setTipoMensaje("exito");
     setGuardando(false);
+
+    router.push("/admin/productos");
+    router.refresh();
   }
 
-  if (cargando) {
+  if (cargandoEmpresa || cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
         <div className="text-center">
@@ -309,6 +387,29 @@ export default function EditarProductoPage() {
           <p className="mt-4 text-slate-500">
             Cargando producto...
           </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorEmpresa) {
+    return (
+      <main className="min-h-screen bg-[#F8FAFC] p-8 text-[#1E293B]">
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-3xl border border-red-200 bg-white p-8 shadow-sm">
+            <h1 className="text-2xl font-bold">
+              No se pudo cargar la empresa
+            </h1>
+            <p className="mt-3 text-red-600">
+              {errorEmpresa}
+            </p>
+            <Link
+              href="/admin/productos"
+              className="mt-6 inline-flex rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white"
+            >
+              Volver a Productos PRO
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -413,12 +514,37 @@ export default function EditarProductoPage() {
 
                 <CampoTexto
                   id="precio"
-                  label="Precio"
+                  label="Precio minorista"
                   value={precio}
                   onChange={setPrecio}
                   placeholder="Ejemplo: 25000"
                   numerico
                 />
+
+                <CampoTexto
+                  id="precio-mayorista"
+                  label="Precio mayorista"
+                  value={precioMayorista}
+                  onChange={setPrecioMayorista}
+                  placeholder="Opcional. Ejemplo: 22000"
+                  numerico
+                />
+
+                <CampoTexto
+                  id="cantidad-minima-mayorista"
+                  label="Mayorista desde"
+                  value={cantidadMinimaMayorista}
+                  onChange={setCantidadMinimaMayorista}
+                  placeholder="Ejemplo: 10"
+                  numerico
+                />
+
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-700">
+                  El precio mayorista se aplica por producto
+                  cuando alcanza esta cantidad. Si dejás vacío
+                  el precio mayorista, se utiliza siempre el
+                  precio minorista.
+                </div>
 
                 <CampoTexto
                   id="stock"
@@ -490,20 +616,25 @@ export default function EditarProductoPage() {
 
                 <div
                   className={`mt-5 rounded-2xl border p-4 ${
-                    stockBajo
-                      ? "border-amber-200 bg-amber-50 text-amber-700"
-                      : "border-green-200 bg-green-50 text-green-700"
+                    !controlarStock
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : stockBajo
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
+                        : "border-green-200 bg-green-50 text-green-700"
                   }`}
                 >
                   <p className="font-bold">
-                    {stockBajo
-                      ? "⚠️ Stock bajo"
-                      : "✓ Stock correcto"}
+                    {!controlarStock
+                      ? "∞ Venta sin límite de stock"
+                      : stockBajo
+                        ? "⚠️ Stock bajo"
+                        : "✓ Stock correcto"}
                   </p>
 
                   <p className="mt-1 text-sm">
-                    Stock actual: {stock || 0} · Mínimo:{" "}
-                    {stockMinimo || 0}
+                    {!controlarStock
+                      ? "El producto puede venderse aunque el stock cargado llegue a cero."
+                      : `Stock actual: ${stock || 0} · Mínimo: ${stockMinimo || 0}`}
                   </p>
                 </div>
               </section>
@@ -537,6 +668,13 @@ export default function EditarProductoPage() {
                 </div>
 
                 <div className="mt-5 space-y-3">
+                  <Opcion
+                    label="Controlar stock disponible"
+                    descripcion="Activado: limita y descuenta stock. Desactivado: permite vender cualquier cantidad y no descuenta stock."
+                    checked={controlarStock}
+                    onChange={setControlarStock}
+                  />
+
                   <Opcion
                     label="Visible en el catálogo"
                     descripcion="El público puede ver y comprar el producto."

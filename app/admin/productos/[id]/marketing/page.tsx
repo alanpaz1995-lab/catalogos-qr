@@ -9,8 +9,8 @@ import {
   useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
-const EMPRESA_ID = 1;
 
 type Producto = {
   id: number;
@@ -26,10 +26,22 @@ type Producto = {
   destacado: boolean;
 };
 
+type MultimediaMarketing = {
+  id: number;
+  url: string;
+  nombre_archivo: string | null;
+  es_principal: boolean;
+  orden: number | null;
+};
+
 type Plataforma =
   | "Instagram"
   | "Facebook"
   | "WhatsApp";
+
+type FormatoInstagram =
+  | "Publicación"
+  | "Historia";
 
 type Tono =
   | "Profesional"
@@ -39,6 +51,11 @@ type Tono =
 
 export default function MarketingProductoPage() {
   const params = useParams();
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
 
   const idParametro = Array.isArray(params.id)
     ? params.id[0]
@@ -48,8 +65,14 @@ export default function MarketingProductoPage() {
 
   const [producto, setProducto] =
     useState<Producto | null>(null);
+  const [multimedia, setMultimedia] =
+    useState<MultimediaMarketing[]>([]);
+  const [imagenSeleccionada, setImagenSeleccionada] =
+    useState("");
   const [plataforma, setPlataforma] =
     useState<Plataforma>("Instagram");
+  const [formatoInstagram, setFormatoInstagram] =
+    useState<FormatoInstagram>("Publicación");
   const [tono, setTono] =
     useState<Tono>("Cercano");
   const [incluirPrecio, setIncluirPrecio] =
@@ -64,9 +87,13 @@ export default function MarketingProductoPage() {
     useState(false);
   const [copiado, setCopiado] =
     useState(false);
+  const [compartiendo, setCompartiendo] =
+    useState(false);
   const [error, setError] = useState("");
 
   const cargarProducto = useCallback(async () => {
+    if (!empresa?.id) return;
+
     if (!productoId || Number.isNaN(productoId)) {
       setError(
         "El identificador del producto no es válido."
@@ -78,8 +105,11 @@ export default function MarketingProductoPage() {
     setCargando(true);
     setError("");
 
-    const { data, error: errorConsulta } =
-      await supabase
+    const [
+      { data: productoData, error: productoError },
+      { data: multimediaData, error: multimediaError },
+    ] = await Promise.all([
+      supabase
         .from("productos")
         .select(
           `
@@ -97,32 +127,63 @@ export default function MarketingProductoPage() {
           `
         )
         .eq("id", productoId)
-        .eq("empresa_id", EMPRESA_ID)
-        .maybeSingle();
+        .eq("empresa_id", empresa.id)
+        .maybeSingle(),
 
-    if (errorConsulta) {
+      supabase
+        .from("producto_multimedia")
+        .select("id, url, nombre_archivo, es_principal, orden")
+        .eq("producto_id", productoId)
+        .eq("empresa_id", empresa.id)
+        .eq("activo", true)
+        .order("orden", { ascending: true })
+        .order("created_at", { ascending: true }),
+    ]);
+
+    if (productoError) {
       setError(
-        `No se pudo cargar el producto: ${errorConsulta.message}`
+        `No se pudo cargar el producto: ${productoError.message}`
       );
       setCargando(false);
       return;
     }
 
-    if (!data) {
+    if (!productoData) {
+      setError("No encontramos ese producto.");
+      setCargando(false);
+      return;
+    }
+
+    if (multimediaError) {
       setError(
-        "No encontramos ese producto."
+        `No se pudo cargar la galería: ${multimediaError.message}`
       );
       setCargando(false);
       return;
     }
 
-    setProducto(data as Producto);
+    const productoCargado = productoData as Producto;
+    const imagenes =
+      (multimediaData as MultimediaMarketing[]) || [];
+
+    setProducto(productoCargado);
+    setMultimedia(imagenes);
+
+    const principal =
+      imagenes.find((item) => item.es_principal)?.url ||
+      imagenes[0]?.url ||
+      productoCargado.imaguen ||
+      "";
+
+    setImagenSeleccionada(principal);
     setCargando(false);
-  }, [productoId]);
+  }, [empresa?.id, productoId]);
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarProducto();
-  }, [cargarProducto]);
+  }, [empresa?.id, cargarProducto]);
 
   const precioFormateado = useMemo(() => {
     if (!producto) return "";
@@ -207,18 +268,30 @@ export default function MarketingProductoPage() {
       string
     > = {
       Instagram:
-        "\n\n📩 Escribinos para más información o para hacer tu pedido.",
+        formatoInstagram === "Historia"
+          ? "\n\n📩 Escribinos y reservá el tuyo."
+          : "\n\n📩 Escribinos para más información o para hacer tu pedido.",
       Facebook:
         "\n\nConsultanos por mensaje privado y reservá el tuyo.",
       WhatsApp:
         "\n\nRespondé este mensaje y te ayudamos con tu pedido.",
     };
 
-    const inicio = encabezadoPorTono();
+    const inicio =
+      plataforma === "Instagram" &&
+      formatoInstagram === "Historia"
+        ? `✨ ${producto.nombre}`
+        : encabezadoPorTono();
+
+    const descripcionFinal =
+      plataforma === "Instagram" &&
+      formatoInstagram === "Historia"
+        ? descripcion.split(".")[0]
+        : descripcion;
 
     const textoBase = `${inicio}
 
-${descripcion}${lineaPrecio}${lineaStock}${llamadaAccion[plataforma]}`;
+${descripcionFinal}${lineaPrecio}${lineaStock}${llamadaAccion[plataforma]}`;
 
     if (!incluirHashtags) {
       return textoBase;
@@ -277,21 +350,148 @@ ${hashtagsProducto()}`;
     }
   }
 
-  function abrirWhatsApp() {
-    if (!textoGenerado) return;
+  function nombreArchivoSeguro() {
+    const base =
+      producto?.nombre
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") ||
+      "producto";
 
-    const enlace = `https://wa.me/?text=${encodeURIComponent(
-      textoGenerado
-    )}`;
+    return `${base}.jpg`;
+  }
 
-    window.open(
-      enlace,
-      "_blank",
-      "noopener,noreferrer"
+  async function obtenerArchivoImagen() {
+    if (!imagenSeleccionada) return null;
+
+    const respuesta = await fetch(
+      imagenSeleccionada
+    );
+
+    if (!respuesta.ok) {
+      throw new Error(
+        "No se pudo preparar la imagen para compartir."
+      );
+    }
+
+    const blob = await respuesta.blob();
+    const tipo =
+      blob.type || "image/jpeg";
+
+    const extension =
+      tipo.includes("png")
+        ? "png"
+        : tipo.includes("webp")
+          ? "webp"
+          : "jpg";
+
+    const nombreBase =
+      nombreArchivoSeguro().replace(
+        /\.jpg$/,
+        ""
+      );
+
+    return new File(
+      [blob],
+      `${nombreBase}.${extension}`,
+      { type: tipo }
     );
   }
 
-  if (cargando) {
+  async function descargarImagen() {
+    if (!imagenSeleccionada) return;
+
+    try {
+      setError("");
+
+      const archivo =
+        await obtenerArchivoImagen();
+
+      if (!archivo) return;
+
+      const urlTemporal =
+        URL.createObjectURL(archivo);
+
+      const enlace =
+        document.createElement("a");
+
+      enlace.href = urlTemporal;
+      enlace.download = archivo.name;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+
+      URL.revokeObjectURL(urlTemporal);
+    } catch (errorDesconocido) {
+      setError(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudo descargar la imagen."
+      );
+    }
+  }
+
+  async function compartirImagen() {
+    if (!imagenSeleccionada) return;
+
+    setCompartiendo(true);
+    setError("");
+
+    try {
+      const archivo =
+        await obtenerArchivoImagen();
+
+      if (!archivo) return;
+
+      if (
+        typeof navigator.share === "function"
+      ) {
+        const puedeCompartirArchivo =
+          typeof navigator.canShare ===
+            "function" &&
+          navigator.canShare({
+            files: [archivo],
+          });
+
+        if (puedeCompartirArchivo) {
+          await navigator.share({
+            title:
+              producto?.nombre ||
+              "Imagen del producto",
+            files: [archivo],
+          });
+          return;
+        }
+      }
+
+      await descargarImagen();
+
+      setError(
+        "La imagen fue descargada. Adjuntala en WhatsApp y pegá el texto una sola vez."
+      );
+    } catch (errorDesconocido) {
+      if (
+        errorDesconocido instanceof DOMException &&
+        errorDesconocido.name ===
+          "AbortError"
+      ) {
+        return;
+      }
+
+      setError(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudo compartir la imagen."
+      );
+    } finally {
+      setCompartiendo(false);
+    }
+  }
+
+  if (cargandoEmpresa || cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
         <div className="text-center">
@@ -313,7 +513,7 @@ ${hashtagsProducto()}`;
           </h1>
 
           <p className="mt-3 text-red-600">
-            {error || "Producto no encontrado."}
+            {errorEmpresa || error || "Producto no encontrado."}
           </p>
 
           <Link
@@ -370,18 +570,18 @@ ${hashtagsProducto()}`;
           </div>
         </header>
 
-        {error && (
+        {(errorEmpresa || error) && (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
-            {error}
+            {errorEmpresa || error}
           </div>
         )}
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[360px_1fr]">
           <div className="space-y-6">
             <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              {producto.imaguen ? (
+              {imagenSeleccionada ? (
                 <img
-                  src={producto.imaguen}
+                  src={imagenSeleccionada}
                   alt={producto.nombre}
                   className="h-72 w-full rounded-2xl border border-slate-200 object-contain"
                 />
@@ -416,6 +616,58 @@ ${hashtagsProducto()}`;
               </div>
             </article>
 
+
+            {multimedia.length > 1 && (
+              <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-xl font-bold">
+                  Imagen para la publicación
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Este producto tiene varias imágenes. Elegí cuál querés usar.
+                </p>
+
+                <div className="mt-5 grid grid-cols-3 gap-3">
+                  {multimedia.map((item) => {
+                    const seleccionada =
+                      imagenSeleccionada === item.url;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          setImagenSeleccionada(item.url)
+                        }
+                        className={`overflow-hidden rounded-2xl border-2 bg-slate-50 p-1 transition ${
+                          seleccionada
+                            ? "border-[#2563EB] ring-2 ring-blue-100"
+                            : "border-slate-200 hover:border-slate-300"
+                        }`}
+                        title={
+                          item.nombre_archivo ||
+                          "Seleccionar imagen"
+                        }
+                      >
+                        <img
+                          src={item.url}
+                          alt={
+                            item.nombre_archivo ||
+                            producto.nombre
+                          }
+                          className="h-24 w-full rounded-xl object-cover"
+                        />
+                        {seleccionada && (
+                          <span className="block py-1 text-xs font-bold text-[#2563EB]">
+                            ✓ Elegida
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-bold">
                 Configuración
@@ -441,6 +693,31 @@ ${hashtagsProducto()}`;
                   <option>WhatsApp</option>
                 </select>
               </div>
+
+              {plataforma === "Instagram" && (
+                <div className="mt-5">
+                  <label className="mb-2 block font-semibold">
+                    Formato de Instagram
+                  </label>
+
+                  <select
+                    value={formatoInstagram}
+                    onChange={(event) =>
+                      setFormatoInstagram(
+                        event.target.value as FormatoInstagram
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
+                  >
+                    <option>Publicación</option>
+                    <option>Historia</option>
+                  </select>
+
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    Historia usa una vista vertical 9:16 y un texto más corto.
+                  </p>
+                </div>
+              )}
 
               <div className="mt-5">
                 <label className="mb-2 block font-semibold">
@@ -497,7 +774,9 @@ ${hashtagsProducto()}`;
               </p>
 
               <h2 className="mt-2 text-2xl font-bold">
-                Publicación para {plataforma}
+                {plataforma === "Instagram"
+                  ? `${formatoInstagram} de Instagram`
+                  : `Publicación para ${plataforma}`}
               </h2>
 
               <p className="mt-2 text-sm text-slate-500">
@@ -505,6 +784,27 @@ ${hashtagsProducto()}`;
                 copiarlo o compartirlo.
               </p>
             </div>
+
+            {textoGenerado && imagenSeleccionada && (
+              <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                <img
+                  src={imagenSeleccionada}
+                  alt={`Publicación de ${producto.nombre}`}
+                  className={
+                    plataforma === "Instagram" &&
+                    formatoInstagram === "Historia"
+                      ? "mx-auto aspect-[9/16] max-h-[680px] w-auto max-w-full bg-black object-contain"
+                      : "max-h-[520px] w-full object-contain"
+                  }
+                />
+                <div className="border-t border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
+                  {plataforma === "Instagram" &&
+                  formatoInstagram === "Historia"
+                    ? "Vista previa vertical para Historia"
+                    : "Imagen seleccionada para esta publicación"}
+                </div>
+              </div>
+            )}
 
             <textarea
               rows={18}
@@ -518,7 +818,7 @@ ${hashtagsProducto()}`;
               className="mt-6 w-full resize-none rounded-2xl border border-slate-300 px-5 py-4 leading-7 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
             />
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 disabled={!textoGenerado}
@@ -532,13 +832,34 @@ ${hashtagsProducto()}`;
 
               <button
                 type="button"
-                disabled={!textoGenerado}
-                onClick={abrirWhatsApp}
+                disabled={!imagenSeleccionada}
+                onClick={descargarImagen}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-4 font-semibold text-slate-700 disabled:opacity-50"
+              >
+                ⬇️ Descargar imagen
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  !textoGenerado ||
+                  compartiendo
+                }
+                onClick={compartirImagen}
                 className="rounded-xl bg-green-600 px-5 py-4 font-semibold text-white disabled:opacity-50"
               >
-                📲 Compartir por WhatsApp
+                {compartiendo
+                  ? "Compartiendo..."
+                  : plataforma === "Instagram" &&
+                      formatoInstagram === "Historia"
+                    ? "📲 Compartir historia"
+                    : "📲 Compartir imagen"}
               </button>
             </div>
+
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              Para evitar que WhatsApp duplique el contenido, este botón comparte solamente la imagen. Copiá el texto con el botón azul y pegalo una sola vez como descripción de la imagen.
+            </p>
 
             <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm leading-6 text-blue-700">
               <p className="font-bold">

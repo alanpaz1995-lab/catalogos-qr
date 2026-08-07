@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 import HeaderProductos from "@/components/productos/HeaderProductos";
 import ResumenProductos, {
@@ -21,13 +22,18 @@ import TablaProductos, {
 } from "@/components/productos/TablaProductos";
 import TarjetaProducto from "@/components/productos/TarjetaProducto";
 
-const EMPRESA_ID = 1;
 
 type VistaProductos =
   | "lista"
   | "tarjetas";
 
 export default function ProductosPage() {
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
+
   const [productos, setProductos] =
     useState<ProductoListado[]>([]);
   const [busqueda, setBusqueda] =
@@ -49,6 +55,8 @@ export default function ProductosPage() {
 
   const cargarProductos =
     useCallback(async () => {
+      if (!empresa?.id) return;
+
       setCargando(true);
       setError("");
 
@@ -58,7 +66,7 @@ export default function ProductosPage() {
       } = await supabase
         .from("productos")
         .select("*")
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresa.id)
         .order("id", {
           ascending: false,
         });
@@ -82,11 +90,13 @@ export default function ProductosPage() {
       );
 
       setCargando(false);
-    }, []);
+    }, [empresa?.id]);
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarProductos();
-  }, [cargarProductos]);
+  }, [empresa?.id, cargarProductos]);
 
   const resumen = useMemo(() => {
     const activos = productos.filter(
@@ -231,6 +241,11 @@ export default function ProductosPage() {
     producto: ProductoListado,
     campo: CampoBooleanoProducto
   ) {
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
+
     if (actualizandoId !== null) {
       return;
     }
@@ -252,7 +267,7 @@ export default function ProductosPage() {
           new Date().toISOString(),
       })
       .eq("id", producto.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (errorActualizacion) {
       setError(
@@ -290,6 +305,11 @@ export default function ProductosPage() {
   async function cambiarEstado(
     producto: ProductoListado
   ) {
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
+
     if (actualizandoId !== null) {
       return;
     }
@@ -313,7 +333,7 @@ export default function ProductosPage() {
           new Date().toISOString(),
       })
       .eq("id", producto.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (errorActualizacion) {
       setError(
@@ -352,6 +372,11 @@ export default function ProductosPage() {
   async function eliminarProducto(
     producto: ProductoListado
   ) {
+    if (!empresa?.id) {
+      setError("No encontramos la empresa actual.");
+      return;
+    }
+
     if (eliminandoId !== null) {
       return;
     }
@@ -375,7 +400,7 @@ export default function ProductosPage() {
       .from("productos")
       .delete()
       .eq("id", producto.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (errorEliminacion) {
       setError(
@@ -409,7 +434,7 @@ export default function ProductosPage() {
           totalProductos={
             productos.length
           }
-          cargando={cargando}
+          cargando={cargandoEmpresa || cargando}
           onActualizar={
             cargarProductos
           }
@@ -422,7 +447,7 @@ export default function ProductosPage() {
         <FiltrosProductos
           busqueda={busqueda}
           filtro={filtro}
-          cargando={cargando}
+          cargando={cargandoEmpresa || cargando}
           vista={vista}
           onBusqueda={setBusqueda}
           onFiltro={setFiltro}
@@ -432,9 +457,9 @@ export default function ProductosPage() {
           }
         />
 
-        {error && (
+        {(errorEmpresa || error) && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
-            {error}
+            {errorEmpresa || error}
           </div>
         )}
 
@@ -449,7 +474,7 @@ export default function ProductosPage() {
             productos={
               productosFiltrados
             }
-            cargando={cargando}
+            cargando={cargandoEmpresa || cargando}
             actualizandoId={
               actualizandoId
             }
@@ -471,7 +496,7 @@ export default function ProductosPage() {
             productos={
               productosFiltrados
             }
-            cargando={cargando}
+            cargando={cargandoEmpresa || cargando}
             actualizandoId={
               actualizandoId
             }

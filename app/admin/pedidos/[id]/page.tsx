@@ -30,6 +30,7 @@ type Pedido = {
   metodo_entrega?: string | null;
   created_at: string;
   updated_at?: string | null;
+  visto_admin: boolean;
 };
 
 type DetallePedido = {
@@ -178,7 +179,29 @@ export default function DetallePedidoPage() {
       return;
     }
 
-    setPedido(pedidoData as Pedido);
+    const pedidoCargado = pedidoData as Pedido;
+
+    if (pedidoCargado.visto_admin === false) {
+      const { error: errorVisto } = await supabase
+        .from("pedidos")
+        .update({
+          visto_admin: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", pedidoId)
+        .eq("empresa_id", EMPRESA_ID);
+
+      if (errorVisto) {
+        console.error(
+          "No se pudo marcar el pedido como visto:",
+          errorVisto
+        );
+      } else {
+        pedidoCargado.visto_admin = true;
+      }
+    }
+
+    setPedido(pedidoCargado);
     setDetalles((detallesData as DetallePedido[]) || []);
     setPagos((pagosData as PagoPedido[]) || []);
     setCargando(false);

@@ -9,6 +9,14 @@ import { Empresa } from "@/types/empresa";
 import { Producto } from "@/types/producto";
 import { ItemPedido } from "@/types/pedido";
 
+type ClienteCatalogo = {
+  cliente_id: number;
+  nombre: string;
+  telefono: string;
+  email?: string;
+  direccion?: string;
+};
+
 export default function CatalogoEmpresaPage() {
   const params = useParams();
 
@@ -25,6 +33,19 @@ export default function CatalogoEmpresaPage() {
   const [carrito, setCarrito] = useState<ItemPedido[]>([]);
   const [carritoAbierto, setCarritoAbierto] = useState(false);
   const [checkoutAbierto, setCheckoutAbierto] = useState(false);
+  const [registroClienteAbierto, setRegistroClienteAbierto] =
+    useState(false);
+  const [clienteRegistrado, setClienteRegistrado] =
+    useState<ClienteCatalogo | null>(null);
+
+  const [nombreCliente, setNombreCliente] = useState("");
+  const [telefonoCliente, setTelefonoCliente] = useState("");
+  const [emailCliente, setEmailCliente] = useState("");
+  const [direccionCliente, setDireccionCliente] = useState("");
+  const [registrandoCliente, setRegistrandoCliente] =
+    useState(false);
+  const [errorRegistroCliente, setErrorRegistroCliente] =
+    useState("");
 
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -109,6 +130,33 @@ export default function CatalogoEmpresaPage() {
 
     cargarCatalogo();
   }, [slugParametro]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+
+    const clave = `comersys_cliente_${empresa.id}`;
+
+    try {
+      const guardado = window.localStorage.getItem(clave);
+
+      if (!guardado) return;
+
+      const cliente = JSON.parse(guardado) as ClienteCatalogo;
+
+      if (
+        cliente?.cliente_id &&
+        cliente?.nombre &&
+        cliente?.telefono
+      ) {
+        setClienteRegistrado(cliente);
+      }
+    } catch (errorDesconocido) {
+      console.warn(
+        "No se pudo recuperar el cliente guardado:",
+        errorDesconocido
+      );
+    }
+  }, [empresa?.id]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -275,31 +323,130 @@ export default function CatalogoEmpresaPage() {
     return numero.replace(/\D/g, "");
   }
 
+  function productoDisponible(producto: Producto) {
+    if (producto.controlar_stock === false) {
+      return true;
+    }
+
+    return (
+      producto.stock == null ||
+      Number(producto.stock) > 0
+    );
+  }
+
+  function obtenerCantidadMinimaMayorista(producto: Producto) {
+    const minimo = Number(producto.cantidad_minima_mayorista ?? 10);
+
+    return Number.isFinite(minimo) && minimo > 0
+      ? minimo
+      : 10;
+  }
+
+  function tienePrecioMayorista(producto: Producto) {
+    return (
+      producto.precio_mayorista != null &&
+      Number.isFinite(Number(producto.precio_mayorista))
+    );
+  }
+
+  function obtenerPrecioAplicado(
+    producto: Producto,
+    cantidad: number
+  ) {
+    const minimo = obtenerCantidadMinimaMayorista(producto);
+
+    if (
+      tienePrecioMayorista(producto) &&
+      cantidad >= minimo
+    ) {
+      return Number(producto.precio_mayorista);
+    }
+
+    return Number(producto.precio);
+  }
+
   function agregarAlCarrito(producto: Producto) {
+    if (!productoDisponible(producto)) {
+      setAvisoActualizacion(
+        "Este producto no se encuentra disponible."
+      );
+      return;
+    }
+
     setCarrito((carritoActual) => {
       const productoExistente = carritoActual.find(
         (item) => item.producto.id === producto.id
       );
 
       if (productoExistente) {
+        const nuevaCantidad =
+          productoExistente.cantidad + 1;
+
+        if (
+          producto.controlar_stock !== false &&
+          producto.stock != null &&
+          nuevaCantidad > Number(producto.stock)
+        ) {
+          setAvisoActualizacion(
+            "No hay disponibilidad suficiente para agregar más unidades."
+          );
+          return carritoActual;
+        }
+
         return carritoActual.map((item) =>
           item.producto.id === producto.id
-            ? { ...item, cantidad: item.cantidad + 1 }
+            ? {
+                ...item,
+                cantidad: nuevaCantidad,
+              }
             : item
         );
       }
 
-      return [...carritoActual, { producto, cantidad: 1 }];
+      return [
+        ...carritoActual,
+        {
+          producto,
+          cantidad: 1,
+        },
+      ];
     });
+
+    setCarritoAbierto(true);
   }
 
   function aumentarCantidad(idProducto: number) {
     setCarrito((carritoActual) =>
-      carritoActual.map((item) =>
-        item.producto.id === idProducto
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      )
+      carritoActual.map((item) => {
+        if (item.producto.id !== idProducto) {
+          return item;
+        }
+
+        if (!productoDisponible(item.producto)) {
+          setAvisoActualizacion(
+            "Este producto no se encuentra disponible."
+          );
+          return item;
+        }
+
+        const nuevaCantidad = item.cantidad + 1;
+
+        if (
+          item.producto.controlar_stock !== false &&
+          item.producto.stock != null &&
+          nuevaCantidad > Number(item.producto.stock)
+        ) {
+          setAvisoActualizacion(
+            "No hay disponibilidad suficiente para agregar más unidades."
+          );
+          return item;
+        }
+
+        return {
+          ...item,
+          cantidad: nuevaCantidad,
+        };
+      })
     );
   }
 
@@ -323,8 +470,110 @@ export default function CatalogoEmpresaPage() {
     );
   }
 
+  async function registrarCliente() {
+    if (!empresa?.id) return;
+
+    const nombreLimpio = nombreCliente.trim();
+    const telefonoLimpio = telefonoCliente.trim();
+
+    if (!nombreLimpio || !telefonoLimpio) {
+      setErrorRegistroCliente(
+        "Completá el nombre y el teléfono."
+      );
+      return;
+    }
+
+    setRegistrandoCliente(true);
+    setErrorRegistroCliente("");
+
+    try {
+      const { data, error: errorRegistro } =
+        await supabase.rpc(
+          "registrar_cliente_catalogo",
+          {
+            p_empresa_id: empresa.id,
+            p_nombre: nombreLimpio,
+            p_telefono: telefonoLimpio,
+            p_email: emailCliente.trim() || null,
+            p_direccion:
+              direccionCliente.trim() || null,
+            p_observaciones: null,
+          }
+        );
+
+      if (errorRegistro) {
+        throw new Error(errorRegistro.message);
+      }
+
+      const resultado = Array.isArray(data)
+        ? data[0]
+        : data;
+
+      if (!resultado) {
+        throw new Error(
+          "No se pudo recuperar el cliente registrado."
+        );
+      }
+
+      const cliente: ClienteCatalogo = {
+        cliente_id: Number(resultado.cliente_id),
+        nombre: String(
+          resultado.cliente_nombre || nombreLimpio
+        ),
+        telefono: String(
+          resultado.cliente_telefono || telefonoLimpio
+        ),
+        email: emailCliente.trim() || "",
+        direccion: direccionCliente.trim() || "",
+      };
+
+      setClienteRegistrado(cliente);
+
+      window.localStorage.setItem(
+        `comersys_cliente_${empresa.id}`,
+        JSON.stringify(cliente)
+      );
+
+      setRegistroClienteAbierto(false);
+      setNombreCliente("");
+      setTelefonoCliente("");
+      setEmailCliente("");
+      setDireccionCliente("");
+
+      setAvisoActualizacion(
+        `Cliente registrado. ¡Bienvenido/a, ${cliente.nombre}!`
+      );
+    } catch (errorDesconocido) {
+      setErrorRegistroCliente(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudo registrar el cliente."
+      );
+    } finally {
+      setRegistrandoCliente(false);
+    }
+  }
+
+  function cambiarCliente() {
+    if (!empresa?.id) return;
+
+    window.localStorage.removeItem(
+      `comersys_cliente_${empresa.id}`
+    );
+
+    setClienteRegistrado(null);
+    setCheckoutAbierto(false);
+    setRegistroClienteAbierto(true);
+  }
+
   function abrirCheckout() {
     setCarritoAbierto(false);
+
+    if (!clienteRegistrado) {
+      setRegistroClienteAbierto(true);
+      return;
+    }
+
     setCheckoutAbierto(true);
   }
 
@@ -340,7 +589,12 @@ export default function CatalogoEmpresaPage() {
 
   const totalCarrito = carrito.reduce(
     (total, item) =>
-      total + Number(item.producto.precio) * item.cantidad,
+      total +
+      obtenerPrecioAplicado(
+        item.producto,
+        item.cantidad
+      ) *
+        item.cantidad,
     0
   );
 
@@ -349,9 +603,6 @@ export default function CatalogoEmpresaPage() {
 
   const mostrarPrecios =
     empresa?.mostrar_precios !== false;
-
-  const mostrarStock =
-    empresa?.mostrar_stock !== false;
 
   if (cargando) {
     return (
@@ -390,6 +641,36 @@ export default function CatalogoEmpresaPage() {
           🔄 {avisoActualizacion}
         </div>
       )}
+      <div className="fixed left-6 top-6 z-50">
+        {clienteRegistrado ? (
+          <div className="rounded-2xl border border-green-200 bg-white px-4 py-3 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-green-600">
+              ✓ Cliente registrado
+            </p>
+            <p className="mt-1 font-bold text-slate-800">
+              {clienteRegistrado.nombre}
+            </p>
+            <button
+              type="button"
+              onClick={cambiarCliente}
+              className="mt-1 text-xs font-semibold text-[#2563EB]"
+            >
+              No soy esta persona
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              setRegistroClienteAbierto(true)
+            }
+            className="rounded-full bg-white px-5 py-3 font-semibold text-[#2563EB] shadow-xl transition hover:scale-105"
+          >
+            👤 Nuevo cliente
+          </button>
+        )}
+      </div>
+
       {permitirCompras && (
         <button
           type="button"
@@ -484,15 +765,45 @@ export default function CatalogoEmpresaPage() {
 
                           <p className="mt-1 text-sm text-slate-500">
                             {formatearPrecio(
-                              Number(item.producto.precio)
-                            )}
+                              obtenerPrecioAplicado(
+                                item.producto,
+                                item.cantidad
+                              )
+                            )}{" "}
+                            c/u
                           </p>
+
+                          {tienePrecioMayorista(
+                            item.producto
+                          ) && (
+                            <p
+                              className={`mt-1 text-xs font-semibold ${
+                                item.cantidad >=
+                                obtenerCantidadMinimaMayorista(
+                                  item.producto
+                                )
+                                  ? "text-emerald-600"
+                                  : "text-slate-500"
+                              }`}
+                            >
+                              {item.cantidad >=
+                              obtenerCantidadMinimaMayorista(
+                                item.producto
+                              )
+                                ? "✓ Precio mayorista aplicado"
+                                : `Mayorista desde ${obtenerCantidadMinimaMayorista(
+                                    item.producto
+                                  )} unidades`}
+                            </p>
+                          )}
 
                           <p className="mt-1 text-sm font-semibold text-slate-700">
                             Subtotal:{" "}
                             {formatearPrecio(
-                              Number(item.producto.precio) *
+                              obtenerPrecioAplicado(
+                                item.producto,
                                 item.cantidad
+                              ) * item.cantidad
                             )}
                           </p>
 
@@ -521,7 +832,13 @@ export default function CatalogoEmpresaPage() {
                                     item.producto.id
                                   )
                                 }
-                                className="font-bold text-slate-700"
+                                disabled={
+                                  item.producto.controlar_stock !== false &&
+                                  item.producto.stock != null &&
+                                  item.cantidad >=
+                                    Number(item.producto.stock)
+                                }
+                                className="font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-35"
                               >
                                 +
                               </button>
@@ -578,6 +895,93 @@ export default function CatalogoEmpresaPage() {
         </>
       )}
 
+      {registroClienteAbierto && (
+        <>
+          <button
+            type="button"
+            aria-label="Cerrar registro"
+            onClick={() =>
+              setRegistroClienteAbierto(false)
+            }
+            className="fixed inset-0 z-[80] bg-black/50"
+          />
+
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                  <h2 className="text-2xl font-bold">
+                    Nuevo cliente
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Registrate para comenzar tu compra.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRegistroClienteAbierto(false)
+                  }
+                  className="rounded-full bg-slate-100 px-3 py-2 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-5 p-6">
+                <CampoRegistroCliente
+                  label="Nombre"
+                  value={nombreCliente}
+                  onChange={setNombreCliente}
+                  placeholder="Tu nombre"
+                  required
+                />
+
+                <CampoRegistroCliente
+                  label="Teléfono"
+                  value={telefonoCliente}
+                  onChange={setTelefonoCliente}
+                  placeholder="Ejemplo: 1123456789"
+                  required
+                />
+
+                <CampoRegistroCliente
+                  label="Email"
+                  value={emailCliente}
+                  onChange={setEmailCliente}
+                  placeholder="Opcional"
+                />
+
+                <CampoRegistroCliente
+                  label="Dirección"
+                  value={direccionCliente}
+                  onChange={setDireccionCliente}
+                  placeholder="Opcional"
+                />
+
+                {errorRegistroCliente && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {errorRegistroCliente}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={registrarCliente}
+                  disabled={registrandoCliente}
+                  className="w-full rounded-xl bg-[#2563EB] px-5 py-4 font-semibold text-white disabled:opacity-60"
+                >
+                  {registrandoCliente
+                    ? "Registrando..."
+                    : "Registrarme como cliente"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       <CheckoutModal
         abierto={checkoutAbierto}
         empresa={empresa}
@@ -586,6 +990,7 @@ export default function CatalogoEmpresaPage() {
         formatearPrecio={formatearPrecio}
         onCerrar={() => setCheckoutAbierto(false)}
         onPedidoCreado={pedidoCreado}
+        clienteRegistrado={clienteRegistrado}
       />
 
       <HeroCatalogo empresa={empresa} />
@@ -710,20 +1115,53 @@ export default function CatalogoEmpresaPage() {
 
                       <div className="mt-auto pt-5">
                         {mostrarPrecios && (
-                          <p className="text-2xl font-bold">
-                            {formatearPrecio(
-                              Number(producto.precio)
+                          <div>
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                Precio minorista
+                              </p>
+                              <p className="mt-1 text-2xl font-bold">
+                                {formatearPrecio(
+                                  Number(producto.precio)
+                                )}
+                              </p>
+                            </div>
+
+                            {tienePrecioMayorista(producto) && (
+                              <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                                  Precio mayorista
+                                </p>
+                                <p className="mt-1 text-xl font-bold text-emerald-700">
+                                  {formatearPrecio(
+                                    Number(
+                                      producto.precio_mayorista
+                                    )
+                                  )}
+                                </p>
+                                <p className="mt-1 text-xs font-medium text-emerald-700">
+                                  Desde{" "}
+                                  {obtenerCantidadMinimaMayorista(
+                                    producto
+                                  )}{" "}
+                                  unidades de este producto
+                                </p>
+                              </div>
                             )}
-                          </p>
+                          </div>
                         )}
 
-                        {mostrarStock &&
-                          typeof producto.stock ===
-                            "number" && (
-                          <p className="mt-1 text-sm text-slate-500">
-                            Stock disponible: {producto.stock}
-                          </p>
-                        )}
+                        <div className="mt-4">
+                          {productoDisponible(producto) ? (
+                            <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700">
+                              Disponible
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-600">
+                              No disponible
+                            </span>
+                          )}
+                        </div>
 
                         <div className="mt-5 space-y-3">
                           {permitirCompras && (
@@ -734,14 +1172,19 @@ export default function CatalogoEmpresaPage() {
                                   producto
                                 )
                               }
-                              className="w-full rounded-xl px-4 py-3 text-center font-semibold text-white transition hover:brightness-95"
+                              disabled={
+                                !productoDisponible(producto)
+                              }
+                              className="w-full rounded-xl px-4 py-3 text-center font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                               style={{
                                 backgroundColor:
                                   empresa.color_principal ||
                                   "#2563EB",
                               }}
                             >
-                              🛒 Agregar al carrito
+                              {productoDisponible(producto)
+                                ? "🛒 Agregar al carrito"
+                                : "No disponible"}
                             </button>
                           )}
 
@@ -777,5 +1220,39 @@ export default function CatalogoEmpresaPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+function CampoRegistroCliente({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (valor: string) => void;
+  placeholder: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block font-semibold">
+        {label}
+        {required && (
+          <span className="ml-1 text-red-500">*</span>
+        )}
+      </label>
+      <input
+        type="text"
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
+      />
+    </div>
   );
 }

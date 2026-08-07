@@ -16,6 +16,7 @@ type Pedido = {
   estado_pago: string;
   created_at: string;
   empresa_id: number;
+  visto_admin: boolean;
 };
 
 
@@ -46,6 +47,57 @@ export default function PedidosPage() {
     if (!empresa?.id) return;
 
     cargarPedidos();
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+
+    const canal = supabase
+      .channel(`admin-pedidos-${empresa.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "pedidos",
+          filter: `empresa_id=eq.${empresa.id}`,
+        },
+        (evento) => {
+          const pedidoNuevo = evento.new as Pedido;
+
+          setPedidos((actuales) => [
+            pedidoNuevo,
+            ...actuales.filter(
+              (pedido) => pedido.id !== pedidoNuevo.id
+            ),
+          ]);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "pedidos",
+          filter: `empresa_id=eq.${empresa.id}`,
+        },
+        (evento) => {
+          const pedidoActualizado = evento.new as Pedido;
+
+          setPedidos((actuales) =>
+            actuales.map((pedido) =>
+              pedido.id === pedidoActualizado.id
+                ? pedidoActualizado
+                : pedido
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canal);
+    };
   }, [empresa?.id]);
 
   async function cargarPedidos() {
@@ -167,6 +219,10 @@ export default function PedidosPage() {
     (pedido) => pedido.estado === "Pendiente"
   ).length;
 
+  const cantidadNuevos = pedidos.filter(
+    (pedido) => pedido.visto_admin === false
+  ).length;
+
   return (
     <main className="min-h-screen bg-[#F8FAFC] p-8 text-[#1E293B]">
       <div className="mx-auto max-w-7xl">
@@ -177,7 +233,16 @@ export default function PedidosPage() {
 
           <div className="mt-1 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Pedidos</h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-3xl font-bold">Pedidos</h1>
+
+                {cantidadNuevos > 0 && (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-700">
+                    🔔 {cantidadNuevos} nuevo
+                    {cantidadNuevos === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
 
               <p className="mt-2 text-slate-500">
                 Gestioná los pedidos recibidos desde el catálogo.
@@ -217,7 +282,7 @@ export default function PedidosPage() {
           </div>
         )}
 
-        <section className="mb-6 grid gap-4 sm:grid-cols-3">
+        <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">
               Pedidos totales
@@ -225,6 +290,16 @@ export default function PedidosPage() {
 
             <p className="mt-2 text-3xl font-bold">
               {pedidos.length}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+            <p className="text-sm font-semibold text-red-700">
+              🔔 Nuevos sin ver
+            </p>
+
+            <p className="mt-2 text-3xl font-bold text-red-700">
+              {cantidadNuevos}
             </p>
           </div>
 
@@ -303,7 +378,11 @@ export default function PedidosPage() {
               {pedidosFiltrados.map((pedido) => (
                 <article
                   key={pedido.id}
-                  className="p-6 transition hover:bg-slate-50"
+                  className={`p-6 transition ${
+                    pedido.visto_admin === false
+                      ? "bg-red-50/60 hover:bg-red-50"
+                      : "hover:bg-slate-50"
+                  }`}
                 >
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                     <div>
@@ -311,6 +390,12 @@ export default function PedidosPage() {
                         <h2 className="text-xl font-bold">
                           Pedido #{obtenerNumeroPedido(pedido)}
                         </h2>
+
+                        {pedido.visto_admin === false && (
+                          <span className="rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white">
+                            🔔 NUEVO
+                          </span>
+                        )}
 
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${clasesEstado(

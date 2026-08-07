@@ -1,43 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import {
-  FormEvent,
-  useState,
-} from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearCliente } from "@/services/clientes";
-
-const EMPRESA_ID = 1;
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 export default function NuevoClientePage() {
   const router = useRouter();
 
-  const [nombre, setNombre] =
-    useState("");
-  const [telefono, setTelefono] =
-    useState("");
-  const [email, setEmail] =
-    useState("");
-  const [direccion, setDireccion] =
-    useState("");
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
+
+  const [nombre, setNombre] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [email, setEmail] = useState("");
+  const [direccion, setDireccion] = useState("");
   const [observaciones, setObservaciones] =
     useState("");
 
   const [guardando, setGuardando] =
     useState(false);
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
   async function guardarCliente(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    const nombreLimpio =
-      nombre.trim();
-    const telefonoLimpio =
-      telefono.trim();
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
+    const nombreLimpio = nombre.trim();
+    const telefonoLimpio = telefono.trim();
 
     if (!nombreLimpio) {
       setError(
@@ -58,12 +60,13 @@ export default function NuevoClientePage() {
 
     try {
       const cliente = await crearCliente({
-        empresa_id: EMPRESA_ID,
+        empresa_id: empresa.id,
         nombre: nombreLimpio,
         telefono: telefonoLimpio,
-        email,
-        direccion,
-        observaciones,
+        email: email.trim() || null,
+        direccion: direccion.trim() || null,
+        observaciones:
+          observaciones.trim() || null,
         activo: true,
       });
 
@@ -87,13 +90,50 @@ export default function NuevoClientePage() {
     }
   }
 
+  if (cargandoEmpresa) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
+          <p className="mt-4 text-slate-500">
+            Cargando empresa...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorEmpresa || !empresa?.id) {
+    return (
+      <main className="min-h-screen bg-[#F8FAFC] p-8 text-[#1E293B]">
+        <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-bold">
+            No se pudo cargar la empresa
+          </h1>
+
+          <p className="mt-3 text-red-600">
+            {errorEmpresa ||
+              "No encontramos la empresa asociada a tu cuenta."}
+          </p>
+
+          <Link
+            href="/admin/clientes"
+            className="mt-6 inline-flex rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white"
+          >
+            Volver a clientes
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-5xl">
         <header>
           <Link
             href="/admin/clientes"
-            className="font-semibold text-[#2563EB]"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[#2563EB]"
           >
             ← Volver a clientes
           </Link>
@@ -129,9 +169,7 @@ export default function NuevoClientePage() {
                   type="text"
                   value={nombre}
                   onChange={(event) =>
-                    setNombre(
-                      event.target.value
-                    )
+                    setNombre(event.target.value)
                   }
                   placeholder="Nombre y apellido"
                   className={clasesInput}
@@ -148,9 +186,7 @@ export default function NuevoClientePage() {
                   type="tel"
                   value={telefono}
                   onChange={(event) =>
-                    setTelefono(
-                      event.target.value
-                    )
+                    setTelefono(event.target.value)
                   }
                   placeholder="Ej.: 11 5555-5555"
                   className={clasesInput}
@@ -166,9 +202,7 @@ export default function NuevoClientePage() {
                   type="email"
                   value={email}
                   onChange={(event) =>
-                    setEmail(
-                      event.target.value
-                    )
+                    setEmail(event.target.value)
                   }
                   placeholder="cliente@email.com"
                   className={clasesInput}
@@ -258,7 +292,7 @@ function Campo({
     <div>
       <label
         htmlFor={id}
-        className="mb-2 block text-sm font-semibold"
+        className="mb-2 block font-semibold"
       >
         {etiqueta}
 

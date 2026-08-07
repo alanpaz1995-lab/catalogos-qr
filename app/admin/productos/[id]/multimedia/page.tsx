@@ -11,11 +11,11 @@ import {
 } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 import GaleriaMultimedia, {
   type MultimediaProducto,
 } from "@/components/productos/GaleriaMultimedia";
 
-const EMPRESA_ID = 1;
 const BUCKET = "productos";
 const TAMANO_MAXIMO = 10 * 1024 * 1024;
 const TIPOS_PERMITIDOS = [
@@ -38,6 +38,11 @@ type ArchivoPreparado = {
 export default function ProductoMultimediaPage() {
   const params = useParams();
   const inputRef = useRef<HTMLInputElement>(null);
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
 
   const idParametro = Array.isArray(params.id)
     ? params.id[0]
@@ -77,6 +82,8 @@ export default function ProductoMultimediaPage() {
 
   const cargarDatos =
     useCallback(async () => {
+      if (!empresa?.id) return;
+
       if (
         !productoId ||
         Number.isNaN(productoId)
@@ -105,14 +112,14 @@ export default function ProductoMultimediaPage() {
           .from("productos")
           .select("id, nombre, imaguen")
           .eq("id", productoId)
-          .eq("empresa_id", EMPRESA_ID)
+          .eq("empresa_id", empresa.id)
           .maybeSingle(),
 
         supabase
           .from("producto_multimedia")
           .select("*")
           .eq("producto_id", productoId)
-          .eq("empresa_id", EMPRESA_ID)
+          .eq("empresa_id", empresa.id)
           .eq("activo", true)
           .order("orden", {
             ascending: true,
@@ -157,11 +164,13 @@ export default function ProductoMultimediaPage() {
       );
 
       setCargando(false);
-    }, [productoId]);
+    }, [empresa?.id, productoId]);
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarDatos();
-  }, [cargarDatos]);
+  }, [empresa?.id, cargarDatos]);
 
   useEffect(() => {
     return () => {
@@ -275,6 +284,13 @@ export default function ProductoMultimediaPage() {
   }
 
   async function subirArchivos() {
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
     if (archivos.length === 0) {
       setError(
         "Seleccioná al menos una imagen para subir."
@@ -299,7 +315,7 @@ export default function ProductoMultimediaPage() {
 
         const nombreUnico = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
 
-        const ruta = `${EMPRESA_ID}/${productoId}/${nombreUnico}`;
+        const ruta = `${empresa.id}/${productoId}/${nombreUnico}`;
 
         const {
           error: storageError,
@@ -352,7 +368,7 @@ export default function ProductoMultimediaPage() {
 
       const registros = subidas.map(
         (item, indice) => ({
-          empresa_id: EMPRESA_ID,
+          empresa_id: empresa.id,
           producto_id: productoId,
           tipo: "Original",
           url: item.url,
@@ -415,7 +431,7 @@ export default function ProductoMultimediaPage() {
           .eq("id", productoId)
           .eq(
             "empresa_id",
-            EMPRESA_ID
+            empresa.id
           );
 
         if (productoError) {
@@ -459,6 +475,13 @@ export default function ProductoMultimediaPage() {
   async function marcarPrincipal(
     item: MultimediaProducto
   ) {
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
     if (
       item.es_principal ||
       actualizandoId !== null
@@ -486,7 +509,7 @@ export default function ProductoMultimediaPage() {
         )
         .eq(
           "empresa_id",
-          EMPRESA_ID
+          empresa.id
         );
 
       if (quitarError) {
@@ -507,7 +530,7 @@ export default function ProductoMultimediaPage() {
         .eq("id", item.id)
         .eq(
           "empresa_id",
-          EMPRESA_ID
+          empresa.id
         );
 
       if (marcarError) {
@@ -528,7 +551,7 @@ export default function ProductoMultimediaPage() {
         .eq("id", productoId)
         .eq(
           "empresa_id",
-          EMPRESA_ID
+          empresa.id
         );
 
       if (productoError) {
@@ -595,6 +618,13 @@ export default function ProductoMultimediaPage() {
   async function eliminarMultimedia(
     item: MultimediaProducto
   ) {
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
     if (eliminandoId !== null) {
       return;
     }
@@ -624,7 +654,7 @@ export default function ProductoMultimediaPage() {
         .eq("id", item.id)
         .eq(
           "empresa_id",
-          EMPRESA_ID
+          empresa.id
         );
 
       if (baseError) {
@@ -681,7 +711,7 @@ export default function ProductoMultimediaPage() {
             )
             .eq(
               "empresa_id",
-              EMPRESA_ID
+              empresa.id
             );
         }
 
@@ -697,7 +727,7 @@ export default function ProductoMultimediaPage() {
           .eq("id", productoId)
           .eq(
             "empresa_id",
-            EMPRESA_ID
+            empresa.id
           );
 
         setProducto((actual) =>
@@ -744,6 +774,13 @@ export default function ProductoMultimediaPage() {
   async function guardarOrden(
     itemsOrdenados: MultimediaProducto[]
   ) {
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
     if (guardandoOrden) {
       return;
     }
@@ -773,7 +810,7 @@ export default function ProductoMultimediaPage() {
                 .eq("id", item.id)
                 .eq(
                   "empresa_id",
-                  EMPRESA_ID
+                  empresa.id
                 )
           )
         );
@@ -817,7 +854,7 @@ export default function ProductoMultimediaPage() {
     }
   }
 
-  if (cargando) {
+  if (cargandoEmpresa || cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
         <div className="text-center">
@@ -826,6 +863,29 @@ export default function ProductoMultimediaPage() {
           <p className="mt-4 text-slate-500">
             Cargando Multimedia PRO...
           </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorEmpresa) {
+    return (
+      <main className="min-h-screen bg-[#F8FAFC] p-8">
+        <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-white p-8">
+          <h1 className="text-2xl font-bold">
+            No se pudo cargar la empresa
+          </h1>
+
+          <p className="mt-3 text-red-600">
+            {errorEmpresa}
+          </p>
+
+          <Link
+            href="/admin/productos"
+            className="mt-6 inline-flex rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white"
+          >
+            Volver a productos
+          </Link>
         </div>
       </main>
     );

@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 import {
   eliminarImagen,
   subirImagenProducto,
@@ -23,7 +24,6 @@ import {
   validarTexto,
 } from "@/lib/validaciones";
 
-const EMPRESA_ID = 1;
 
 type ImagenSubida = {
   ruta: string;
@@ -46,6 +46,11 @@ type EtapaProceso =
 
 export default function CrearProductoConIAPage() {
   const router = useRouter();
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
 
   const inputGaleriaRef = useRef<HTMLInputElement>(null);
   const inputCamaraRef = useRef<HTMLInputElement>(null);
@@ -68,6 +73,8 @@ export default function CrearProductoConIAPage() {
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [precio, setPrecio] = useState("");
+  const [precioMayorista, setPrecioMayorista] = useState("");
+  const [cantidadMinimaMayorista, setCantidadMinimaMayorista] = useState("10");
   const [stock, setStock] = useState("");
   const [stockMinimo, setStockMinimo] = useState("0");
 
@@ -119,6 +126,8 @@ export default function CrearProductoConIAPage() {
     setCategoria("");
     setDescripcion("");
     setPrecio("");
+    setPrecioMayorista("");
+    setCantidadMinimaMayorista("10");
     setStock("");
     setStockMinimo("0");
     setEstado("Activo");
@@ -203,6 +212,13 @@ export default function CrearProductoConIAPage() {
   }
 
   async function continuarConImagen() {
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
     if (!archivo) {
       setError(
         "Primero tenés que seleccionar una imagen."
@@ -222,7 +238,7 @@ export default function CrearProductoConIAPage() {
       const imagenActual =
         await subirImagenProducto(
           archivo,
-          EMPRESA_ID
+          empresa.id
         );
 
       setImagenSubida(imagenActual);
@@ -231,7 +247,7 @@ export default function CrearProductoConIAPage() {
       const respuesta = await ejecutarIA({
         accion: "analizar_producto",
         producto: {
-          empresaId: EMPRESA_ID,
+          empresaId: empresa.id,
           nombre:
             archivo.name
               .replace(/\.[^/.]+$/, "")
@@ -318,6 +334,13 @@ export default function CrearProductoConIAPage() {
   ) {
     event.preventDefault();
 
+    if (!empresa?.id) {
+      setError(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
     if (!imagenSubida) {
       setError(
         "La imagen todavía no está subida."
@@ -361,6 +384,17 @@ export default function CrearProductoConIAPage() {
       const precioNumero =
         convertirPrecio(precio);
 
+      const precioMayoristaNumero =
+        precioMayorista.trim()
+          ? convertirPrecio(precioMayorista)
+          : null;
+
+      const cantidadMinimaMayoristaNumero =
+        convertirEntero(
+          cantidadMinimaMayorista,
+          "La cantidad mínima mayorista"
+        );
+
       const stockNumero = convertirEntero(
         stock,
         "El stock"
@@ -377,7 +411,22 @@ export default function CrearProductoConIAPage() {
 
       if (precioNumero < 0) {
         throw new Error(
-          "El precio no puede ser negativo."
+          "El precio minorista no puede ser negativo."
+        );
+      }
+
+      if (
+        precioMayoristaNumero !== null &&
+        precioMayoristaNumero < 0
+      ) {
+        throw new Error(
+          "El precio mayorista no puede ser negativo."
+        );
+      }
+
+      if (cantidadMinimaMayoristaNumero < 1) {
+        throw new Error(
+          "La cantidad mínima mayorista debe ser al menos 1."
         );
       }
 
@@ -387,12 +436,15 @@ export default function CrearProductoConIAPage() {
       } = await supabase
         .from("productos")
         .insert({
-          empresa_id: EMPRESA_ID,
+          empresa_id: empresa.id,
           nombre: nombreLimpio,
           categoria: categoriaLimpia,
           descripcion:
             descripcionLimpia || null,
           precio: precioNumero,
+          precio_mayorista: precioMayoristaNumero,
+          cantidad_minima_mayorista:
+            cantidadMinimaMayoristaNumero,
           stock: stockNumero,
           stock_minimo: stockMinimoNumero,
           imaguen: imagenSubida.url,
@@ -419,7 +471,7 @@ export default function CrearProductoConIAPage() {
         await supabase
           .from("producto_multimedia")
           .insert({
-            empresa_id: EMPRESA_ID,
+            empresa_id: empresa.id,
             producto_id: productoId,
             tipo: "Original",
             url: imagenSubida.url,
@@ -477,6 +529,43 @@ export default function CrearProductoConIAPage() {
       top: 0,
       behavior: "smooth",
     });
+  }
+
+  if (cargandoEmpresa) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
+          <p className="mt-4 text-slate-500">
+            Cargando empresa...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorEmpresa || !empresa?.id) {
+    return (
+      <main className="min-h-screen bg-[#F8FAFC] p-8 text-[#1E293B]">
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-3xl border border-red-200 bg-white p-8 shadow-sm">
+            <h1 className="text-2xl font-bold">
+              No se pudo cargar la empresa
+            </h1>
+            <p className="mt-3 text-red-600">
+              {errorEmpresa ||
+                "No encontramos la empresa asociada a tu cuenta."}
+            </p>
+            <Link
+              href="/admin/productos"
+              className="mt-6 inline-flex rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white"
+            >
+              Volver a Productos PRO
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -791,12 +880,36 @@ export default function CrearProductoConIAPage() {
                   />
 
                   <CampoTexto
-                    label="Precio"
+                    label="Precio minorista"
                     value={precio}
                     onChange={setPrecio}
                     placeholder="Ejemplo: 25000"
                     numerico
                   />
+
+                  <CampoTexto
+                    label="Precio mayorista"
+                    value={precioMayorista}
+                    onChange={setPrecioMayorista}
+                    placeholder="Opcional. Ejemplo: 22000"
+                    numerico
+                  />
+
+                  <CampoTexto
+                    label="Mayorista desde"
+                    value={cantidadMinimaMayorista}
+                    onChange={setCantidadMinimaMayorista}
+                    placeholder="Ejemplo: 10"
+                    numerico
+                  />
+
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-700 lg:col-span-2">
+                    Si dejás vacío el precio mayorista, el
+                    producto utilizará siempre el precio
+                    minorista. El precio mayorista se aplica
+                    por producto al alcanzar la cantidad
+                    mínima configurada.
+                  </div>
 
                   <CampoTexto
                     label="Stock"

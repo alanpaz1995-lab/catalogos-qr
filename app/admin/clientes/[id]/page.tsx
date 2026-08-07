@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type ClienteResumen = {
   id: number;
@@ -49,10 +50,14 @@ type PagoPedido = {
   created_at: string;
 };
 
-const EMPRESA_ID = 1;
 
 export default function ClienteDetallePage() {
   const params = useParams();
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
   const idParametro = Array.isArray(params.id) ? params.id[0] : params.id;
   const clienteId = Number(idParametro);
 
@@ -73,6 +78,8 @@ export default function ClienteDetallePage() {
   const [mensajeAccion, setMensajeAccion] = useState("");
 
   const cargarCliente = useCallback(async () => {
+    if (!empresa?.id) return;
+
     setCargando(true);
     setError("");
 
@@ -86,7 +93,7 @@ export default function ClienteDetallePage() {
       .from("clientes_resumen")
       .select("*")
       .eq("id", clienteId)
-      .eq("empresa_id", EMPRESA_ID)
+      .eq("empresa_id", empresa.id)
       .maybeSingle();
 
     if (clienteError || !clienteData) {
@@ -103,7 +110,7 @@ export default function ClienteDetallePage() {
       .from("pedidos")
       .select("id, numero, cliente_id, total, estado, estado_pago, created_at")
       .eq("cliente_id", clienteId)
-      .eq("empresa_id", EMPRESA_ID)
+      .eq("empresa_id", empresa.id)
       .order("created_at", { ascending: false });
 
     if (pedidosError) {
@@ -121,7 +128,7 @@ export default function ClienteDetallePage() {
         .from("pagos_pedido")
         .select("*")
         .in("pedido_id", pedidosIds)
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresa.id)
         .order("created_at", { ascending: false });
 
       if (pagosError) {
@@ -143,11 +150,13 @@ export default function ClienteDetallePage() {
     setDireccion(clienteCargado.direccion || "");
     setObservaciones(clienteCargado.observaciones || "");
     setCargando(false);
-  }, [clienteId]);
+  }, [clienteId, empresa?.id]);
 
   useEffect(() => {
+    if (!empresa?.id) return;
+
     cargarCliente();
-  }, [cargarCliente]);
+  }, [empresa?.id, cargarCliente]);
 
   const pagosActivos = useMemo(
     () => pagos.filter((pago) => !pago.anulado),
@@ -170,6 +179,13 @@ export default function ClienteDetallePage() {
   async function guardarCliente(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cliente || guardando) return;
+
+    if (!empresa?.id) {
+      alert(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
 
     const nombreLimpio = nombre.trim();
     const telefonoLimpio = telefono.replace(/\D/g, "");
@@ -198,7 +214,7 @@ export default function ClienteDetallePage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", cliente.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", empresa.id);
 
     if (errorActualizacion) {
       alert(`No se pudo actualizar el cliente: ${errorActualizacion.message}`);
@@ -314,12 +330,34 @@ export default function ClienteDetallePage() {
     }
   }
 
-  if (cargando) {
+  if (cargandoEmpresa || cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
           <p className="mt-4 text-slate-500">Cargando cliente...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (errorEmpresa || !empresa?.id) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
+        <div className="w-full max-w-xl rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+          <h1 className="text-2xl font-bold text-red-700">
+            Empresa no disponible
+          </h1>
+          <p className="mt-3 text-red-600">
+            {errorEmpresa ||
+              "No encontramos la empresa asociada a tu cuenta."}
+          </p>
+          <Link
+            href="/admin/clientes"
+            className="mt-6 inline-block rounded-xl bg-[#2563EB] px-5 py-3 font-semibold text-white"
+          >
+            Volver a clientes
+          </Link>
         </div>
       </main>
     );
