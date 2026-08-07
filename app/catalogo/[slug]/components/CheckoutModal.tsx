@@ -17,6 +17,13 @@ type CheckoutModalProps = {
   formatearPrecio: (precio: number) => string;
   onCerrar: () => void;
   onPedidoCreado: () => void;
+  clienteRegistrado?: {
+    cliente_id: number;
+    nombre: string;
+    telefono: string;
+    email?: string;
+    direccion?: string;
+  } | null;
 };
 
 type AccionPedido = "solo-finalizar" | "finalizar-whatsapp";
@@ -29,10 +36,17 @@ export default function CheckoutModal({
   formatearPrecio,
   onCerrar,
   onPedidoCreado,
+  clienteRegistrado,
 }: CheckoutModalProps) {
-  const [nombre, setNombre] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [direccion, setDireccion] = useState("");
+  const [nombre, setNombre] = useState(
+    clienteRegistrado?.nombre ?? ""
+  );
+  const [telefono, setTelefono] = useState(
+    clienteRegistrado?.telefono ?? ""
+  );
+  const [direccion, setDireccion] = useState(
+    clienteRegistrado?.direccion ?? ""
+  );
   const [observaciones, setObservaciones] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [accionEnCurso, setAccionEnCurso] =
