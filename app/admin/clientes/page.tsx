@@ -38,6 +38,7 @@ export default function ClientesPage() {
   >("Todos");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [eliminandoId, setEliminandoId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -86,7 +87,7 @@ export default function ClientesPage() {
       const saldo = Number(cliente.saldo_pendiente || 0);
 
       const coincideFiltro =
-        filtro === "Todos" ||
+        (filtro === "Todos" && cliente.activo) ||
         (filtro === "Con deuda" && cliente.activo && saldo > 0) ||
         (filtro === "Sin deuda" && cliente.activo && saldo <= 0) ||
         (filtro === "Inactivos" && !cliente.activo);
@@ -115,6 +116,43 @@ export default function ClientesPage() {
       ),
     };
   }, [clientes]);
+
+  async function eliminarCliente(cliente: ClienteResumen) {
+    if (!empresa?.id || eliminandoId !== null) return;
+
+    const confirmar = window.confirm(
+      `¿Seguro que querés eliminar a "${cliente.nombre}" de la lista de clientes?\n\nSus pedidos y el historial de ventas se conservarán.`
+    );
+    if (!confirmar) return;
+
+    setEliminandoId(cliente.id);
+    setError("");
+
+    try {
+      const { error: errorActualizacion } = await supabase
+        .from("clientes")
+        .update({
+          activo: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", cliente.id)
+        .eq("empresa_id", empresa.id);
+
+      if (errorActualizacion) throw errorActualizacion;
+
+      setClientes((actuales) =>
+        actuales.filter((actual) => actual.id !== cliente.id)
+      );
+    } catch (errorDesconocido) {
+      const mensaje =
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "Ocurrió un error al eliminar el cliente.";
+      setError(`No se pudo eliminar el cliente: ${mensaje}`);
+    } finally {
+      setEliminandoId(null);
+    }
+  }
 
   function formatearPrecio(precio: number) {
     return new Intl.NumberFormat("es-AR", {
@@ -472,10 +510,21 @@ export default function ClientesPage() {
 
                         <Link
                           href={`/admin/clientes/${cliente.id}`}
-                          className="rounded-xl bg-[#2563EB] px-5 py-3 text-center font-semibold text-white transition hover:bg-blue-700 sm:col-span-3"
+                          className="rounded-xl bg-[#2563EB] px-5 py-3 text-center font-semibold text-white transition hover:bg-blue-700 sm:col-span-2"
                         >
                           Ver ficha completa
                         </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => eliminarCliente(cliente)}
+                          disabled={eliminandoId !== null}
+                          className="rounded-xl border border-red-200 bg-red-50 px-5 py-3 text-center font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {eliminandoId === cliente.id
+                            ? "Eliminando..."
+                            : "Eliminar"}
+                        </button>
                       </div>
                     </div>
                   </article>
