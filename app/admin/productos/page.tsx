@@ -60,16 +60,24 @@ export default function ProductosPage() {
       setCargando(true);
       setError("");
 
-      const {
-        data,
-        error: errorConsulta,
-      } = await supabase
-        .from("productos")
-        .select("*")
-        .eq("empresa_id", empresa.id)
-        .order("id", {
-          ascending: false,
-        });
+      const [
+        { data, error: errorConsulta },
+        { data: categoriasData, error: categoriasError },
+      ] = await Promise.all([
+        supabase
+          .from("productos")
+          .select("*")
+          .eq("empresa_id", empresa.id)
+          .order("id", {
+            ascending: false,
+          }),
+        supabase
+          .from("categorias")
+          .select("nombre, orden")
+          .eq("empresa_id", empresa.id)
+          .order("orden", { ascending: true })
+          .order("nombre", { ascending: true }),
+      ]);
 
       if (errorConsulta) {
         console.error(
@@ -85,8 +93,50 @@ export default function ProductosPage() {
         return;
       }
 
+      if (categoriasError) {
+        console.error(
+          "Error al cargar categorías:",
+          categoriasError
+        );
+
+        setError(
+          `No se pudieron cargar las categorías: ${categoriasError.message}`
+        );
+
+        setCargando(false);
+        return;
+      }
+
+      const productosCargados =
+        (data as ProductoListado[]) || [];
+
+      const ordenCategorias = new Map(
+        (
+          (categoriasData as Array<{
+            nombre: string;
+            orden?: number | null;
+          }>) || []
+        ).map((categoria, indice) => [
+          categoria.nombre,
+          Number(categoria.orden ?? indice + 1),
+        ])
+      );
+
       setProductos(
-        (data as ProductoListado[]) || []
+        [...productosCargados].sort((a, b) => {
+          const ordenA =
+            ordenCategorias.get(a.categoria || "") ??
+            Number.MAX_SAFE_INTEGER;
+          const ordenB =
+            ordenCategorias.get(b.categoria || "") ??
+            Number.MAX_SAFE_INTEGER;
+
+          if (ordenA !== ordenB) {
+            return ordenA - ordenB;
+          }
+
+          return b.id - a.id;
+        })
       );
 
       setCargando(false);

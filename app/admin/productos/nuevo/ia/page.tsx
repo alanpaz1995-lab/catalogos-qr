@@ -84,6 +84,7 @@ export default function CrearProductoConIAPage() {
   const [nuevoIngreso, setNuevoIngreso] = useState(true);
   const [oferta, setOferta] = useState(false);
   const [destacado, setDestacado] = useState(false);
+  const [controlarStock, setControlarStock] = useState(true);
 
   const [guardando, setGuardando] = useState(false);
   const [productoCreadoId, setProductoCreadoId] =
@@ -135,6 +136,7 @@ export default function CrearProductoConIAPage() {
     setNuevoIngreso(true);
     setOferta(false);
     setDestacado(false);
+    setControlarStock(true);
     setProductoCreadoId(null);
     setMensaje("");
   }
@@ -453,6 +455,7 @@ export default function CrearProductoConIAPage() {
           nuevo_ingreso: nuevoIngreso,
           oferta,
           destacado,
+          controlar_stock: controlarStock,
           actualizado_at:
             new Date().toISOString(),
         })
@@ -990,7 +993,13 @@ export default function CrearProductoConIAPage() {
                   </div>
                 )}
 
-                <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <Opcion
+                    label="Controlar stock disponible"
+                    checked={controlarStock}
+                    onChange={setControlarStock}
+                  />
+
                   <Opcion
                     label="Visible en catálogo"
                     checked={visibleCatalogo}

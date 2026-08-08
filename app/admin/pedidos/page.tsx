@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
@@ -42,6 +42,8 @@ export default function PedidosPage() {
     useState("Todos");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [pedidoEliminando, setPedidoEliminando] =
+    useState<number | null>(null);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -165,6 +167,45 @@ export default function PedidosPage() {
       );
 
       alert(`No se pudo cambiar el estado: ${error.message}`);
+    }
+  }
+
+  async function eliminarPedido(pedido: Pedido) {
+    if (!empresa?.id || pedidoEliminando !== null) return;
+
+    const confirmado = window.confirm(
+      `¿Seguro que querés eliminar el pedido #${obtenerNumeroPedido(pedido)}?\n\nEsta acción no se puede deshacer.`
+    );
+    if (!confirmado) return;
+
+    setPedidoEliminando(pedido.id);
+    setError("");
+
+    try {
+      const { error: errorDetalles } = await supabase
+        .from("pedido_detalles")
+        .delete()
+        .eq("pedido_id", pedido.id);
+
+      if (errorDetalles) throw errorDetalles;
+
+      const { error: errorPedido } = await supabase
+        .from("pedidos")
+        .delete()
+        .eq("id", pedido.id)
+        .eq("empresa_id", empresa.id);
+
+      if (errorPedido) throw errorPedido;
+
+      setPedidos((actuales) =>
+        actuales.filter((actual) => actual.id !== pedido.id)
+      );
+    } catch (e) {
+      const mensaje = e instanceof Error ? e.message : "Error desconocido";
+      setError(`No se pudo eliminar el pedido: ${mensaje}`);
+      alert(`No se pudo eliminar el pedido: ${mensaje}`);
+    } finally {
+      setPedidoEliminando(null);
     }
   }
 
@@ -435,6 +476,18 @@ export default function PedidosPage() {
                       >
                         Ver detalle
                       </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => eliminarPedido(pedido)}
+                        disabled={pedidoEliminando !== null}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {pedidoEliminando === pedido.id
+                          ? "Eliminando..."
+                          : "Eliminar"}
+                      </button>
                       <select
                         value={pedido.estado}
                         onChange={(event) =>

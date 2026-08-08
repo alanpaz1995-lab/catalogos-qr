@@ -15,6 +15,7 @@ type Categoria = {
   descripcion?: string | null;
   estado?: string | null;
   empresa_id: number;
+  orden?: number | null;
 };
 
 export default function CategoriasPage() {
@@ -57,6 +58,9 @@ export default function CategoriasPage() {
       .from("categorias")
       .select("*")
       .eq("empresa_id", empresa.id)
+      .order("orden", {
+        ascending: true,
+      })
       .order("nombre", {
         ascending: true,
       });
@@ -106,6 +110,15 @@ export default function CategoriasPage() {
     setGuardando(true);
     setError("");
 
+    const siguienteOrden =
+      categorias.length > 0
+        ? Math.max(
+            ...categorias.map((item) =>
+              Number(item.orden ?? 0)
+            )
+          ) + 1
+        : 1;
+
     const {
       data,
       error: errorCreacion,
@@ -117,6 +130,7 @@ export default function CategoriasPage() {
           descripcion.trim() || null,
         estado: "Activo",
         empresa_id: empresa.id,
+        orden: siguienteOrden,
       })
       .select()
       .single();
@@ -141,19 +155,100 @@ export default function CategoriasPage() {
       return;
     }
 
-    setCategorias(
-      (categoriasActuales) =>
-        [
-          ...categoriasActuales,
-          data as Categoria,
-        ].sort((a, b) =>
-          a.nombre.localeCompare(b.nombre)
-        )
+    setCategorias((categoriasActuales) =>
+      [...categoriasActuales, data as Categoria].sort(
+        (a, b) =>
+          Number(a.orden ?? 999) -
+          Number(b.orden ?? 999)
+      )
     );
 
     setNombre("");
     setDescripcion("");
     setGuardando(false);
+  }
+
+  async function moverCategoria(
+    categoria: Categoria,
+    direccion: "arriba" | "abajo"
+  ) {
+    if (!empresa?.id) return;
+
+    const indice = categorias.findIndex(
+      (item) => item.id === categoria.id
+    );
+
+    const indiceDestino =
+      direccion === "arriba"
+        ? indice - 1
+        : indice + 1;
+
+    if (
+      indice < 0 ||
+      indiceDestino < 0 ||
+      indiceDestino >= categorias.length
+    ) {
+      return;
+    }
+
+    setError("");
+
+    const categoriaDestino =
+      categorias[indiceDestino];
+
+    const ordenActual =
+      Number(categoria.orden ?? indice + 1);
+    const ordenDestino =
+      Number(
+        categoriaDestino.orden ??
+          indiceDestino + 1
+      );
+
+    const { error: errorActual } = await supabase
+      .from("categorias")
+      .update({ orden: ordenDestino })
+      .eq("id", categoria.id)
+      .eq("empresa_id", empresa.id);
+
+    if (errorActual) {
+      setError(
+        `No se pudo cambiar el orden: ${errorActual.message}`
+      );
+      return;
+    }
+
+    const { error: errorDestino } = await supabase
+      .from("categorias")
+      .update({ orden: ordenActual })
+      .eq("id", categoriaDestino.id)
+      .eq("empresa_id", empresa.id);
+
+    if (errorDestino) {
+      await supabase
+        .from("categorias")
+        .update({ orden: ordenActual })
+        .eq("id", categoria.id)
+        .eq("empresa_id", empresa.id);
+
+      setError(
+        `No se pudo cambiar el orden: ${errorDestino.message}`
+      );
+      return;
+    }
+
+    const nuevasCategorias = [...categorias];
+
+    nuevasCategorias[indice] = {
+      ...categoriaDestino,
+      orden: ordenActual,
+    };
+
+    nuevasCategorias[indiceDestino] = {
+      ...categoria,
+      orden: ordenDestino,
+    };
+
+    setCategorias(nuevasCategorias);
   }
 
   async function cambiarEstado(
@@ -291,8 +386,8 @@ export default function CategoriasPage() {
           </h1>
 
           <p className="mt-2 text-slate-500">
-            Creá y administrá las categorías
-            de tus productos.
+            Creá, administrá y elegí el orden de las categorías.
+            El catálogo podrá usar este mismo orden.
           </p>
         </div>
 
@@ -386,7 +481,7 @@ export default function CategoriasPage() {
             ) : (
               <div className="divide-y divide-slate-100">
                 {categorias.map(
-                  (categoria) => {
+                  (categoria, indice) => {
                     const activa =
                       categoria.estado !==
                       "Inactivo";
@@ -423,7 +518,46 @@ export default function CategoriasPage() {
                           </p>
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+                            <button
+                              type="button"
+                              title="Subir categoría"
+                              disabled={indice === 0}
+                              onClick={() =>
+                                moverCategoria(
+                                  categoria,
+                                  "arriba"
+                                )
+                              }
+                              className="rounded-lg px-3 py-2 font-bold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              ↑
+                            </button>
+
+                            <span className="min-w-8 text-center text-xs font-bold text-slate-400">
+                              {indice + 1}
+                            </span>
+
+                            <button
+                              type="button"
+                              title="Bajar categoría"
+                              disabled={
+                                indice ===
+                                categorias.length - 1
+                              }
+                              onClick={() =>
+                                moverCategoria(
+                                  categoria,
+                                  "abajo"
+                                )
+                              }
+                              className="rounded-lg px-3 py-2 font-bold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              ↓
+                            </button>
+                          </div>
+
                           <button
                             type="button"
                             onClick={() =>

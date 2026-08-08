@@ -26,6 +26,7 @@ export default function CatalogoEmpresaPage() {
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [categoriasOrdenadas, setCategoriasOrdenadas] = useState<string[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [categoriaSeleccionada, setCategoriaSeleccionada] =
     useState("Todos");
@@ -103,13 +104,24 @@ export default function CatalogoEmpresaPage() {
 
       setEmpresa(empresaEncontrada);
 
-      const { data: productosData, error: productosError } =
-        await supabase
+      const [
+        { data: productosData, error: productosError },
+        { data: categoriasData, error: categoriasError },
+      ] = await Promise.all([
+        supabase
           .from("productos")
           .select("*")
           .eq("empresa_id", empresaEncontrada.id)
           .eq("estado", "Activo")
-          .order("id", { ascending: false });
+          .order("id", { ascending: false }),
+        supabase
+          .from("categorias")
+          .select("nombre, orden")
+          .eq("empresa_id", empresaEncontrada.id)
+          .eq("estado", "Activo")
+          .order("orden", { ascending: true })
+          .order("nombre", { ascending: true }),
+      ]);
 
       if (productosError) {
         console.error(
@@ -124,7 +136,54 @@ export default function CatalogoEmpresaPage() {
         return;
       }
 
-      setProductos((productosData as Producto[]) || []);
+      if (categoriasError) {
+        console.error(
+          "Error al cargar las categorías:",
+          categoriasError
+        );
+
+        setError(
+          `No se pudieron cargar las categorías: ${categoriasError.message}`
+        );
+        setCargando(false);
+        return;
+      }
+
+      const productosCargados =
+        (productosData as Producto[]) || [];
+
+      const nombresOrdenados = (
+        (categoriasData as Array<{
+          nombre: string;
+          orden?: number | null;
+        }>) || []
+      ).map((categoria) => categoria.nombre);
+
+      setCategoriasOrdenadas(nombresOrdenados);
+
+      const posicionCategoria = new Map(
+        nombresOrdenados.map((nombre, indice) => [
+          nombre,
+          indice,
+        ])
+      );
+
+      setProductos(
+        [...productosCargados].sort((a, b) => {
+          const ordenA =
+            posicionCategoria.get(a.categoria || "") ??
+            Number.MAX_SAFE_INTEGER;
+          const ordenB =
+            posicionCategoria.get(b.categoria || "") ??
+            Number.MAX_SAFE_INTEGER;
+
+          if (ordenA !== ordenB) {
+            return ordenA - ordenB;
+          }
+
+          return b.id - a.id;
+        })
+      );
       setCargando(false);
     }
 
@@ -302,12 +361,19 @@ export default function CatalogoEmpresaPage() {
     return coincideBusqueda && coincideCategoria;
   });
 
+  const categoriasDeProductos = new Set(
+    productos
+      .map((producto) => producto.categoria)
+      .filter((categoria): categoria is string => Boolean(categoria))
+  );
+
   const categorias = [
     "Todos",
-    ...new Set(
-      productos
-        .map((producto) => producto.categoria)
-        .filter((categoria): categoria is string => Boolean(categoria))
+    ...categoriasOrdenadas.filter((categoria) =>
+      categoriasDeProductos.has(categoria)
+    ),
+    ...Array.from(categoriasDeProductos).filter(
+      (categoria) => !categoriasOrdenadas.includes(categoria)
     ),
   ];
 
