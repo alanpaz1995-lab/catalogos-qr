@@ -42,6 +42,24 @@ export default function ProductosPage() {
     useState<FiltroProducto>("Todos");
   const [vista, setVista] =
     useState<VistaProductos>("lista");
+
+  useEffect(() => {
+    const vistaGuardada = window.localStorage.getItem(
+      "comersys-productos-vista"
+    );
+
+    if (vistaGuardada === "lista" || vistaGuardada === "tarjetas") {
+      setVista(vistaGuardada);
+    }
+  }, []);
+
+  function cambiarVista(nuevaVista: VistaProductos) {
+    setVista(nuevaVista);
+    window.localStorage.setItem(
+      "comersys-productos-vista",
+      nuevaVista
+    );
+  }
   const [cargando, setCargando] =
     useState(true);
   const [actualizandoId, setActualizandoId] =
@@ -501,7 +519,7 @@ export default function ProductosPage() {
           vista={vista}
           onBusqueda={setBusqueda}
           onFiltro={setFiltro}
-          onVista={setVista}
+          onVista={cambiarVista}
           onActualizar={
             cargarProductos
           }
