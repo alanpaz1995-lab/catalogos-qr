@@ -93,6 +93,11 @@ type EmpresaDashboard = {
   horarios_semana?: unknown;
   color_principal?: string | null;
   color_secundario?: string | null;
+  plan: string;
+  estado_suscripcion: string;
+  prueba_inicio?: string | null;
+  prueba_fin?: string | null;
+  suscripcion_activa: boolean;
 };
 
 const STOCK_BAJO = 5;
@@ -121,6 +126,10 @@ export default function DashboardPage() {
   const [cargando, setCargando] =
     useState(true);
   const [error, setError] = useState("");
+  const [activandoPlan, setActivandoPlan] =
+    useState(false);
+  const [errorSuscripcion, setErrorSuscripcion] =
+    useState("");
 
   const cargarDashboard = useCallback(async () => {
     setCargando(true);
@@ -146,7 +155,7 @@ export default function DashboardPage() {
     } = await supabase
       .from("empresas")
       .select(
-        "id, nombre, slug, descripcion, rubro, logo, portada, whatsapp, direccion, ciudad, provincia, horarios_semana, color_principal, color_secundario"
+        "id, nombre, slug, descripcion, rubro, logo, portada, whatsapp, direccion, ciudad, provincia, horarios_semana, color_principal, color_secundario, plan, estado_suscripcion, prueba_inicio, prueba_fin, suscripcion_activa"
       )
       .eq("auth_user_id", user.id)
       .maybeSingle();
@@ -551,6 +560,32 @@ export default function DashboardPage() {
     [clientes]
   );
 
+  const estadoPrueba = useMemo(() => {
+    if (
+      !empresa ||
+      empresa.plan !== "prueba" ||
+      empresa.suscripcion_activa ||
+      !empresa.prueba_fin
+    ) {
+      return null;
+    }
+
+    const ahora = Date.now();
+    const fin = new Date(empresa.prueba_fin).getTime();
+    const diferencia = fin - ahora;
+    const diasRestantes = Math.max(
+      0,
+      Math.ceil(diferencia / (1000 * 60 * 60 * 24))
+    );
+
+    return {
+      diasRestantes,
+      vencida: diferencia <= 0,
+      mostrarAviso: diferencia <= 2 * 24 * 60 * 60 * 1000,
+      fechaFin: empresa.prueba_fin,
+    };
+  }, [empresa]);
+
   const nombreDia =
     new Intl.DateTimeFormat("es-AR", {
       weekday: "long",
@@ -900,6 +935,76 @@ export default function DashboardPage() {
       clientes,
     ]);
 
+  const activarPlanProfesional = async () => {
+    if (!empresa) {
+      setErrorSuscripcion(
+        "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
+    setActivandoPlan(true);
+    setErrorSuscripcion("");
+
+    try {
+      const {
+        data: { user },
+        error: errorUsuario,
+      } = await supabase.auth.getUser();
+
+      if (errorUsuario || !user?.email) {
+        throw new Error(
+          "No pudimos obtener el correo de tu cuenta."
+        );
+      }
+
+      const respuesta = await fetch(
+        "/api/mercadopago/crear-suscripcion",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            empresaId: empresa.id,
+            email: user.email,
+          }),
+        }
+      );
+
+      const data = await respuesta.json();
+
+      if (!respuesta.ok) {
+        console.error(
+          "Error al iniciar suscripción:",
+          data
+        );
+
+        throw new Error(
+          data?.detalle?.message ||
+            data?.error ||
+            "No se pudo iniciar la suscripción."
+        );
+      }
+
+      if (!data?.initPoint) {
+        throw new Error(
+          "Mercado Pago no devolvió el enlace de pago."
+        );
+      }
+
+      window.location.href = data.initPoint;
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudo iniciar la suscripción.";
+
+      setErrorSuscripcion(mensaje);
+      setActivandoPlan(false);
+    }
+  };
+
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
@@ -944,6 +1049,67 @@ export default function DashboardPage() {
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
             {error}
           </div>
+        )}
+
+        {estadoPrueba?.mostrarAviso && (
+          <section
+            className={`rounded-3xl border p-6 shadow-sm ${
+              estadoPrueba.vencida
+                ? "border-red-300 bg-red-50"
+                : estadoPrueba.diasRestantes <= 1
+                  ? "border-orange-300 bg-orange-50"
+                  : "border-amber-300 bg-amber-50"
+            }`}
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm">
+                  {estadoPrueba.vencida ? "🔒" : "⏳"}
+                </div>
+
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                    Plan de ComerSys
+                  </p>
+
+                  <h2 className="mt-1 text-xl font-black text-slate-900">
+                    {estadoPrueba.vencida
+                      ? "Tu prueba gratuita finalizó"
+                      : estadoPrueba.diasRestantes === 1
+                        ? "Te queda 1 día de prueba gratuita"
+                        : `Te quedan ${estadoPrueba.diasRestantes} días de prueba gratuita`}
+                  </h2>
+
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                    {estadoPrueba.vencida
+                      ? "Activá el Plan Profesional para continuar usando ComerSys."
+                      : `Tu prueba termina el ${formatearFechaSoloDia(
+                          estadoPrueba.fechaFin
+                        )}. Podés activar el Plan Profesional por $17.500 por mes.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={activarPlanProfesional}
+                  disabled={activandoPlan}
+                  className="rounded-2xl bg-[#2563EB] px-6 py-3 text-center font-black text-white shadow-md transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {activandoPlan
+                    ? "Abriendo Mercado Pago..."
+                    : "Activar Profesional · $17.500"}
+                </button>
+
+                {errorSuscripcion && (
+                  <p className="mt-2 max-w-xs text-sm font-semibold text-red-600">
+                    {errorSuscripcion}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
         )}
 
         <KPICards items={kpis} />
@@ -1239,6 +1405,16 @@ function formatearFechaCorta(
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  }).format(new Date(fecha));
+}
+
+function formatearFechaSoloDia(
+  fecha: string
+) {
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   }).format(new Date(fecha));
 }
 

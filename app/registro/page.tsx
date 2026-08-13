@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 const rubros = [
   "Almacén",
@@ -13,7 +15,12 @@ const rubros = [
 ];
 
 export default function RegistroPage() {
-  const [paso, setPaso] = useState(1);
+  const router = useRouter();
+
+  const [paso, setPaso] = useState(0);
+  const [planSeleccionado, setPlanSeleccionado] = useState<
+    "prueba" | "profesional" | null
+  >(null);
   const [nombreNegocio, setNombreNegocio] =
     useState("");
   const [rubro, setRubro] = useState("");
@@ -24,6 +31,15 @@ export default function RegistroPage() {
   const [contrasena, setContrasena] =
     useState("");
   const [error, setError] = useState("");
+  const [creandoCuenta, setCreandoCuenta] = useState(false);
+
+  function elegirPlan(
+    plan: "prueba" | "profesional"
+  ) {
+    setPlanSeleccionado(plan);
+    setPaso(1);
+    setError("");
+  }
 
   function continuar() {
     setError("");
@@ -63,7 +79,83 @@ export default function RegistroPage() {
 
   function volver() {
     setError("");
+
+    if (paso === 1) {
+      setPlanSeleccionado(null);
+      setPaso(0);
+      return;
+    }
+
     setPaso((actual) => Math.max(actual - 1, 1));
+  }
+
+  async function crearCuenta() {
+    if (!planSeleccionado) {
+      setError("Elegí un plan para continuar.");
+      return;
+    }
+
+    setError("");
+    setCreandoCuenta(true);
+
+    try {
+      const { data, error: errorRegistro } =
+        await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password: contrasena,
+          options: {
+            data: {
+              nombre_negocio: nombreNegocio.trim(),
+              rubro,
+              nombre_responsable: nombreResponsable.trim(),
+              telefono: telefono.trim(),
+              plan: planSeleccionado,
+            },
+          },
+        });
+
+      if (errorRegistro) {
+        throw errorRegistro;
+      }
+
+      if (!data.user) {
+        throw new Error(
+          "No se pudo crear el usuario. Intentá nuevamente."
+        );
+      }
+
+      // Si Supabase inicia sesión inmediatamente, va directo al panel.
+      if (data.session) {
+        router.push("/admin");
+        router.refresh();
+        return;
+      }
+
+      // Si la confirmación por email está activa, el usuario debe
+      // confirmar su correo antes de poder iniciar sesión.
+      router.push(
+        "/login?registro=exitoso&confirmar_email=1"
+      );
+    } catch (err) {
+      const mensaje =
+        err instanceof Error
+          ? err.message
+          : "No se pudo crear la cuenta.";
+
+      if (
+        mensaje.toLowerCase().includes("already registered") ||
+        mensaje.toLowerCase().includes("already been registered") ||
+        mensaje.toLowerCase().includes("user already")
+      ) {
+        setError(
+          "Ya existe una cuenta con ese email. Probá iniciar sesión."
+        );
+      } else {
+        setError(mensaje);
+      }
+    } finally {
+      setCreandoCuenta(false);
+    }
   }
 
   return (
@@ -102,30 +194,44 @@ export default function RegistroPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.18em] text-[#2563EB]">
-                  Prueba gratuita
+                  {paso === 0
+                    ? "Elegí cómo empezar"
+                    : planSeleccionado === "prueba"
+                      ? "Prueba gratuita"
+                      : "Plan Profesional"}
                 </p>
 
                 <h1 className="mt-2 text-2xl font-black sm:text-3xl">
-                  Creá tu cuenta en ComerSys
+                  {paso === 0
+                    ? "Elegí tu plan de ComerSys"
+                    : "Creá tu cuenta en ComerSys"}
                 </h1>
               </div>
 
-              <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-black text-[#2563EB]">
-                Paso {paso} de 5
-              </span>
+              {paso > 0 && (
+                <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-black text-[#2563EB]">
+                  Paso {paso} de 5
+                </span>
+              )}
             </div>
 
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-200">
-              <div
-                className="h-full rounded-full bg-[#2563EB] transition-all"
-                style={{
-                  width: `${paso * 20}%`,
-                }}
-              />
-            </div>
+            {paso > 0 && (
+              <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-[#2563EB] transition-all"
+                  style={{
+                    width: `${paso * 20}%`,
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           <div className="p-6 sm:p-8">
+            {paso === 0 && (
+              <SeleccionPlan onElegir={elegirPlan} />
+            )}
+
             {paso === 1 && (
               <PasoNombreNegocio
                 valor={nombreNegocio}
@@ -162,6 +268,7 @@ export default function RegistroPage() {
               <PasoFinal
                 negocio={nombreNegocio}
                 responsable={nombreResponsable}
+                plan={planSeleccionado}
               />
             )}
 
@@ -171,44 +278,153 @@ export default function RegistroPage() {
               </div>
             )}
 
-            <div className="mt-8 flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-between">
-              {paso > 1 && paso < 5 ? (
-                <button
-                  type="button"
-                  onClick={volver}
-                  className="rounded-xl border border-slate-300 bg-white px-6 py-3 font-black transition hover:bg-slate-100"
-                >
-                  Volver
-                </button>
-              ) : (
-                <div />
-              )}
+            {paso > 0 && (
+              <div className="mt-8 flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-between">
+                {paso < 5 ? (
+                  <button
+                    type="button"
+                    onClick={volver}
+                    className="rounded-xl border border-slate-300 bg-white px-6 py-3 font-black transition hover:bg-slate-100"
+                  >
+                    Volver
+                  </button>
+                ) : (
+                  <div />
+                )}
 
-              {paso < 5 ? (
-                <button
-                  type="button"
-                  onClick={continuar}
-                  className="rounded-xl bg-[#2563EB] px-7 py-3 font-black text-white transition hover:bg-blue-700"
-                >
-                  Continuar
-                </button>
-              ) : (
-                <Link
-                  href="/login"
-                  className="rounded-xl bg-[#2563EB] px-7 py-3 text-center font-black text-white transition hover:bg-blue-700"
-                >
-                  Crear cuenta y continuar
-                </Link>
-              )}
-            </div>
+                {paso < 5 ? (
+                  <button
+                    type="button"
+                    onClick={continuar}
+                    className="rounded-xl bg-[#2563EB] px-7 py-3 font-black text-white transition hover:bg-blue-700"
+                  >
+                    Continuar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={crearCuenta}
+                    disabled={creandoCuenta}
+                    className="rounded-xl bg-[#2563EB] px-7 py-3 text-center font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {creandoCuenta
+                      ? "Creando cuenta..."
+                      : "Crear cuenta y continuar"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
         <p className="mt-5 text-center text-sm text-slate-500">
-          7 días gratis · Sin tarjeta de crédito · Cancelá cuando quieras
+          {planSeleccionado === "profesional"
+            ? "$17.500 por mes · Cancelá cuando quieras"
+            : "7 días gratis · Sin tarjeta de crédito · Te avisamos 2 días antes de finalizar"}
         </p>
       </div>
     </main>
+  );
+}
+
+function SeleccionPlan({
+  onElegir,
+}: {
+  onElegir: (plan: "prueba" | "profesional") => void;
+}) {
+  return (
+    <div>
+      <div className="text-center">
+        <span className="text-5xl">🚀</span>
+        <h2 className="mt-5 text-3xl font-black">
+          Empezá con el plan que prefieras
+        </h2>
+        <p className="mx-auto mt-3 max-w-2xl text-slate-500">
+          Podés probar ComerSys durante 7 días sin tarjeta. Cuando falten
+          2 días para terminar la prueba, te avisaremos para que cargues
+          una tarjeta y continúes con el Plan Profesional.
+        </p>
+      </div>
+
+      <div className="mt-8 grid gap-5 md:grid-cols-2">
+        <article className="relative rounded-3xl border-2 border-green-400 bg-white p-6 shadow-sm">
+          <span className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-green-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">
+            Ideal para empezar
+          </span>
+
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50 text-3xl">
+            🎁
+          </div>
+
+          <h3 className="mt-6 text-2xl font-black">
+            Prueba gratuita
+          </h3>
+          <p className="mt-3 leading-7 text-slate-500">
+            Probá todas las herramientas de ComerSys durante 7 días.
+          </p>
+
+          <p className="mt-8 text-3xl font-black text-green-700">
+            7 días gratis
+          </p>
+
+          <div className="mt-6 space-y-3 border-t border-slate-200 pt-5 text-sm font-semibold text-slate-700">
+            <p>✓ Acceso a todas las funciones</p>
+            <p>✓ Sin tarjeta de crédito</p>
+            <p>✓ Productos, clientes y pedidos</p>
+            <p>✓ Caja y cuentas corrientes</p>
+            <p>✓ Catálogo digital con QR</p>
+            <p>✓ Herramientas de IA</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onElegir("prueba")}
+            className="mt-7 w-full rounded-2xl bg-green-600 px-6 py-4 font-black text-white transition hover:bg-green-700"
+          >
+            🚀 Probar gratis
+          </button>
+        </article>
+
+        <article className="rounded-3xl border-2 border-slate-900 bg-white p-6 shadow-sm">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-3xl">
+            🚀
+          </div>
+
+          <h3 className="mt-6 text-2xl font-black">
+            Profesional
+          </h3>
+          <p className="mt-3 leading-7 text-slate-500">
+            Para comercios que quieren administrar su negocio todos los días.
+          </p>
+
+          <div className="mt-8">
+            <p className="text-3xl font-black text-[#2563EB]">
+              $17.500
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              por mes
+            </p>
+          </div>
+
+          <div className="mt-6 space-y-3 border-t border-slate-200 pt-5 text-sm font-semibold text-slate-700">
+            <p>✓ Productos ilimitados</p>
+            <p>✓ Gestión de clientes</p>
+            <p>✓ Pedidos y cuentas corrientes</p>
+            <p>✓ Control de caja</p>
+            <p>✓ Estadísticas comerciales</p>
+            <p>✓ Soporte técnico</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onElegir("profesional")}
+            className="mt-7 w-full rounded-2xl bg-[#2563EB] px-6 py-4 font-black text-white transition hover:bg-blue-700"
+          >
+            Elegir Profesional
+          </button>
+        </article>
+      </div>
+    </div>
   );
 }
 
@@ -378,9 +594,11 @@ function PasoAcceso({
 function PasoFinal({
   negocio,
   responsable,
+  plan,
 }: {
   negocio: string;
   responsable: string;
+  plan: "prueba" | "profesional" | null;
 }) {
   return (
     <div className="text-center">
@@ -393,7 +611,10 @@ function PasoFinal({
       <p className="mx-auto mt-4 max-w-xl text-lg leading-8 text-slate-600">
         Vamos a crear la cuenta de{" "}
         <strong>{negocio}</strong> para que{" "}
-        <strong>{responsable}</strong> pueda comenzar la prueba gratuita de 7 días.
+        <strong>{responsable}</strong>{" "}
+        {plan === "profesional"
+          ? "pueda continuar con el Plan Profesional de $17.500 por mes."
+          : "pueda comenzar la prueba gratuita de 7 días."}
       </p>
     </div>
   );
