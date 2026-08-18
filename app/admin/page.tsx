@@ -1051,6 +1051,31 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {empresa?.id === 1 && (
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  MATEANDO ER
+                </p>
+                <h2 className="mt-1 text-lg font-black text-slate-900">
+                  Administración de ComerSys
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Acceso privado para administrar suscriptores, pruebas y pagos.
+                </p>
+              </div>
+
+              <Link
+                href="/admin-comersys"
+                className="shrink-0 rounded-2xl bg-slate-900 px-5 py-3 text-center text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+              >
+                ⚙️ Ir a administración de suscripciones
+              </Link>
+            </div>
+          </section>
+        )}
+
         {estadoPrueba?.mostrarAviso && (
           <section
             className={`rounded-3xl border p-6 shadow-sm ${

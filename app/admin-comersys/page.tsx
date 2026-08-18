@@ -13,6 +13,8 @@ type EmpresaSuscripcion = {
   prueba_inicio?: string | null;
   prueba_fin?: string | null;
   suscripcion_activa: boolean;
+  mercado_pago_suscripcion_id?: string | null;
+  proximo_pago?: string | null;
 };
 
 type PagoSuscripcion = {
@@ -32,6 +34,8 @@ export default function SuperAdminComerSysPage() {
   const [error, setError] = useState("");
   const [empresas, setEmpresas] = useState<EmpresaSuscripcion[]>([]);
   const [pagos, setPagos] = useState<PagoSuscripcion[]>([]);
+  const [procesandoEmpresaId, setProcesandoEmpresaId] = useState<number | null>(null);
+  const [empresaDetalle, setEmpresaDetalle] = useState<EmpresaSuscripcion | null>(null);
 
   useEffect(() => {
     cargarSuperAdmin();
@@ -76,7 +80,7 @@ export default function SuperAdminComerSysPage() {
     const { data: empresasData, error: errorEmpresas } = await supabase
       .from("empresas")
       .select(
-        "id, nombre, email, plan, estado_suscripcion, prueba_inicio, prueba_fin, suscripcion_activa"
+        "id, nombre, email, plan, estado_suscripcion, prueba_inicio, prueba_fin, suscripcion_activa, mercado_pago_suscripcion_id, proximo_pago"
       )
       .order("created_at", { ascending: false });
 
@@ -156,6 +160,107 @@ export default function SuperAdminComerSysPage() {
       empresas.map((empresa) => [empresa.id, empresa.nombre])
     );
   }, [empresas]);
+
+  const ultimoPagoPorEmpresaId = useMemo(() => {
+    const mapa = new Map<number, PagoSuscripcion>();
+
+    for (const pago of pagos) {
+      if (pago.estado.toLowerCase() !== "aprobado") {
+        continue;
+      }
+
+      const actual = mapa.get(pago.empresa_id);
+
+      if (
+        !actual ||
+        new Date(pago.fecha_pago).getTime() >
+          new Date(actual.fecha_pago).getTime()
+      ) {
+        mapa.set(pago.empresa_id, pago);
+      }
+    }
+
+    return mapa;
+  }, [pagos]);
+
+
+  async function actualizarEmpresa(
+    empresaId: number,
+    cambios: Partial<EmpresaSuscripcion> & {
+      aviso_vencimiento_enviado?: boolean;
+    }
+  ) {
+    setProcesandoEmpresaId(empresaId);
+    setError("");
+
+    const { error: errorActualizacion } = await supabase
+      .from("empresas")
+      .update(cambios)
+      .eq("id", empresaId);
+
+    if (errorActualizacion) {
+      setError(
+        `No se pudo actualizar la empresa: ${errorActualizacion.message}`
+      );
+      setProcesandoEmpresaId(null);
+      return false;
+    }
+
+    await cargarSuperAdmin();
+    setProcesandoEmpresaId(null);
+    return true;
+  }
+
+  async function activarProfesional(empresa: EmpresaSuscripcion) {
+    const confirmado = window.confirm(
+      `ATENCIÓN: esta acción activará manualmente el Plan Profesional para ${empresa.nombre} SIN registrar ningún pago.\n\n¿Querés continuar?`
+    );
+
+    if (!confirmado) return;
+
+    await actualizarEmpresa(empresa.id, {
+      plan: "profesional",
+      estado_suscripcion: "activa",
+      suscripcion_activa: true,
+    });
+  }
+
+  async function pausarSuscripcion(empresa: EmpresaSuscripcion) {
+    const confirmado = window.confirm(
+      `ATENCIÓN: esta acción pausará manualmente el acceso de ${empresa.nombre} dentro de ComerSys.\n\nNo cancela ningún débito ni suscripción en Mercado Pago.\n\n¿Querés continuar?`
+    );
+
+    if (!confirmado) return;
+
+    await actualizarEmpresa(empresa.id, {
+      estado_suscripcion: "pausada",
+      suscripcion_activa: false,
+    });
+  }
+
+  async function extenderPrueba(empresa: EmpresaSuscripcion) {
+    const base =
+      empresa.prueba_fin && new Date(empresa.prueba_fin).getTime() > Date.now()
+        ? new Date(empresa.prueba_fin)
+        : new Date();
+
+    base.setDate(base.getDate() + 7);
+
+    const confirmado = window.confirm(
+      `ATENCIÓN: esta acción extenderá manualmente 7 días la prueba gratuita de ${empresa.nombre}.\n\nNo genera ningún cobro ni modifica Mercado Pago.\n\n¿Querés continuar?`
+    );
+
+    if (!confirmado) return;
+
+    await actualizarEmpresa(empresa.id, {
+      plan: "prueba",
+      estado_suscripcion: "prueba",
+      suscripcion_activa: false,
+      prueba_inicio: empresa.prueba_inicio || new Date().toISOString(),
+      prueba_fin: base.toISOString(),
+      aviso_vencimiento_enviado: false,
+    });
+  }
 
   if (cargando) {
     return (
@@ -253,6 +358,9 @@ export default function SuperAdminComerSysPage() {
                   <th className="px-6 py-4">Plan</th>
                   <th className="px-6 py-4">Estado</th>
                   <th className="px-6 py-4">Fin de prueba</th>
+                  <th className="px-6 py-4">Último pago</th>
+                  <th className="px-6 py-4">Próximo pago</th>
+                  <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -272,6 +380,69 @@ export default function SuperAdminComerSysPage() {
                     </td>
                     <td className="px-6 py-4 text-slate-600">
                       {empresa.prueba_fin ? formatearFecha(empresa.prueba_fin) : "—"}
+                    </td>
+                    <td className="px-6 py-4">
+                      {ultimoPagoPorEmpresaId.get(empresa.id) ? (
+                        <div>
+                          <p className="font-black text-green-700">
+                            {formatearPrecio(
+                              Number(
+                                ultimoPagoPorEmpresaId.get(empresa.id)?.importe || 0
+                              )
+                            )}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatearFecha(
+                              ultimoPagoPorEmpresaId.get(empresa.id)!.fecha_pago
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">Sin pagos</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-slate-600">
+                      {empresa.proximo_pago ? formatearFecha(empresa.proximo_pago) : "—"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEmpresaDetalle(empresa)}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
+                        >
+                          Ver
+                        </button>
+
+                        {!empresa.suscripcion_activa ? (
+                          <button
+                            type="button"
+                            onClick={() => activarProfesional(empresa)}
+                            disabled={procesandoEmpresaId === empresa.id}
+                            className="rounded-lg bg-green-600 px-3 py-2 text-xs font-black text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Activar manualmente
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => pausarSuscripcion(empresa)}
+                            disabled={procesandoEmpresaId === empresa.id}
+                            className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-black text-white hover:bg-amber-600 disabled:opacity-50"
+                          >
+                            Pausar manualmente
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => extenderPrueba(empresa)}
+                          disabled={procesandoEmpresaId === empresa.id}
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          Extender prueba +7 días
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -384,6 +555,110 @@ export default function SuperAdminComerSysPage() {
           </p>
         </section>
       </div>
+
+      {empresaDetalle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
+                  Suscriptor
+                </p>
+                <h2 className="mt-1 text-2xl font-black">
+                  {empresaDetalle.nombre}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {empresaDetalle.email || "Sin email"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEmpresaDetalle(null)}
+                className="rounded-xl border border-slate-200 px-3 py-2 font-black text-slate-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <DatoDetalle titulo="Plan" valor={empresaDetalle.plan} />
+              <DatoDetalle titulo="Estado" valor={empresaDetalle.estado_suscripcion} />
+              <DatoDetalle
+                titulo="Prueba hasta"
+                valor={empresaDetalle.prueba_fin ? formatearFecha(empresaDetalle.prueba_fin) : "—"}
+              />
+              <DatoDetalle
+                titulo="Próximo pago"
+                valor={empresaDetalle.proximo_pago ? formatearFecha(empresaDetalle.proximo_pago) : "—"}
+              />
+            </div>
+
+            <div className="mt-3 rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                ID suscripción Mercado Pago
+              </p>
+              <p className="mt-2 break-all text-sm font-semibold text-slate-700">
+                {empresaDetalle.mercado_pago_suscripcion_id || "Todavía no vinculada"}
+              </p>
+            </div>
+
+            {!empresaDetalle.suscripcion_activa ? (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                ⚠️ Activar manualmente habilita el Plan Profesional sin registrar ningún pago.
+                Usalo solamente para cortesías, pruebas internas o casos especiales.
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                ⚠️ Pausar manualmente solo bloquea el acceso dentro de ComerSys.
+                No cancela cobros ni suscripciones en Mercado Pago.
+              </div>
+            )}
+
+            <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800">
+              ℹ️ Extender prueba +7 días es una acción manual de cortesía.
+              No genera cobros ni modifica la suscripción en Mercado Pago.
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {!empresaDetalle.suscripcion_activa ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await activarProfesional(empresaDetalle);
+                    setEmpresaDetalle(null);
+                  }}
+                  className="rounded-xl bg-green-600 px-4 py-3 text-sm font-black text-white"
+                >
+                  Activar manualmente
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await pausarSuscripcion(empresaDetalle);
+                    setEmpresaDetalle(null);
+                  }}
+                  className="rounded-xl bg-amber-500 px-4 py-3 text-sm font-black text-white"
+                >
+                  Pausar manualmente
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await extenderPrueba(empresaDetalle);
+                  setEmpresaDetalle(null);
+                }}
+                className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white"
+              >
+                Extender prueba +7 días
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -442,6 +717,25 @@ function EstadoSuscripcion({ empresa }: { empresa: EmpresaSuscripcion }) {
     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">
       Pendiente
     </span>
+  );
+}
+
+function DatoDetalle({
+  titulo,
+  valor,
+}: {
+  titulo: string;
+  valor: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+        {titulo}
+      </p>
+      <p className="mt-2 font-black capitalize text-slate-800">
+        {valor}
+      </p>
+    </div>
   );
 }
 
