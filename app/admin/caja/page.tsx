@@ -55,6 +55,12 @@ type PagoPedido = {
 
 type TipoFormulario = "Ingreso" | "Egreso";
 
+type ItemIngreso = {
+  id: number;
+  concepto: string;
+  importe: string;
+};
+
 
 const METODOS_PAGO = [
   "Efectivo",
@@ -104,6 +110,9 @@ export default function CajaPage() {
   const [categoriaMovimiento, setCategoriaMovimiento] = useState("Venta");
   const [conceptoMovimiento, setConceptoMovimiento] = useState("");
   const [importeMovimiento, setImporteMovimiento] = useState("");
+  const [itemsIngreso, setItemsIngreso] = useState<ItemIngreso[]>([
+    { id: 1, concepto: "", importe: "" },
+  ]);
   const [metodoMovimiento, setMetodoMovimiento] = useState("Efectivo");
   const [observacionesMovimiento, setObservacionesMovimiento] = useState("");
 
@@ -222,6 +231,15 @@ export default function CajaPage() {
     ingresosManuales -
     egresos;
 
+  const totalIngresoActual = useMemo(
+    () =>
+      itemsIngreso.reduce((total, item) => {
+        const importe = convertirImporte(item.importe);
+        return total + (Number.isFinite(importe) ? importe : 0);
+      }, 0),
+    [itemsIngreso]
+  );
+
   const totalesPorMetodo = useMemo(() => {
     const totales: Record<string, number> = {};
 
@@ -278,6 +296,39 @@ export default function CajaPage() {
     );
   }, [pagos, movimientos]);
 
+  function agregarItemIngreso() {
+    setItemsIngreso((actuales) => [
+      ...actuales,
+      {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        concepto: "",
+        importe: "",
+      },
+    ]);
+  }
+
+  function actualizarItemIngreso(
+    id: number,
+    campo: "concepto" | "importe",
+    valor: string
+  ) {
+    setItemsIngreso((actuales) =>
+      actuales.map((item) =>
+        item.id === id ? { ...item, [campo]: valor } : item
+      )
+    );
+  }
+
+  function eliminarItemIngreso(id: number) {
+    setItemsIngreso((actuales) => {
+      if (actuales.length === 1) {
+        return [{ ...actuales[0], concepto: "", importe: "" }];
+      }
+
+      return actuales.filter((item) => item.id !== id);
+    });
+  }
+
   async function abrirCaja(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -327,28 +378,99 @@ export default function CajaPage() {
 
     if (!caja) return;
 
+    setProcesando(true);
+    setError("");
+    setMensaje("");
+
+    if (tipoMovimiento === "Ingreso") {
+      const itemsConDatos = itemsIngreso.filter(
+        (item) => item.concepto.trim() || item.importe.trim()
+      );
+
+      if (itemsConDatos.length === 0) {
+        setError("Agregá al menos un producto o concepto.");
+        setProcesando(false);
+        return;
+      }
+
+      for (const item of itemsConDatos) {
+        if (!item.concepto.trim()) {
+          setError("Todos los productos deben tener un concepto.");
+          setProcesando(false);
+          return;
+        }
+
+        const importeItem = convertirImporte(item.importe);
+
+        if (!Number.isFinite(importeItem) || importeItem <= 0) {
+          setError(
+            `Ingresá un importe válido mayor que cero para "${item.concepto.trim()}".`
+          );
+          setProcesando(false);
+          return;
+        }
+      }
+
+      const movimientosAInsertar = itemsConDatos.map((item) => ({
+        caja_id: caja.id,
+        empresa_id: empresa.id,
+        tipo: "Ingreso" as const,
+        categoria: categoriaMovimiento,
+        concepto: item.concepto.trim(),
+        importe: convertirImporte(item.importe),
+        metodo_pago: metodoMovimiento,
+        observaciones: observacionesMovimiento.trim() || null,
+      }));
+
+      const totalIngreso = movimientosAInsertar.reduce(
+        (total, movimiento) => total + Number(movimiento.importe),
+        0
+      );
+
+      const { error: movimientoError } = await supabase
+        .from("movimientos_caja")
+        .insert(movimientosAInsertar);
+
+      if (movimientoError) {
+        setError(`No se pudo registrar el ingreso: ${movimientoError.message}`);
+        setProcesando(false);
+        return;
+      }
+
+      setItemsIngreso([{ id: Date.now(), concepto: "", importe: "" }]);
+      setMetodoMovimiento("Efectivo");
+      setObservacionesMovimiento("");
+      setMostrarMovimiento(false);
+      setMensaje(
+        `Ingreso registrado: ${itemsConDatos.length} producto(s) · ${formatearPrecio(
+          totalIngreso
+        )}.`
+      );
+      setProcesando(false);
+      await cargarCaja();
+      return;
+    }
+
     const importe = convertirImporte(importeMovimiento);
 
     if (!conceptoMovimiento.trim()) {
       setError("Escribí el concepto del movimiento.");
+      setProcesando(false);
       return;
     }
 
     if (!Number.isFinite(importe) || importe <= 0) {
       setError("Ingresá un importe válido mayor que cero.");
+      setProcesando(false);
       return;
     }
-
-    setProcesando(true);
-    setError("");
-    setMensaje("");
 
     const { error: movimientoError } = await supabase
       .from("movimientos_caja")
       .insert({
         caja_id: caja.id,
         empresa_id: empresa.id,
-        tipo: tipoMovimiento,
+        tipo: "Egreso",
         categoria: categoriaMovimiento,
         concepto: conceptoMovimiento.trim(),
         importe,
@@ -367,11 +489,7 @@ export default function CajaPage() {
     setMetodoMovimiento("Efectivo");
     setObservacionesMovimiento("");
     setMostrarMovimiento(false);
-    setMensaje(
-      tipoMovimiento === "Ingreso"
-        ? "Ingreso registrado correctamente."
-        : "Egreso registrado correctamente."
-    );
+    setMensaje("Egreso registrado correctamente.");
     setProcesando(false);
     await cargarCaja();
   }
@@ -577,6 +695,11 @@ export default function CajaPage() {
                 onClick={() => {
                   setTipoMovimiento("Ingreso");
                   setCategoriaMovimiento("Venta");
+                  setItemsIngreso([
+                    { id: Date.now(), concepto: "", importe: "" },
+                  ]);
+                  setMetodoMovimiento("Efectivo");
+                  setObservacionesMovimiento("");
                   setMostrarMovimiento(true);
                 }}
                 className="rounded-2xl bg-green-600 px-5 py-4 font-semibold text-white"
@@ -589,6 +712,10 @@ export default function CajaPage() {
                 onClick={() => {
                   setTipoMovimiento("Egreso");
                   setCategoriaMovimiento("Compra");
+                  setConceptoMovimiento("");
+                  setImporteMovimiento("");
+                  setMetodoMovimiento("Efectivo");
+                  setObservacionesMovimiento("");
                   setMostrarMovimiento(true);
                 }}
                 className="rounded-2xl bg-red-600 px-5 py-4 font-semibold text-white"
@@ -757,19 +884,131 @@ export default function CajaPage() {
               </select>
             </div>
 
-            <Campo
-              label="Concepto"
-              value={conceptoMovimiento}
-              onChange={setConceptoMovimiento}
-              placeholder="Ejemplo: compra de insumos"
-            />
+            {tipoMovimiento === "Ingreso" ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold">Productos de esta venta</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Agregá todos los productos o servicios de esta venta. No se
+                    guardarán en el catálogo.
+                  </p>
+                </div>
 
-            <Campo
-              label="Importe"
-              value={importeMovimiento}
-              onChange={setImporteMovimiento}
-              placeholder="Ejemplo: 12500"
-            />
+                <div className="space-y-3">
+                  {itemsIngreso.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="font-bold text-slate-700">
+                          Producto {index + 1}
+                        </p>
+
+                        {itemsIngreso.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => eliminarItemIngreso(item.id)}
+                            className="text-sm font-semibold text-red-500 hover:text-red-600"
+                          >
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold">
+                            Concepto
+                          </label>
+                          <input
+                            type="text"
+                            value={item.concepto}
+                            onChange={(event) =>
+                              actualizarItemIngreso(
+                                item.id,
+                                "concepto",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Ejemplo: Mate de prueba"
+                            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold">
+                            Importe
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={item.importe}
+                            onChange={(event) =>
+                              actualizarItemIngreso(
+                                item.id,
+                                "importe",
+                                event.target.value
+                              )
+                            }
+                            placeholder="15000"
+                            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={agregarItemIngreso}
+                  className="w-full rounded-2xl border border-green-300 bg-green-50 px-5 py-4 text-left transition hover:bg-green-100"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-bold text-white">
+                      +
+                    </div>
+
+                    <div>
+                      <p className="font-bold text-green-700">
+                        Agregar otro producto
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Podés registrar varios productos dentro del mismo ingreso.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-blue-800">
+                      Total del ingreso
+                    </span>
+                    <span className="text-2xl font-black text-blue-700">
+                      {formatearPrecio(totalIngresoActual)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Campo
+                  label="Concepto"
+                  value={conceptoMovimiento}
+                  onChange={setConceptoMovimiento}
+                  placeholder="Ejemplo: compra de insumos"
+                />
+
+                <Campo
+                  label="Importe"
+                  value={importeMovimiento}
+                  onChange={setImporteMovimiento}
+                  placeholder="Ejemplo: 12500"
+                />
+              </>
+            )}
 
             <div>
               <label className="mb-2 block font-semibold">Método de pago</label>
