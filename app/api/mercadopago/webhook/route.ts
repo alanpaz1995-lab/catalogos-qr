@@ -471,8 +471,9 @@ export async function POST(
           String(dataId),
 
         proximo_pago:
-          suscripcion.next_payment_date ??
-          null,
+          estadoMercadoPago === "cancelled"
+            ? null
+            : suscripcion.next_payment_date ?? null,
       })
       .eq("id", empresa.id)
       .select(
@@ -506,8 +507,9 @@ export async function POST(
         suscripcionActiva:
           activa,
         proximoPago:
-          suscripcion.next_payment_date ??
-          null,
+          estadoMercadoPago === "cancelled"
+            ? null
+            : suscripcion.next_payment_date ?? null,
       }
     );
 
