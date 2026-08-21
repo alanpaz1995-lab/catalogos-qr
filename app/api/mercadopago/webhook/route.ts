@@ -24,15 +24,10 @@ type PreapprovalMercadoPago = {
   };
 };
 
-function validarFirmaWebhook(request: NextRequest) {
-  const secret =
-    process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim();
-
-  if (!secret) {
-    throw new Error(
-      "Falta MERCADOPAGO_WEBHOOK_SECRET."
-    );
-  }
+function validarFirmaWebhook(
+  request: NextRequest,
+  secret: string
+) {
 
   const xSignature =
     request.headers.get("x-signature") ?? "";
@@ -132,18 +127,9 @@ function validarFirmaWebhook(request: NextRequest) {
 }
 
 async function obtenerSuscripcionMercadoPago(
-  suscripcionId: string
+  suscripcionId: string,
+  accessToken: string
 ): Promise<PreapprovalMercadoPago> {
-  const accessToken =
-    process.env
-      .MERCADOPAGO_TEST_ACCESS_TOKEN
-      ?.trim();
-
-  if (!accessToken) {
-    throw new Error(
-      "Falta MERCADOPAGO_TEST_ACCESS_TOKEN."
-    );
-  }
 
   const respuesta =
     await fetch(
@@ -267,12 +253,54 @@ export async function POST(
   request: NextRequest
 ) {
   try {
+    const body =
+      await request.json();
+
+    const liveMode =
+      body?.live_mode === true;
+
+    const webhookSecret =
+      (
+        liveMode
+          ? process.env.MERCADOPAGO_WEBHOOK_SECRET_PROD
+          : process.env.MERCADOPAGO_WEBHOOK_SECRET
+      )?.trim();
+
+    if (!webhookSecret) {
+      throw new Error(
+        liveMode
+          ? "Falta MERCADOPAGO_WEBHOOK_SECRET_PROD."
+          : "Falta MERCADOPAGO_WEBHOOK_SECRET."
+      );
+    }
+
+    const accessToken =
+      (
+        liveMode
+          ? process.env.MERCADOPAGO_ACCESS_TOKEN
+          : process.env.MERCADOPAGO_TEST_ACCESS_TOKEN
+      )?.trim();
+
+    if (!accessToken) {
+      throw new Error(
+        liveMode
+          ? "Falta MERCADOPAGO_ACCESS_TOKEN."
+          : "Falta MERCADOPAGO_TEST_ACCESS_TOKEN."
+      );
+    }
+
     const firmaValida =
-      validarFirmaWebhook(request);
+      validarFirmaWebhook(
+        request,
+        webhookSecret
+      );
 
     if (!firmaValida) {
       console.warn(
-        "Webhook Mercado Pago rechazado: firma inválida."
+        "Webhook Mercado Pago rechazado: firma inválida.",
+        {
+          liveMode,
+        }
       );
 
       return NextResponse.json(
@@ -285,9 +313,6 @@ export async function POST(
         }
       );
     }
-
-    const body =
-      await request.json();
 
     const tipo =
       request.nextUrl.searchParams.get(
@@ -310,8 +335,7 @@ export async function POST(
         dataId,
         action:
           body?.action ?? null,
-        liveMode:
-          body?.live_mode ?? null,
+        liveMode,
       }
     );
 
@@ -360,7 +384,8 @@ export async function POST(
      */
     const suscripcion =
       await obtenerSuscripcionMercadoPago(
-        String(dataId)
+        String(dataId),
+        accessToken
       );
 
     const empresaId =
