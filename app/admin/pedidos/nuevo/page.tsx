@@ -45,6 +45,13 @@ type ItemPedidoManual = {
   cantidad: number;
 };
 
+type ItemPedidoFueraCatalogo = {
+  id: number;
+  nombre: string;
+  precio: string;
+  cantidad: number;
+};
+
 export default function NuevoPedidoPage() {
   const router = useRouter();
 
@@ -66,6 +73,9 @@ export default function NuevoPedidoPage() {
   const [busquedaCliente, setBusquedaCliente] = useState("");
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [items, setItems] = useState<ItemPedidoManual[]>([]);
+  const [itemsFueraCatalogo, setItemsFueraCatalogo] = useState<
+    ItemPedidoFueraCatalogo[]
+  >([]);
 
   const [cargandoDatos, setCargandoDatos] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -198,7 +208,7 @@ export default function NuevoPedidoPage() {
     );
   }
 
-  const total = useMemo(
+  const totalCatalogo = useMemo(
     () =>
       items.reduce(
         (acumulado, item) =>
@@ -210,14 +220,37 @@ export default function NuevoPedidoPage() {
     [items]
   );
 
+  const totalFueraCatalogo = useMemo(
+    () =>
+      itemsFueraCatalogo.reduce((acumulado, item) => {
+        const precio = convertirPrecioManual(item.precio);
+
+        if (!Number.isFinite(precio) || precio <= 0) {
+          return acumulado;
+        }
+
+        return acumulado + precio * item.cantidad;
+      }, 0),
+    [itemsFueraCatalogo]
+  );
+
+  const total = totalCatalogo + totalFueraCatalogo;
+
   const cantidadTotal = useMemo(
     () =>
       items.reduce(
         (acumulado, item) => acumulado + item.cantidad,
         0
+      ) +
+      itemsFueraCatalogo.reduce(
+        (acumulado, item) => acumulado + item.cantidad,
+        0
       ),
-    [items]
+    [items, itemsFueraCatalogo]
   );
+
+  const cantidadProductosDistintos =
+    items.length + itemsFueraCatalogo.length;
 
   function seleccionarCliente(cliente: Cliente) {
     setClienteId(String(cliente.id));
@@ -308,6 +341,62 @@ export default function NuevoPedidoPage() {
     );
   }
 
+  function agregarProductoFueraCatalogo() {
+    setItemsFueraCatalogo((actuales) => [
+      ...actuales,
+      {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        nombre: "",
+        precio: "",
+        cantidad: 1,
+      },
+    ]);
+  }
+
+  function actualizarProductoFueraCatalogo(
+    id: number,
+    campo: "nombre" | "precio",
+    valor: string
+  ) {
+    setItemsFueraCatalogo((actuales) =>
+      actuales.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              [campo]: valor,
+            }
+          : item
+      )
+    );
+  }
+
+  function cambiarCantidadFueraCatalogo(
+    id: number,
+    cantidad: number
+  ) {
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      eliminarProductoFueraCatalogo(id);
+      return;
+    }
+
+    setItemsFueraCatalogo((actuales) =>
+      actuales.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              cantidad,
+            }
+          : item
+      )
+    );
+  }
+
+  function eliminarProductoFueraCatalogo(id: number) {
+    setItemsFueraCatalogo((actuales) =>
+      actuales.filter((item) => item.id !== id)
+    );
+  }
+
   async function obtenerOCrearCliente() {
     if (!empresa?.id) {
       throw new Error(
@@ -383,8 +472,28 @@ export default function NuevoPedidoPage() {
       return;
     }
 
-    if (items.length === 0) {
+    if (items.length === 0 && itemsFueraCatalogo.length === 0) {
       setError("Agregá al menos un producto.");
+      return;
+    }
+
+    const productoManualInvalido =
+      itemsFueraCatalogo.find((item) => {
+        const precio = convertirPrecioManual(item.precio);
+
+        return (
+          !item.nombre.trim() ||
+          !Number.isFinite(precio) ||
+          precio <= 0 ||
+          !Number.isInteger(item.cantidad) ||
+          item.cantidad <= 0
+        );
+      });
+
+    if (productoManualInvalido) {
+      setError(
+        "Completá nombre, precio y cantidad válidos en todos los productos fuera del catálogo."
+      );
       return;
     }
 
@@ -416,10 +525,18 @@ export default function NuevoPedidoPage() {
         telefono: telefonoCliente.trim(),
         direccion: direccionCliente.trim(),
         observaciones: observaciones.trim(),
-        items: items.map((item) => ({
-          producto_id: item.producto.id,
-          cantidad: item.cantidad,
-        })),
+        items: [
+          ...items.map((item) => ({
+            producto_id: item.producto.id,
+            cantidad: item.cantidad,
+          })),
+          ...itemsFueraCatalogo.map((item) => ({
+            producto_id: null,
+            producto_nombre: item.nombre.trim(),
+            precio_unitario: convertirPrecioManual(item.precio),
+            cantidad: item.cantidad,
+          })),
+        ],
       });
 
       const { error: errorVinculacion } =
@@ -749,8 +866,168 @@ export default function NuevoPedidoPage() {
                 </div>
               )}
 
+              <div className="mt-5 rounded-2xl border border-green-200 bg-green-50 p-4">
+                <button
+                  type="button"
+                  onClick={agregarProductoFueraCatalogo}
+                  className="flex w-full items-center gap-4 text-left"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-600 text-white">
+                    <Plus className="h-5 w-5" />
+                  </span>
+
+                  <span>
+                    <span className="block font-black text-green-700">
+                      Agregar producto fuera del catálogo
+                    </span>
+
+                    <span className="mt-1 block text-sm text-slate-600">
+                      Registralo solo en este pedido con nombre, precio y cantidad.
+                    </span>
+                  </span>
+                </button>
+              </div>
+
+              {itemsFueraCatalogo.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {itemsFueraCatalogo.map((item, index) => {
+                    const precioManual =
+                      convertirPrecioManual(item.precio);
+
+                    const subtotalManual =
+                      Number.isFinite(precioManual) && precioManual > 0
+                        ? precioManual * item.cantidad
+                        : 0;
+
+                    return (
+                      <article
+                        key={item.id}
+                        className="rounded-2xl border border-green-200 bg-white p-4"
+                      >
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-black text-slate-800">
+                              Producto fuera del catálogo {index + 1}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-green-600">
+                              No se guardará en Productos
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              eliminarProductoFueraCatalogo(item.id)
+                            }
+                            className="rounded-xl border border-red-200 p-3 text-red-500 transition hover:bg-red-50"
+                            aria-label="Eliminar producto fuera del catálogo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+                          <div>
+                            <label className="mb-2 block text-sm font-black text-slate-700">
+                              Nombre
+                            </label>
+
+                            <input
+                              type="text"
+                              value={item.nombre}
+                              onChange={(event) =>
+                                actualizarProductoFueraCatalogo(
+                                  item.id,
+                                  "nombre",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Ejemplo: Mate nuevo de prueba"
+                              className={clasesInput}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-2 block text-sm font-black text-slate-700">
+                              Precio unitario
+                            </label>
+
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={item.precio}
+                              onChange={(event) =>
+                                actualizarProductoFueraCatalogo(
+                                  item.id,
+                                  "precio",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Ej.: 15000"
+                              className={clasesInput}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex w-fit items-center rounded-xl border border-slate-200 bg-slate-50">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                cambiarCantidadFueraCatalogo(
+                                  item.id,
+                                  item.cantidad - 1
+                                )
+                              }
+                              className="p-3 text-slate-600 transition hover:bg-white"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.cantidad}
+                              onChange={(event) =>
+                                cambiarCantidadFueraCatalogo(
+                                  item.id,
+                                  Number(event.target.value)
+                                )
+                              }
+                              className="w-14 bg-transparent text-center font-black outline-none"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                cambiarCantidadFueraCatalogo(
+                                  item.id,
+                                  item.cantidad + 1
+                                )
+                              }
+                              className="p-3 text-slate-600 transition hover:bg-white"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="sm:text-right">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              Subtotal
+                            </p>
+                            <p className="mt-1 text-xl font-black text-slate-900">
+                              {formatearPrecio(subtotalManual)}
+                            </p>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+
               <div className="mt-6 space-y-4">
-                {items.length === 0 ? (
+                {items.length === 0 && itemsFueraCatalogo.length === 0 ? (
                   <div className="rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center">
                     <ShoppingCart className="mx-auto h-8 w-8 text-slate-300" />
 
@@ -759,7 +1036,7 @@ export default function NuevoPedidoPage() {
                     </p>
 
                     <p className="mt-2 text-sm text-slate-500">
-                      Usá el buscador para comenzar el pedido.
+                      Usá el buscador o agregá un producto fuera del catálogo.
                     </p>
                   </div>
                 ) : (
@@ -933,7 +1210,7 @@ export default function NuevoPedidoPage() {
               <div className="mt-6 space-y-4 border-b border-slate-200 pb-6">
                 <FilaResumen
                   label="Productos"
-                  valor={String(items.length)}
+                  valor={String(cantidadProductosDistintos)}
                 />
 
                 <FilaResumen
@@ -963,7 +1240,7 @@ export default function NuevoPedidoPage() {
                 disabled={
                   guardando ||
                   !empresa?.id ||
-                  items.length === 0
+                  cantidadProductosDistintos === 0
                 }
                 className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#2563EB] px-6 py-4 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1041,6 +1318,17 @@ function FilaResumen({
       </span>
     </div>
   );
+}
+
+function convertirPrecioManual(valor: string) {
+  const limpio = valor
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/\$/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  return Number(limpio);
 }
 
 function formatearPrecio(precio: number) {

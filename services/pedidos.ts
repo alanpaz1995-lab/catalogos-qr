@@ -1,15 +1,26 @@
 import { supabase } from "@/lib/supabase";
 
+export type CrearPedidoItem =
+  | {
+      producto_id: number;
+      cantidad: number;
+      producto_nombre?: never;
+      precio_unitario?: never;
+    }
+  | {
+      producto_id: null;
+      producto_nombre: string;
+      precio_unitario: number;
+      cantidad: number;
+    };
+
 export interface CrearPedidoInput {
   empresaId: number;
   nombre: string;
   telefono: string;
   direccion?: string;
   observaciones?: string;
-  items: {
-    producto_id: number;
-    cantidad: number;
-  }[];
+  items: CrearPedidoItem[];
 }
 
 export interface CrearPedidoResultado {
