@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const accessToken =
       process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
@@ -15,8 +15,25 @@ export async function GET() {
       );
     }
 
+    const empresaId = Number(
+      request.nextUrl.searchParams.get("empresaId")
+    );
+
+    if (
+      !Number.isInteger(empresaId) ||
+      empresaId <= 0
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "empresaId inválido.",
+        },
+        { status: 400 }
+      );
+    }
+
     const externalReference =
-      "COMERSYS-EMPRESA-3";
+      `COMERSYS-EMPRESA-${empresaId}`;
 
     const respuesta = await fetch(
       "https://api.mercadopago.com/preapproval/search",
@@ -81,6 +98,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
+      empresaId,
       externalReference,
       totalEncontradas:
         coincidencias.length,
