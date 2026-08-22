@@ -53,6 +53,11 @@ export default function CatalogoEmpresaPage() {
   const [avisoActualizacion, setAvisoActualizacion] =
     useState("");
 
+  const [imagenAmpliada, setImagenAmpliada] = useState<{
+    src: string;
+    alt: string;
+  } | null>(null);
+
   useEffect(() => {
     async function cargarCatalogo() {
       setCargando(true);
@@ -341,6 +346,25 @@ export default function CatalogoEmpresaPage() {
       window.clearTimeout(temporizador);
     };
   }, [avisoActualizacion]);
+
+  useEffect(() => {
+    if (!imagenAmpliada) return;
+
+    const cerrarConEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setImagenAmpliada(null);
+      }
+    };
+
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", cerrarConEscape);
+
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+      window.removeEventListener("keydown", cerrarConEscape);
+    };
+  }, [imagenAmpliada]);
 
   const productosFiltrados = productos.filter((producto) => {
     const textoBuscado = busqueda.trim().toLowerCase();
@@ -1146,11 +1170,27 @@ export default function CatalogoEmpresaPage() {
                 >
                   <div className="flex w-full flex-col">
                     {producto.imaguen ? (
-                      <img
-                        src={producto.imaguen}
-                        alt={producto.nombre}
-                        className="h-56 w-full object-cover"
-                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setImagenAmpliada({
+                            src: producto.imaguen,
+                            alt: producto.nombre,
+                          })
+                        }
+                        className="group relative block h-56 w-full cursor-zoom-in overflow-hidden bg-slate-100 text-left"
+                        aria-label={`Ver imagen completa de ${producto.nombre}`}
+                      >
+                        <img
+                          src={producto.imaguen}
+                          alt={producto.nombre}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                        />
+
+                        <span className="absolute bottom-3 right-3 rounded-full bg-black/65 px-3 py-2 text-xs font-bold text-white shadow-lg backdrop-blur-sm">
+                          🔍 Ver completa
+                        </span>
+                      </button>
                     ) : (
                       <div className="flex h-56 items-center justify-center bg-slate-100 text-sm font-medium text-slate-400">
                         Sin imagen
@@ -1279,6 +1319,36 @@ export default function CatalogoEmpresaPage() {
           </div>
         )}
       </section>
+
+      {imagenAmpliada && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={imagenAmpliada.alt}
+          onClick={() => setImagenAmpliada(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setImagenAmpliada(null)}
+            className="absolute right-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-slate-800 shadow-2xl transition hover:scale-105 sm:right-6 sm:top-6"
+            aria-label="Cerrar imagen"
+          >
+            ✕
+          </button>
+
+          <div
+            className="flex h-full w-full items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img
+              src={imagenAmpliada.src}
+              alt={imagenAmpliada.alt}
+              className="max-h-[94vh] max-w-[96vw] object-contain"
+            />
+          </div>
+        </div>
+      )}
 
       <footer className="mt-10 border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 py-6 text-center text-sm text-slate-500">
