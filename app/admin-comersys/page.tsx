@@ -262,6 +262,97 @@ export default function SuperAdminComerSysPage() {
     });
   }
 
+  async function eliminarCuenta(empresa: EmpresaSuscripcion) {
+    const confirmado = window.confirm(
+      `ELIMINACIÓN DEFINITIVA\n\nVas a eliminar la cuenta de "${empresa.nombre}" y todos sus datos relacionados.\n\nSi tiene una suscripción de Mercado Pago, ComerSys intentará cancelarla antes de borrar la cuenta.\n\nEsta acción no se puede deshacer.\n\n¿Querés continuar?`
+    );
+
+    if (!confirmado) return;
+
+    const nombreConfirmacion = window.prompt(
+      `Para confirmar, escribí exactamente el nombre del negocio:\n\n${empresa.nombre}`
+    );
+
+    const normalizarNombre = (valor: string) =>
+      valor
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLocaleLowerCase("es");
+
+    if (
+      nombreConfirmacion === null ||
+      normalizarNombre(nombreConfirmacion) !==
+        normalizarNombre(empresa.nombre)
+    ) {
+      if (nombreConfirmacion !== null) {
+        window.alert(
+          `El nombre no coincide. Escribí: ${empresa.nombre}`
+        );
+      }
+      return;
+    }
+
+    setProcesandoEmpresaId(empresa.id);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+        error: errorSesion,
+      } = await supabase.auth.getSession();
+
+      if (errorSesion || !session?.access_token) {
+        throw new Error(
+          "Tu sesión no está activa. Volvé a iniciar sesión."
+        );
+      }
+
+      const respuesta = await fetch(
+        "/api/admin-comersys/eliminar-cuenta",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            empresaId: empresa.id,
+            nombreConfirmacion:
+              nombreConfirmacion.trim(),
+          }),
+        }
+      );
+
+      const data = await respuesta.json();
+
+      if (!respuesta.ok) {
+        const detalle =
+          data?.detalle
+            ? `\n\nDetalle: ${data.detalle}`
+            : "";
+
+        throw new Error(
+          `${data?.error || "No se pudo eliminar la cuenta."}${detalle}`
+        );
+      }
+
+      setEmpresaDetalle(null);
+      await cargarSuperAdmin();
+
+      window.alert(
+        `La cuenta "${empresa.nombre}" fue eliminada correctamente.`
+      );
+    } catch (errorDesconocido) {
+      setError(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudo eliminar la cuenta."
+      );
+    } finally {
+      setProcesandoEmpresaId(null);
+    }
+  }
+
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
@@ -442,6 +533,15 @@ export default function SuperAdminComerSysPage() {
                         >
                           Extender prueba +7 días
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => eliminarCuenta(empresa)}
+                          disabled={procesandoEmpresaId === empresa.id}
+                          className="rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          Eliminar cuenta
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -620,6 +720,11 @@ export default function SuperAdminComerSysPage() {
               No genera cobros ni modifica la suscripción en Mercado Pago.
             </div>
 
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">
+              🗑️ Eliminar cuenta borra definitivamente la empresa y sus datos.
+              Si existe una suscripción de Mercado Pago, primero se intentará cancelarla.
+            </div>
+
             <div className="mt-6 flex flex-wrap gap-2">
               {!empresaDetalle.suscripcion_activa ? (
                 <button
@@ -654,6 +759,15 @@ export default function SuperAdminComerSysPage() {
                 className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-black text-white"
               >
                 Extender prueba +7 días
+              </button>
+
+              <button
+                type="button"
+                onClick={() => eliminarCuenta(empresaDetalle)}
+                disabled={procesandoEmpresaId === empresaDetalle.id}
+                className="rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+              >
+                Eliminar cuenta
               </button>
             </div>
           </section>
