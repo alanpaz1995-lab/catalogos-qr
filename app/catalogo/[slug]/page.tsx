@@ -1174,7 +1174,7 @@ export default function CatalogoEmpresaPage() {
                         type="button"
                         onClick={() =>
                           setImagenAmpliada({
-                            src: producto.imaguen,
+                            src: producto.imaguen!,
                             alt: producto.nombre,
                           })
                         }
