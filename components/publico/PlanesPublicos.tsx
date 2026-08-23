@@ -1,5 +1,17 @@
 import Link from "next/link";
 
+const EMAIL_COMERSYS = "alanpazcomercios@gmail.com";
+const WHATSAPP_COMERSYS_VISIBLE = "+54 3444 445816";
+const WHATSAPP_COMERSYS = "543444445816";
+
+const MENSAJE_SISTEMA_PERSONALIZADO =
+  "Hola, me contacto desde ComerSys. Quisiera consultar por un sistema personalizado.";
+
+const WHATSAPP_SISTEMAS_URL =
+  `https://wa.me/${WHATSAPP_COMERSYS}?text=${encodeURIComponent(
+    MENSAJE_SISTEMA_PERSONALIZADO
+  )}`;
+
 const planes = [
   {
     nombre: "Prueba gratuita",
@@ -44,8 +56,8 @@ const planes = [
     precio: "Consultar",
     destacado: false,
     color: "violeta",
-    boton: "Consultar",
-    href: "#contacto",
+    boton: "Consultar →",
+    href: WHATSAPP_SISTEMAS_URL,
     funciones: [
       "Todo lo incluido en Profesional",
       "Múltiples usuarios",
@@ -116,6 +128,7 @@ function Plan({
   funciones,
 }: PlanProps) {
   const estilos = obtenerEstilos(color);
+  const esEmpresa = nombre === "Empresa";
 
   return (
     <article
@@ -155,7 +168,7 @@ function Plan({
 
       <div className="my-6 h-px bg-slate-200" />
 
-      <ul className="flex-1 space-y-3">
+      <ul className="space-y-3">
         {funciones.map((funcion) => (
           <li
             key={funcion}
@@ -172,12 +185,66 @@ function Plan({
         ))}
       </ul>
 
-      <Link
-        href={href}
-        className={`mt-8 rounded-2xl px-6 py-4 text-center font-black transition hover:-translate-y-0.5 ${estilos.boton}`}
-      >
-        {boton}
-      </Link>
+      {esEmpresa && (
+        <div className="mt-7 rounded-2xl border border-violet-200 bg-violet-50 p-5">
+          <p className="text-base font-black text-slate-900">
+            ¿Necesitás algo diferente?
+          </p>
+
+          <h4 className="mt-1 text-lg font-black text-violet-700">
+            Sistemas personalizados
+          </h4>
+
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            También desarrollamos sistemas a medida según las
+            necesidades de tu negocio.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <a
+              href={`mailto:${EMAIL_COMERSYS}`}
+              className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-violet-100"
+            >
+              <span aria-hidden="true">✉️</span>
+              <span className="min-w-0 break-all">
+                {EMAIL_COMERSYS}
+              </span>
+            </a>
+
+            <a
+              href={WHATSAPP_SISTEMAS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-violet-100"
+            >
+              <span aria-hidden="true">📱</span>
+              <span>{WHATSAPP_COMERSYS_VISIBLE}</span>
+            </a>
+          </div>
+
+          <p className="mt-4 text-center text-xs font-semibold text-violet-700">
+            Escribinos para más información
+          </p>
+        </div>
+      )}
+
+      {esEmpresa ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className={`mt-8 rounded-2xl px-6 py-4 text-center font-black transition hover:-translate-y-0.5 ${estilos.boton}`}
+        >
+          {boton}
+        </a>
+      ) : (
+        <Link
+          href={href}
+          className={`mt-8 rounded-2xl px-6 py-4 text-center font-black transition hover:-translate-y-0.5 ${estilos.boton}`}
+        >
+          {boton}
+        </Link>
+      )}
     </article>
   );
 }
