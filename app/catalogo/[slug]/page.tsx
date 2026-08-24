@@ -131,7 +131,6 @@ export default function CatalogoEmpresaPage() {
       const [
         { data: productosData, error: productosError },
         { data: categoriasData, error: categoriasError },
-        { data: multimediaData, error: multimediaError },
       ] = await Promise.all([
         supabase
           .from("productos")
@@ -146,12 +145,6 @@ export default function CatalogoEmpresaPage() {
           .eq("estado", "Activo")
           .order("orden", { ascending: true })
           .order("nombre", { ascending: true }),
-        supabase
-          .from("producto_multimedia")
-          .select("id, producto_id, tipo, url, es_principal, activo, orden")
-          .eq("empresa_id", empresaEncontrada.id)
-          .eq("activo", true)
-          .order("orden", { ascending: true }),
       ]);
 
       if (productosError) {
@@ -180,23 +173,46 @@ export default function CatalogoEmpresaPage() {
         return;
       }
 
-      if (multimediaError) {
-        console.warn(
-          "No se pudo cargar la multimedia de los productos:",
-          multimediaError
-        );
+      const productosCargados =
+        (productosData as Producto[]) || [];
+
+      const idsProductos = productosCargados.map(
+        (producto) => producto.id
+      );
+
+      let multimediaData: MultimediaProducto[] = [];
+
+      if (idsProductos.length > 0) {
+        const {
+          data: multimediaConsulta,
+          error: multimediaError,
+        } = await supabase
+          .from("producto_multimedia")
+          .select(
+            "id, producto_id, tipo, url, es_principal, activo, orden"
+          )
+          .in("producto_id", idsProductos)
+          .eq("activo", true)
+          .order("orden", { ascending: true });
+
+        if (multimediaError) {
+          console.warn(
+            "No se pudo cargar la multimedia de los productos:",
+            multimediaError
+          );
+        } else {
+          multimediaData =
+            (multimediaConsulta as MultimediaProducto[]) || [];
+        }
       }
 
       const multimediaAgrupada: Record<number, MultimediaProducto[]> = {};
 
-      for (const item of (multimediaData as MultimediaProducto[]) || []) {
-        const tipo = String(item.tipo || "").toLowerCase();
-        const esImagen =
-          tipo.includes("imagen") ||
-          tipo.includes("image") ||
-          tipo.includes("foto");
-
-        if (!esImagen || !item.url) continue;
+      for (const item of multimediaData) {
+        // En el módulo Multimedia, las fotos originales se guardan
+        // actualmente con tipo = "Original". Para el catálogo público
+        // alcanza con que el registro esté activo y tenga una URL válida.
+        if (!item.url) continue;
 
         const productoId = Number(item.producto_id);
         if (!multimediaAgrupada[productoId]) {
@@ -206,9 +222,6 @@ export default function CatalogoEmpresaPage() {
       }
 
       setMultimediaPorProducto(multimediaAgrupada);
-
-      const productosCargados =
-        (productosData as Producto[]) || [];
 
       const nombresOrdenados = (
         (categoriasData as Array<{
