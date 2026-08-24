@@ -17,6 +17,21 @@ type ClienteCatalogo = {
   direccion?: string;
 };
 
+type MultimediaProducto = {
+  id: number;
+  producto_id: number;
+  tipo: string;
+  url: string;
+  es_principal: boolean;
+  activo: boolean;
+  orden: number;
+};
+
+type ImagenGaleria = {
+  src: string;
+  alt: string;
+};
+
 export default function CatalogoEmpresaPage() {
   const params = useParams();
 
@@ -26,6 +41,9 @@ export default function CatalogoEmpresaPage() {
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [multimediaPorProducto, setMultimediaPorProducto] = useState<
+    Record<number, MultimediaProducto[]>
+  >({});
   const [categoriasOrdenadas, setCategoriasOrdenadas] = useState<string[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [categoriaSeleccionada, setCategoriaSeleccionada] =
@@ -54,7 +72,8 @@ export default function CatalogoEmpresaPage() {
     useState("");
 
   const [imagenAmpliada, setImagenAmpliada] = useState<{
-    src: string;
+    imagenes: ImagenGaleria[];
+    indice: number;
     alt: string;
   } | null>(null);
 
@@ -112,6 +131,7 @@ export default function CatalogoEmpresaPage() {
       const [
         { data: productosData, error: productosError },
         { data: categoriasData, error: categoriasError },
+        { data: multimediaData, error: multimediaError },
       ] = await Promise.all([
         supabase
           .from("productos")
@@ -126,6 +146,12 @@ export default function CatalogoEmpresaPage() {
           .eq("estado", "Activo")
           .order("orden", { ascending: true })
           .order("nombre", { ascending: true }),
+        supabase
+          .from("producto_multimedia")
+          .select("id, producto_id, tipo, url, es_principal, activo, orden")
+          .eq("empresa_id", empresaEncontrada.id)
+          .eq("activo", true)
+          .order("orden", { ascending: true }),
       ]);
 
       if (productosError) {
@@ -153,6 +179,33 @@ export default function CatalogoEmpresaPage() {
         setCargando(false);
         return;
       }
+
+      if (multimediaError) {
+        console.warn(
+          "No se pudo cargar la multimedia de los productos:",
+          multimediaError
+        );
+      }
+
+      const multimediaAgrupada: Record<number, MultimediaProducto[]> = {};
+
+      for (const item of (multimediaData as MultimediaProducto[]) || []) {
+        const tipo = String(item.tipo || "").toLowerCase();
+        const esImagen =
+          tipo.includes("imagen") ||
+          tipo.includes("image") ||
+          tipo.includes("foto");
+
+        if (!esImagen || !item.url) continue;
+
+        const productoId = Number(item.producto_id);
+        if (!multimediaAgrupada[productoId]) {
+          multimediaAgrupada[productoId] = [];
+        }
+        multimediaAgrupada[productoId].push(item);
+      }
+
+      setMultimediaPorProducto(multimediaAgrupada);
 
       const productosCargados =
         (productosData as Producto[]) || [];
@@ -350,21 +403,94 @@ export default function CatalogoEmpresaPage() {
   useEffect(() => {
     if (!imagenAmpliada) return;
 
-    const cerrarConEscape = (event: KeyboardEvent) => {
+    const manejarTecladoGaleria = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setImagenAmpliada(null);
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        setImagenAmpliada((actual) => {
+          if (!actual || actual.imagenes.length <= 1) return actual;
+          return {
+            ...actual,
+            indice: (actual.indice + 1) % actual.imagenes.length,
+          };
+        });
+      }
+
+      if (event.key === "ArrowLeft") {
+        setImagenAmpliada((actual) => {
+          if (!actual || actual.imagenes.length <= 1) return actual;
+          return {
+            ...actual,
+            indice:
+              (actual.indice - 1 + actual.imagenes.length) %
+              actual.imagenes.length,
+          };
+        });
       }
     };
 
     const overflowAnterior = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", cerrarConEscape);
+    window.addEventListener("keydown", manejarTecladoGaleria);
 
     return () => {
       document.body.style.overflow = overflowAnterior;
-      window.removeEventListener("keydown", cerrarConEscape);
+      window.removeEventListener("keydown", manejarTecladoGaleria);
     };
   }, [imagenAmpliada]);
+
+  function obtenerImagenesProducto(producto: Producto): ImagenGaleria[] {
+    const imagenes: ImagenGaleria[] = [];
+    const urlsAgregadas = new Set<string>();
+
+    const agregarImagen = (src?: string | null) => {
+      const url = src?.trim();
+      if (!url || urlsAgregadas.has(url)) return;
+      urlsAgregadas.add(url);
+      imagenes.push({ src: url, alt: producto.nombre });
+    };
+
+    agregarImagen(producto.imaguen);
+
+    const adicionales = [...(multimediaPorProducto[producto.id] || [])].sort(
+      (a, b) => {
+        if (a.es_principal !== b.es_principal) {
+          return a.es_principal ? -1 : 1;
+        }
+        return (a.orden ?? 0) - (b.orden ?? 0);
+      }
+    );
+
+    adicionales.forEach((item) => agregarImagen(item.url));
+    return imagenes;
+  }
+
+  function abrirGaleriaProducto(producto: Producto) {
+    const imagenes = obtenerImagenesProducto(producto);
+    if (imagenes.length === 0) return;
+
+    setImagenAmpliada({
+      imagenes,
+      indice: 0,
+      alt: producto.nombre,
+    });
+  }
+
+  function cambiarImagenGaleria(direccion: -1 | 1) {
+    setImagenAmpliada((actual) => {
+      if (!actual || actual.imagenes.length <= 1) return actual;
+
+      return {
+        ...actual,
+        indice:
+          (actual.indice + direccion + actual.imagenes.length) %
+          actual.imagenes.length,
+      };
+    });
+  }
 
   const productosFiltrados = productos.filter((producto) => {
     const textoBuscado = busqueda.trim().toLowerCase();
@@ -1172,12 +1298,7 @@ export default function CatalogoEmpresaPage() {
                     {producto.imaguen ? (
                       <button
                         type="button"
-                        onClick={() =>
-                          setImagenAmpliada({
-                            src: producto.imaguen!,
-                            alt: producto.nombre,
-                          })
-                        }
+                        onClick={() => abrirGaleriaProducto(producto)}
                         className="group relative block h-56 w-full cursor-zoom-in overflow-hidden bg-slate-100 text-left"
                         aria-label={`Ver imagen completa de ${producto.nombre}`}
                       >
@@ -1331,21 +1452,79 @@ export default function CatalogoEmpresaPage() {
           <button
             type="button"
             onClick={() => setImagenAmpliada(null)}
-            className="absolute right-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-slate-800 shadow-2xl transition hover:scale-105 sm:right-6 sm:top-6"
-            aria-label="Cerrar imagen"
+            className="absolute right-4 top-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-slate-800 shadow-2xl transition hover:scale-105 sm:right-6 sm:top-6"
+            aria-label="Cerrar galería"
           >
             ✕
           </button>
 
           <div
-            className="flex h-full w-full items-center justify-center"
+            className="flex h-full w-full flex-col items-center justify-center gap-4"
             onClick={(event) => event.stopPropagation()}
           >
-            <img
-              src={imagenAmpliada.src}
-              alt={imagenAmpliada.alt}
-              className="max-h-[94vh] max-w-[96vw] object-contain"
-            />
+            <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
+              {imagenAmpliada.imagenes.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => cambiarImagenGaleria(-1)}
+                  className="absolute left-1 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-3xl font-black text-slate-900 shadow-xl transition hover:scale-105 sm:left-4 sm:h-14 sm:w-14"
+                  aria-label="Imagen anterior"
+                >
+                  ‹
+                </button>
+              )}
+
+              <img
+                src={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
+                alt={imagenAmpliada.imagenes[imagenAmpliada.indice].alt}
+                className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+              />
+
+              {imagenAmpliada.imagenes.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => cambiarImagenGaleria(1)}
+                  className="absolute right-1 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-3xl font-black text-slate-900 shadow-xl transition hover:scale-105 sm:right-4 sm:h-14 sm:w-14"
+                  aria-label="Imagen siguiente"
+                >
+                  ›
+                </button>
+              )}
+            </div>
+
+            {imagenAmpliada.imagenes.length > 1 && (
+              <div className="flex w-full max-w-3xl flex-col items-center gap-3">
+                <div className="rounded-full bg-black/60 px-4 py-2 text-sm font-bold text-white backdrop-blur-sm">
+                  {imagenAmpliada.indice + 1} / {imagenAmpliada.imagenes.length}
+                </div>
+
+                <div className="flex max-w-full gap-2 overflow-x-auto rounded-2xl bg-black/40 p-2 backdrop-blur-sm">
+                  {imagenAmpliada.imagenes.map((imagen, indice) => (
+                    <button
+                      key={`${imagen.src}-${indice}`}
+                      type="button"
+                      onClick={() =>
+                        setImagenAmpliada((actual) =>
+                          actual ? { ...actual, indice } : actual
+                        )
+                      }
+                      className={`h-14 w-14 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-16 sm:w-16 ${
+                        indice === imagenAmpliada.indice
+                          ? "border-white opacity-100"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      }`}
+                      aria-label={`Ver imagen ${indice + 1}`}
+                    >
+                      <img
+                        src={imagen.src}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
