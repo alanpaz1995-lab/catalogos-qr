@@ -124,6 +124,67 @@ export default function RegistroPage() {
         );
       }
 
+      // --------------------------------------------------
+      // Sincronización automática con SyS Sistemas
+      // --------------------------------------------------
+      // El endpoint interno busca la empresa recién creada
+      // por auth_user_id y la registra en el sistema central.
+      // Hacemos varios intentos porque la empresa puede tardar
+      // unos instantes en quedar creada después del signUp.
+      let sincronizado = false;
+      let ultimoError =
+        "No se pudo sincronizar el registro con SyS Sistemas.";
+
+      for (let intento = 1; intento <= 5; intento++) {
+        try {
+          const respuesta = await fetch(
+            "/api/integraciones/sys-sistemas/registro",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                auth_user_id: data.user.id,
+              }),
+            }
+          );
+
+          const resultado = await respuesta.json();
+
+          if (respuesta.ok && resultado.ok) {
+            sincronizado = true;
+            break;
+          }
+
+          ultimoError =
+            resultado?.error ||
+            "SyS Sistemas no pudo registrar la nueva cuenta.";
+        } catch (error) {
+          ultimoError =
+            error instanceof Error
+              ? error.message
+              : "No se pudo conectar con SyS Sistemas.";
+        }
+
+        if (intento < 5) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000)
+          );
+        }
+      }
+
+      if (!sincronizado) {
+        console.error(
+          "Error sincronizando el nuevo registro con SyS Sistemas:",
+          ultimoError
+        );
+
+        throw new Error(
+          "La cuenta se creó, pero no pudimos completar el registro en SyS Sistemas. Esperá unos segundos e intentá ingresar nuevamente."
+        );
+      }
+
       // Si Supabase inicia sesión inmediatamente, va directo al panel.
       if (data.session) {
         router.push("/admin");
