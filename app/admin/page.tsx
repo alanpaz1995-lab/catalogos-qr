@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import Link from "next/link";
 import {
@@ -1015,6 +1015,63 @@ export default function DashboardPage() {
             Cargando Dashboard PRO...
           </p>
         </div>
+      </main>
+    );
+  }
+
+
+  if (estadoPrueba?.vencida) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
+        <section className="w-full max-w-2xl rounded-3xl border border-red-200 bg-white p-7 text-center shadow-xl sm:p-10">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-3xl">
+            🔒
+          </div>
+
+          <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-red-600">
+            Suscripción requerida
+          </p>
+
+          <h1 className="mt-3 text-3xl font-black text-slate-900">
+            Tu prueba gratuita finalizó
+          </h1>
+
+          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600">
+            El período de prueba de ComerSyS terminó el{" "}
+            <strong>{formatearFechaSoloDia(estadoPrueba.fechaFin)}</strong>.
+            Para continuar usando el panel de administración, activá el Plan
+            Profesional.
+          </p>
+
+          <div className="mt-8 rounded-2xl bg-slate-50 p-5">
+            <p className="text-sm text-slate-500">Plan Profesional</p>
+            <p className="mt-1 text-2xl font-black text-slate-900">
+              $17.500 por mes
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={activarPlanProfesional}
+            disabled={activandoPlan}
+            className="mt-7 w-full rounded-2xl bg-[#2563EB] px-6 py-4 font-black text-white shadow-md transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            {activandoPlan
+              ? "Abriendo Mercado Pago..."
+              : "Activar Plan Profesional"}
+          </button>
+
+          {errorSuscripcion && (
+            <p className="mx-auto mt-4 max-w-lg text-sm font-semibold text-red-600">
+              {errorSuscripcion}
+            </p>
+          )}
+
+          <p className="mt-6 text-sm text-slate-500">
+            Tus datos permanecen guardados. El acceso se restablecerá cuando la
+            suscripción quede activa.
+          </p>
+        </section>
       </main>
     );
   }
