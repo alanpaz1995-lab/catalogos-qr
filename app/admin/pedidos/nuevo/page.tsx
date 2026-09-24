@@ -69,6 +69,9 @@ export default function NuevoPedidoPage() {
   const [telefonoCliente, setTelefonoCliente] = useState("");
   const [direccionCliente, setDireccionCliente] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [marcarComoPagado, setMarcarComoPagado] = useState(false);
+  const [metodoPagoInicial, setMetodoPagoInicial] = useState("Efectivo");
+  const [estadoPedidoInicial, setEstadoPedidoInicial] = useState("Pendiente");
 
   const [busquedaCliente, setBusquedaCliente] = useState("");
   const [busquedaProducto, setBusquedaProducto] = useState("");
@@ -544,6 +547,7 @@ export default function NuevoPedidoPage() {
           .from("pedidos")
           .update({
             cliente_id: clienteFinalId,
+            estado: estadoPedidoInicial,
             updated_at: new Date().toISOString(),
           })
           .eq("id", resultado.pedido_id)
@@ -553,6 +557,53 @@ export default function NuevoPedidoPage() {
         throw new Error(
           `El pedido se creó, pero no se pudo vincular al cliente: ${errorVinculacion.message}`
         );
+      }
+
+      if (marcarComoPagado) {
+        const { data: pagoCreado, error: errorPago } = await supabase
+          .from("pagos_pedido")
+          .insert({
+            pedido_id: resultado.pedido_id,
+            empresa_id: empresa.id,
+            importe: Number(resultado.total_pedido),
+            metodo_pago: metodoPagoInicial,
+            observaciones: "Pago registrado al crear el pedido",
+          })
+          .select("id")
+          .single();
+
+        if (errorPago || !pagoCreado) {
+          throw new Error(
+            `El pedido se creó, pero no se pudo registrar el pago: ${
+              errorPago?.message || "respuesta vacía de Supabase"
+            }`
+          );
+        }
+
+        const { error: errorEstadoPago } = await supabase
+          .from("pedidos")
+          .update({
+            estado_pago: "Pagado",
+            metodo_pago: metodoPagoInicial,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", resultado.pedido_id)
+          .eq("empresa_id", empresa.id);
+
+        if (errorEstadoPago) {
+          await supabase
+            .from("pagos_pedido")
+            .update({
+              anulado: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", pagoCreado.id)
+            .eq("empresa_id", empresa.id);
+
+          throw new Error(
+            `El pedido se creó, pero no se pudo marcar como pagado: ${errorEstadoPago.message}`
+          );
+        }
       }
 
       setMensaje(
@@ -1232,6 +1283,77 @@ export default function NuevoPedidoPage() {
                 <span className="text-3xl font-black text-slate-900">
                   {formatearPrecio(total)}
                 </span>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-2 block text-sm font-black text-slate-700">
+                  Estado del pedido
+                </label>
+                <select
+                  value={estadoPedidoInicial}
+                  onChange={(event) =>
+                    setEstadoPedidoInicial(event.target.value)
+                  }
+                  disabled={guardando}
+                  className={clasesInput}
+                >
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="Confirmado">Confirmado</option>
+                  <option value="Preparando">Preparando</option>
+                  <option value="Listo">Listo</option>
+                  <option value="Enviado">Enviado</option>
+                  <option value="Entregado">Entregado</option>
+                  <option value="Cancelado">Cancelado</option>
+                </select>
+                <p className="mt-2 text-sm text-slate-500">
+                  Elegí en qué estado querés crear este pedido.
+                </p>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={marcarComoPagado}
+                    onChange={(event) =>
+                      setMarcarComoPagado(event.target.checked)
+                    }
+                    disabled={guardando}
+                    className="mt-1 h-5 w-5 rounded border-green-300 accent-green-600"
+                  />
+
+                  <span>
+                    <span className="block font-black text-green-700">
+                      Marcar como pagado
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      Registra automáticamente el pago total al crear el pedido.
+                    </span>
+                  </span>
+                </label>
+
+                {marcarComoPagado && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-black text-slate-700">
+                      Método de pago
+                    </label>
+                    <select
+                      value={metodoPagoInicial}
+                      onChange={(event) =>
+                        setMetodoPagoInicial(event.target.value)
+                      }
+                      disabled={guardando}
+                      className={clasesInput}
+                    >
+                      <option value="Efectivo">Efectivo</option>
+                      <option value="Transferencia">Transferencia</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="Tarjeta">Tarjeta</option>
+                      <option value="Mercado Pago">Mercado Pago</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <button
