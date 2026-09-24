@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type Pedido = {
   id: number;
@@ -56,7 +57,6 @@ type PagoPedido = {
   updated_at?: string | null;
 };
 
-const EMPRESA_ID = 1;
 
 const ESTADOS_PEDIDO = [
   "Pendiente",
@@ -79,6 +79,8 @@ const METODOS_PAGO = [
 
 export default function DetallePedidoPage() {
   const params = useParams();
+
+  const { empresa, cargandoEmpresa, errorEmpresa } = useEmpresa();
 
   const idParametro = Array.isArray(params.id)
     ? params.id[0]
@@ -114,6 +116,18 @@ export default function DetallePedidoPage() {
       return;
     }
 
+    if (!empresa?.id) {
+      if (cargandoEmpresa) {
+        return;
+      }
+
+      setError(errorEmpresa || "No encontramos la empresa actual.");
+      setCargando(false);
+      return;
+    }
+
+    const empresaId = empresa.id;
+
     const [
       { data: pedidoData, error: pedidoError },
       { data: detallesData, error: detallesError },
@@ -123,7 +137,7 @@ export default function DetallePedidoPage() {
         .from("pedidos")
         .select("*")
         .eq("id", pedidoId)
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .maybeSingle(),
 
       supabase
@@ -136,7 +150,7 @@ export default function DetallePedidoPage() {
         .from("pagos_pedido")
         .select("*")
         .eq("pedido_id", pedidoId)
-        .eq("empresa_id", EMPRESA_ID)
+        .eq("empresa_id", empresaId)
         .order("created_at", { ascending: false }),
     ]);
 
@@ -189,7 +203,7 @@ export default function DetallePedidoPage() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", pedidoId)
-        .eq("empresa_id", EMPRESA_ID);
+        .eq("empresa_id", empresaId);
 
       if (errorVisto) {
         console.error(
@@ -205,7 +219,7 @@ export default function DetallePedidoPage() {
     setDetalles((detallesData as DetallePedido[]) || []);
     setPagos((pagosData as PagoPedido[]) || []);
     setCargando(false);
-  }, [pedidoId]);
+  }, [pedidoId, empresa?.id, cargandoEmpresa, errorEmpresa]);
 
   useEffect(() => {
     cargarDetallePedido();
@@ -264,7 +278,7 @@ export default function DetallePedidoPage() {
     nuevoTotalCobrado: number,
     metodoUltimoPago?: string
   ) {
-    if (!pedido) return false;
+    if (!pedido || !empresa?.id) return false;
 
     const nuevoEstado = calcularEstadoPago(
       nuevoTotalCobrado,
@@ -288,7 +302,7 @@ export default function DetallePedidoPage() {
       .from("pedidos")
       .update(cambios)
       .eq("id", pedido.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", pedido.empresa_id);
 
     if (errorActualizacion) {
       console.error(
@@ -331,7 +345,7 @@ export default function DetallePedidoPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", pedido.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", pedido.empresa_id);
 
     if (errorActualizacion) {
       console.error(
@@ -416,7 +430,7 @@ export default function DetallePedidoPage() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", pagoCreado.id)
-        .eq("empresa_id", EMPRESA_ID);
+        .eq("empresa_id", pedido.empresa_id);
 
       alert(
         "El pago no pudo sincronizarse con el pedido y fue anulado automáticamente."
@@ -459,7 +473,7 @@ export default function DetallePedidoPage() {
       })
       .eq("id", pago.id)
       .eq("pedido_id", pedido.id)
-      .eq("empresa_id", EMPRESA_ID);
+      .eq("empresa_id", pedido.empresa_id);
 
     if (errorAnulacion) {
       console.error("Error al anular pago:", errorAnulacion);
@@ -486,7 +500,7 @@ export default function DetallePedidoPage() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", pago.id)
-        .eq("empresa_id", EMPRESA_ID);
+        .eq("empresa_id", pedido.empresa_id);
 
       alert(
         "No se pudo sincronizar el estado del pedido. La anulación fue revertida."
@@ -634,7 +648,7 @@ export default function DetallePedidoPage() {
     }
   }
 
-  if (cargando) {
+  if (cargandoEmpresa || cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
         <div className="text-center">
