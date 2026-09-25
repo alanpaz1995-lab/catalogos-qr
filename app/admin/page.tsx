@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import Link from "next/link";
 import {
@@ -110,6 +110,10 @@ export default function DashboardPage() {
     useState<Pedido[]>([]);
   const [pedidosPendientes, setPedidosPendientes] =
     useState<Pedido[]>([]);
+  const [pedidosConDeuda, setPedidosConDeuda] =
+    useState<Pedido[]>([]);
+  const [pagosDeudas, setPagosDeudas] =
+    useState<PagoPedido[]>([]);
   const [clientes, setClientes] =
     useState<ClienteResumen[]>([]);
   const [productos, setProductos] =
@@ -182,6 +186,7 @@ export default function DashboardPage() {
       { data: pedidosHoyData, error: pedidosHoyError },
       { data: pedidosMesData, error: pedidosMesError },
       { data: pendientesData, error: pendientesError },
+      { data: pedidosConDeudaData, error: pedidosConDeudaError },
       { data: clientesData, error: clientesError },
       { data: productosData, error: productosError },
       { data: cajaData, error: cajaError },
@@ -218,6 +223,16 @@ export default function DashboardPage() {
         ])
         .order("created_at", { ascending: false })
         .limit(12),
+
+      supabase
+        .from("pedidos")
+        .select(
+          "id, numero, total, estado, estado_pago, cliente_id, cliente_nombre, created_at"
+        )
+        .eq("empresa_id", empresaId)
+        .in("estado_pago", ["Pendiente", "Parcial"])
+        .neq("estado", "Cancelado")
+        .order("created_at", { ascending: true }),
 
       supabase
         .from("clientes_resumen")
@@ -258,6 +273,7 @@ export default function DashboardPage() {
       pedidosHoyError ||
       pedidosMesError ||
       pendientesError ||
+      pedidosConDeudaError ||
       clientesError ||
       productosError ||
       cajaError;
@@ -342,6 +358,43 @@ export default function DashboardPage() {
     setPedidosPendientes(
       (pendientesData as Pedido[]) || []
     );
+    const pedidosDeudaCargados =
+      (pedidosConDeudaData as Pedido[]) || [];
+
+    let pagosDeudasCargados: PagoPedido[] = [];
+
+    if (pedidosDeudaCargados.length > 0) {
+      const idsPedidosConDeuda = pedidosDeudaCargados.map(
+        (pedido) => pedido.id
+      );
+
+      const {
+        data: pagosDeudasData,
+        error: pagosDeudasError,
+      } = await supabase
+        .from("pagos_pedido")
+        .select(
+          "id, pedido_id, importe, metodo_pago, anulado, created_at, caja_id"
+        )
+        .eq("empresa_id", empresaId)
+        .in("pedido_id", idsPedidosConDeuda)
+        .eq("anulado", false)
+        .order("created_at", { ascending: false });
+
+      if (pagosDeudasError) {
+        setError(
+          `No se pudieron cargar los pagos de las deudas: ${pagosDeudasError.message}`
+        );
+        setCargando(false);
+        return;
+      }
+
+      pagosDeudasCargados =
+        (pagosDeudasData as PagoPedido[]) || [];
+    }
+
+    setPedidosConDeuda(pedidosDeudaCargados);
+    setPagosDeudas(pagosDeudasCargados);
     setClientes(
       (clientesData as ClienteResumen[]) || []
     );
@@ -476,6 +529,42 @@ export default function DashboardPage() {
         ),
     [clientes]
   );
+
+  const deudasConAntiguedad = useMemo(() => {
+    const ahora = Date.now();
+    const quinceDiasMs = 15 * 24 * 60 * 60 * 1000;
+
+    return pedidosConDeuda.map((pedido) => {
+      const pagosDelPedido = pagosDeudas
+        .filter((pago) => pago.pedido_id === pedido.id && !pago.anulado)
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() -
+            new Date(a.created_at).getTime()
+        );
+
+      const ultimoPago = pagosDelPedido[0] || null;
+      const fechaReferencia =
+        ultimoPago?.created_at || pedido.created_at;
+
+      const diasSinPago = Math.max(
+        0,
+        Math.floor(
+          (ahora - new Date(fechaReferencia).getTime()) /
+            (24 * 60 * 60 * 1000)
+        )
+      );
+
+      return {
+        pedido,
+        fechaReferencia,
+        diasSinPago,
+        vencida15Dias:
+          ahora - new Date(fechaReferencia).getTime() >
+          quinceDiasMs,
+      };
+    });
+  }, [pedidosConDeuda, pagosDeudas]);
 
   const clientesNuevosMes = useMemo(() => {
     const inicioMes = new Date(
@@ -832,24 +921,38 @@ export default function DashboardPage() {
         });
       }
 
-      if (clientesConDeuda.length > 0) {
-        items.push({
-          id: "clientes-deuda",
-          titulo: `${clientesConDeuda.length} cliente(s) con saldo pendiente`,
-          descripcion: `Total por cobrar: ${formatearPrecio(
-            saldoPendienteTotal
-          )}.`,
-          tipo: "info",
-        });
-      }
+      deudasConAntiguedad.forEach(
+        ({
+          pedido,
+          fechaReferencia,
+          diasSinPago,
+          vencida15Dias,
+        }) => {
+          items.push({
+            id: `deuda-pedido-${pedido.id}`,
+            titulo: pedido.cliente_nombre || "Cliente sin nombre",
+            descripcion: `Pedido #${String(
+              pedido.numero ?? pedido.id
+            ).padStart(6, "0")} · Pedido: ${formatearFechaSoloDia(
+              pedido.created_at
+            )} · ${
+              pedido.estado_pago === "Parcial"
+                ? `Último pago: ${formatearFechaSoloDia(
+                    fechaReferencia
+                  )}`
+                : "Sin pagos registrados"
+            } · ${diasSinPago} día(s) sin pago`,
+            tipo: vencida15Dias ? "error" : "info",
+          });
+        }
+      );
 
       return items;
     }, [
       productosStockBajo.length,
       pedidosDemorados.length,
       pedidosConPagoPendiente.length,
-      clientesConDeuda.length,
-      saldoPendienteTotal,
+      deudasConAntiguedad,
     ]);
 
   const actividades: ActividadReciente[] =
