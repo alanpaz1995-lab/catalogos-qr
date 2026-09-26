@@ -6,11 +6,13 @@ export type CrearPedidoItem =
       cantidad: number;
       producto_nombre?: never;
       precio_unitario?: never;
+      costo_unitario?: never;
     }
   | {
       producto_id: null;
       producto_nombre: string;
       precio_unitario: number;
+      costo_unitario: number;
       cantidad: number;
     };
 
