@@ -162,6 +162,29 @@ export default function PerfilEmpresaPage() {
   const [empresaId, setEmpresaId] =
     useState<number | null>(null);
 
+  const [modoOscuro, setModoOscuro] = useState(false);
+
+  useEffect(() => {
+    const guardado = window.localStorage.getItem("comersys-modo-oscuro");
+    setModoOscuro(guardado === "true");
+  }, []);
+
+  function cambiarModoOscuro() {
+    setModoOscuro((actual) => {
+      const nuevo = !actual;
+      window.localStorage.setItem(
+        "comersys-modo-oscuro",
+        String(nuevo)
+      );
+      window.dispatchEvent(
+        new CustomEvent("comersys-modo-oscuro-cambio", {
+          detail: nuevo,
+        })
+      );
+      return nuevo;
+    });
+  }
+
   useEffect(() => {
     cargarPerfil();
   }, []);
@@ -530,18 +553,84 @@ export default function PerfilEmpresaPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
+    <main
+      className={`perfil-comersys min-h-screen p-5 transition-colors sm:p-8 ${
+        modoOscuro
+          ? "bg-[#0F172A] text-slate-100"
+          : "bg-[#F8FAFC] text-[#1E293B]"
+      }`}
+    >
+      {modoOscuro && (
+        <style jsx global>{`
+          .perfil-comersys input:not([type="checkbox"]):not([type="file"]):not([type="color"]),
+          .perfil-comersys textarea,
+          .perfil-comersys select {
+            background-color: #111827 !important;
+            border-color: #475569 !important;
+            color: #f8fafc !important;
+          }
+          .perfil-comersys input::placeholder,
+          .perfil-comersys textarea::placeholder {
+            color: #64748b !important;
+            opacity: 1;
+          }
+          .perfil-comersys label,
+          .perfil-comersys .text-slate-700,
+          .perfil-comersys .text-slate-800 {
+            color: #e2e8f0 !important;
+          }
+          .perfil-comersys .text-slate-500 {
+            color: #94a3b8 !important;
+          }
+          .perfil-comersys .bg-slate-50,
+          .perfil-comersys .bg-slate-100 {
+            background-color: #111827 !important;
+          }
+          .perfil-comersys .border-slate-200,
+          .perfil-comersys .border-slate-300 {
+            border-color: #334155 !important;
+          }
+          .perfil-comersys input[type="time"] {
+            color-scheme: dark;
+          }
+        `}</style>
+      )}
+
       <div className="mx-auto max-w-7xl">
         <header>
-          <p className="text-sm font-black uppercase tracking-[0.18em] text-[#2563EB]">
-            Configuración
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <p className="text-sm font-black uppercase tracking-[0.18em] text-[#2563EB]">
+              Configuración
+            </p>
+
+            <button
+              type="button"
+              onClick={cambiarModoOscuro}
+              className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-black shadow-sm transition ${
+                modoOscuro
+                  ? "border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+              aria-label={
+                modoOscuro
+                  ? "Cambiar a modo claro"
+                  : "Cambiar a modo oscuro"
+              }
+            >
+              <span>{modoOscuro ? "☀️" : "🌙"}</span>
+              <span>{modoOscuro ? "Modo claro" : "Modo oscuro"}</span>
+            </button>
+          </div>
 
           <h1 className="mt-2 text-3xl font-black sm:text-4xl">
             Perfil de la empresa
           </h1>
 
-          <p className="mt-3 max-w-3xl text-slate-500">
+          <p
+            className={`mt-3 max-w-3xl ${
+              modoOscuro ? "text-slate-400" : "text-slate-500"
+            }`}
+          >
             Personalizá la identidad pública de tu
             negocio, la información de contacto y la
             ubicación que verán tus clientes.
@@ -569,6 +658,7 @@ export default function PerfilEmpresaPage() {
             className="space-y-7"
           >
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Identidad visual"
               descripcion="Cargá el logo y la portada que representarán a tu negocio."
             >
@@ -601,6 +691,7 @@ export default function PerfilEmpresaPage() {
             </SeccionFormulario>
 
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Información principal"
               descripcion="Estos datos aparecerán en el catálogo y el perfil público."
             >
@@ -646,6 +737,7 @@ export default function PerfilEmpresaPage() {
             </SeccionFormulario>
 
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Contacto"
               descripcion="Información para que los clientes puedan comunicarse."
             >
@@ -703,6 +795,7 @@ export default function PerfilEmpresaPage() {
             </SeccionFormulario>
 
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Ubicación"
               descripcion="La dirección permitirá mostrar el botón Cómo llegar."
             >
@@ -795,6 +888,7 @@ export default function PerfilEmpresaPage() {
             </SeccionFormulario>
 
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Redes sociales"
               descripcion="Agregá los enlaces públicos de tu negocio."
             >
@@ -835,6 +929,7 @@ export default function PerfilEmpresaPage() {
             </SeccionFormulario>
 
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Opciones comerciales"
               descripcion="Configurá información adicional para tus clientes."
             >
@@ -877,6 +972,7 @@ export default function PerfilEmpresaPage() {
             </SeccionFormulario>
 
             <SeccionFormulario
+              modoOscuro={modoOscuro}
               titulo="Colores del catálogo"
               descripcion="Elegí los colores que identificarán a tu empresa."
             >
@@ -920,6 +1016,7 @@ export default function PerfilEmpresaPage() {
             <VistaPrevia
               perfil={perfil}
               enlaceComoLlegar={enlaceComoLlegar}
+              modoOscuro={modoOscuro}
             />
           </aside>
         </div>
@@ -932,18 +1029,30 @@ function SeccionFormulario({
   titulo,
   descripcion,
   children,
+  modoOscuro,
 }: {
   titulo: string;
   descripcion: string;
   children: React.ReactNode;
+  modoOscuro: boolean;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <section
+      className={`rounded-3xl border p-6 shadow-sm transition-colors sm:p-8 ${
+        modoOscuro
+          ? "border-slate-700 bg-slate-900"
+          : "border-slate-200 bg-white"
+      }`}
+    >
       <h2 className="text-xl font-black">
         {titulo}
       </h2>
 
-      <p className="mt-2 text-sm leading-6 text-slate-500">
+      <p
+        className={`mt-2 text-sm leading-6 ${
+          modoOscuro ? "text-slate-400" : "text-slate-500"
+        }`}
+      >
         {descripcion}
       </p>
 
@@ -1374,12 +1483,20 @@ function SelectorColor({
 function VistaPrevia({
   perfil,
   enlaceComoLlegar,
+  modoOscuro,
 }: {
   perfil: PerfilEmpresa;
   enlaceComoLlegar: string;
+  modoOscuro: boolean;
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
+    <section
+      className={`overflow-hidden rounded-3xl border shadow-xl transition-colors ${
+        modoOscuro
+          ? "border-slate-700 bg-slate-900"
+          : "border-slate-200 bg-white"
+      }`}
+    >
       <div
         className="relative h-44 bg-slate-200"
         style={{

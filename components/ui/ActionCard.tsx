@@ -26,17 +26,30 @@ export default function ActionCard({
 }: ActionCardProps) {
   const contenido = (
     <>
-      <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-700">
+      <span
+        className="flex h-11 w-11 items-center justify-center rounded-2xl border transition group-hover:border-slate-300"
+        style={{
+          backgroundColor: "#f8fafc",
+          borderColor: "#e2e8f0",
+          color: "#475569",
+        }}
+      >
         <Icono className="h-5 w-5" />
       </span>
 
       <span className="min-w-0">
-        <span className="block font-black text-slate-800">
+        <span
+          className="block font-black"
+          style={{ color: "#020617" }}
+        >
           {titulo}
         </span>
 
         {descripcion && (
-          <span className="mt-1 block text-xs leading-5 text-slate-500">
+          <span
+            className="mt-1 block text-xs font-medium leading-5"
+            style={{ color: "#334155" }}
+          >
             {descripcion}
           </span>
         )}
@@ -58,6 +71,7 @@ export default function ActionCard({
             : undefined
         }
         className={clases}
+        style={{ backgroundColor: "#ffffff" }}
         aria-disabled={disabled}
         onClick={(event) => {
           if (disabled) {
@@ -76,6 +90,7 @@ export default function ActionCard({
       onClick={onClick}
       disabled={disabled}
       className={clases}
+      style={{ backgroundColor: "#ffffff" }}
     >
       {contenido}
     </button>

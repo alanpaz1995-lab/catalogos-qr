@@ -25,6 +25,25 @@ export default function AdminLayout({
   const [error, setError] = useState("");
   const [activandoPlan, setActivandoPlan] = useState(false);
   const [errorSuscripcion, setErrorSuscripcion] = useState("");
+  const [modoOscuro, setModoOscuro] = useState(false);
+
+  useEffect(() => {
+    const aplicarTema = () => {
+      const oscuro =
+        window.localStorage.getItem("comersys-modo-oscuro") === "true";
+      setModoOscuro(oscuro);
+    };
+
+    aplicarTema();
+
+    window.addEventListener("storage", aplicarTema);
+    window.addEventListener("focus", aplicarTema);
+
+    return () => {
+      window.removeEventListener("storage", aplicarTema);
+      window.removeEventListener("focus", aplicarTema);
+    };
+  }, []);
 
   useEffect(() => {
     async function verificarAcceso() {
@@ -156,10 +175,20 @@ export default function AdminLayout({
 
   if (cargando) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
+      <main
+        className={`flex min-h-screen items-center justify-center p-8 ${
+          modoOscuro
+            ? "bg-slate-950 text-slate-100"
+            : "bg-[#F8FAFC]"
+        }`}
+      >
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
-          <p className="mt-4 text-slate-500">
+          <p
+            className={`mt-4 ${
+              modoOscuro ? "text-slate-400" : "text-slate-500"
+            }`}
+          >
             Verificando acceso...
           </p>
         </div>
@@ -169,10 +198,24 @@ export default function AdminLayout({
 
   if (error) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-5 sm:p-8">
-        <section className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-8 text-center shadow-lg">
+      <main
+        className={`flex min-h-screen items-center justify-center p-5 sm:p-8 ${
+          modoOscuro ? "bg-slate-950" : "bg-[#F8FAFC]"
+        }`}
+      >
+        <section
+          className={`w-full max-w-xl rounded-3xl border p-8 text-center shadow-lg ${
+            modoOscuro
+              ? "border-red-900/60 bg-slate-900"
+              : "border-red-200 bg-white"
+          }`}
+        >
           <div className="text-4xl">⚠️</div>
-          <h1 className="mt-4 text-2xl font-black text-slate-900">
+          <h1
+            className={`mt-4 text-2xl font-black ${
+              modoOscuro ? "text-white" : "text-slate-900"
+            }`}
+          >
             No pudimos verificar tu acceso
           </h1>
           <p className="mt-3 text-sm leading-6 text-red-600">
@@ -192,9 +235,25 @@ export default function AdminLayout({
 
   if (!accesoPermitido) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
-        <section className="w-full max-w-2xl rounded-3xl border border-red-200 bg-white p-7 text-center shadow-xl sm:p-10">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-3xl">
+      <main
+        className={`flex min-h-screen items-center justify-center p-5 sm:p-8 ${
+          modoOscuro
+            ? "bg-slate-950 text-slate-100"
+            : "bg-[#F8FAFC] text-[#1E293B]"
+        }`}
+      >
+        <section
+          className={`w-full max-w-2xl rounded-3xl border p-7 text-center shadow-xl sm:p-10 ${
+            modoOscuro
+              ? "border-red-900/60 bg-slate-900"
+              : "border-red-200 bg-white"
+          }`}
+        >
+          <div
+            className={`mx-auto flex h-16 w-16 items-center justify-center rounded-2xl text-3xl ${
+              modoOscuro ? "bg-red-950/50" : "bg-red-50"
+            }`}
+          >
             🔒
           </div>
 
@@ -202,18 +261,30 @@ export default function AdminLayout({
             Suscripción requerida
           </p>
 
-          <h1 className="mt-3 text-3xl font-black text-slate-900">
+          <h1
+            className={`mt-3 text-3xl font-black ${
+              modoOscuro ? "text-white" : "text-slate-900"
+            }`}
+          >
             Tu acceso a ComerSyS está bloqueado
           </h1>
 
-          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600">
+          <p
+            className={`mx-auto mt-4 max-w-xl text-base leading-7 ${
+              modoOscuro ? "text-slate-300" : "text-slate-600"
+            }`}
+          >
             Tu período de prueba finalizó o tu suscripción no está activa.
             Para continuar usando el panel de administración, activá el Plan
             Profesional.
           </p>
 
           {empresa?.prueba_fin && empresa.plan === "prueba" && (
-            <p className="mt-3 text-sm font-semibold text-slate-500">
+            <p
+              className={`mt-3 text-sm font-semibold ${
+                modoOscuro ? "text-slate-400" : "text-slate-500"
+              }`}
+            >
               La prueba terminó el{" "}
               {new Intl.DateTimeFormat("es-AR", {
                 day: "2-digit",
@@ -224,11 +295,23 @@ export default function AdminLayout({
             </p>
           )}
 
-          <div className="mt-8 rounded-2xl bg-slate-50 p-5">
-            <p className="text-sm text-slate-500">
+          <div
+            className={`mt-8 rounded-2xl p-5 ${
+              modoOscuro ? "bg-slate-800" : "bg-slate-50"
+            }`}
+          >
+            <p
+              className={`text-sm ${
+                modoOscuro ? "text-slate-400" : "text-slate-500"
+              }`}
+            >
               Plan Profesional
             </p>
-            <p className="mt-1 text-2xl font-black text-slate-900">
+            <p
+              className={`mt-1 text-2xl font-black ${
+                modoOscuro ? "text-white" : "text-slate-900"
+              }`}
+            >
               $17.500 por mes
             </p>
           </div>
@@ -254,13 +337,21 @@ export default function AdminLayout({
             <button
               type="button"
               onClick={cerrarSesion}
-              className="text-sm font-bold text-slate-500 underline underline-offset-4 transition hover:text-slate-800"
+              className={`text-sm font-bold underline underline-offset-4 transition ${
+                modoOscuro
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
             >
               Cerrar sesión
             </button>
           </div>
 
-          <p className="mt-6 text-sm text-slate-500">
+          <p
+            className={`mt-6 text-sm ${
+              modoOscuro ? "text-slate-400" : "text-slate-500"
+            }`}
+          >
             Tus datos permanecen guardados. El acceso se restablecerá cuando
             la suscripción vuelva a estar activa.
           </p>
@@ -271,7 +362,12 @@ export default function AdminLayout({
 
   return (
     <EmpresaProvider>
-      {children}
+      <div
+        data-comersys-theme={modoOscuro ? "dark" : "light"}
+        className={modoOscuro ? "comersys-admin-dark" : ""}
+      >
+        {children}
+      </div>
     </EmpresaProvider>
   );
 }

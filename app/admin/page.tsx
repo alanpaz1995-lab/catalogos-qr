@@ -272,7 +272,38 @@ export default function DashboardPage() {
 
 
 
-  const cargarDashboard = useCallback(async () => {
+  
+  const [modoOscuro, setModoOscuro] =
+    useState(false);
+
+  useEffect(() => {
+    const aplicarTema = () => {
+      setModoOscuro(
+        window.localStorage.getItem("comersys-modo-oscuro") === "true"
+      );
+    };
+
+    aplicarTema();
+
+    const manejarCambioTema = (event: Event) => {
+      const evento = event as CustomEvent<boolean>;
+      setModoOscuro(Boolean(evento.detail));
+    };
+
+    window.addEventListener(
+      "comersys-modo-oscuro-cambio",
+      manejarCambioTema
+    );
+
+    return () => {
+      window.removeEventListener(
+        "comersys-modo-oscuro-cambio",
+        manejarCambioTema
+      );
+    };
+  }, []);
+
+const cargarDashboard = useCallback(async () => {
 
     setCargando(true);
 
@@ -2380,7 +2411,53 @@ export default function DashboardPage() {
 
   return (
 
-    <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
+    <main
+      className={`dashboard-comersys min-h-screen p-5 transition-colors sm:p-8 ${
+        modoOscuro
+          ? "bg-slate-950 text-slate-100"
+          : "bg-[#F8FAFC] text-[#1E293B]"
+      }`}
+    >
+
+      {modoOscuro && (
+        <style jsx global>{`
+          .dashboard-comersys .bg-white {
+            background-color: #0f172a !important;
+          }
+          .dashboard-comersys .bg-slate-50,
+          .dashboard-comersys .bg-slate-100 {
+            background-color: #111827 !important;
+          }
+          .dashboard-comersys .border-slate-100,
+          .dashboard-comersys .border-slate-200,
+          .dashboard-comersys .border-slate-300 {
+            border-color: #334155 !important;
+          }
+          .dashboard-comersys .text-slate-900,
+          .dashboard-comersys .text-slate-800,
+          .dashboard-comersys .text-slate-700 {
+            color: #f1f5f9 !important;
+          }
+          .dashboard-comersys .text-slate-600 {
+            color: #cbd5e1 !important;
+          }
+          .dashboard-comersys .text-slate-500,
+          .dashboard-comersys .text-slate-400 {
+            color: #94a3b8 !important;
+          }
+          .dashboard-comersys input,
+          .dashboard-comersys textarea,
+          .dashboard-comersys select {
+            background-color: #111827 !important;
+            border-color: #475569 !important;
+            color: #f8fafc !important;
+          }
+          .dashboard-comersys input::placeholder,
+          .dashboard-comersys textarea::placeholder {
+            color: #64748b !important;
+          }
+        `}</style>
+      )}
 
       <div className="mx-auto max-w-7xl space-y-8">
 
