@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
@@ -19,7 +19,6 @@ type Pedido = {
   visto_admin: boolean;
 };
 
-
 const ESTADOS = [
   "Pendiente",
   "Confirmado",
@@ -31,23 +30,16 @@ const ESTADOS = [
 ];
 
 export default function PedidosPage() {
-  const {
-    empresa,
-    cargandoEmpresa,
-    errorEmpresa,
-  } = useEmpresa();
+  const { empresa, cargandoEmpresa, errorEmpresa } = useEmpresa();
 
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [estadoSeleccionado, setEstadoSeleccionado] =
-    useState("Todos");
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState("Todos");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
-  const [pedidoEliminando, setPedidoEliminando] =
-    useState<number | null>(null);
+  const [pedidoEliminando, setPedidoEliminando] = useState<number | null>(null);
 
   useEffect(() => {
     if (!empresa?.id) return;
-
     cargarPedidos();
   }, [empresa?.id]);
 
@@ -66,12 +58,9 @@ export default function PedidosPage() {
         },
         (evento) => {
           const pedidoNuevo = evento.new as Pedido;
-
           setPedidos((actuales) => [
             pedidoNuevo,
-            ...actuales.filter(
-              (pedido) => pedido.id !== pedidoNuevo.id
-            ),
+            ...actuales.filter((pedido) => pedido.id !== pedidoNuevo.id),
           ]);
         }
       )
@@ -85,12 +74,9 @@ export default function PedidosPage() {
         },
         (evento) => {
           const pedidoActualizado = evento.new as Pedido;
-
           setPedidos((actuales) =>
             actuales.map((pedido) =>
-              pedido.id === pedidoActualizado.id
-                ? pedidoActualizado
-                : pedido
+              pedido.id === pedidoActualizado.id ? pedidoActualizado : pedido
             )
           );
         }
@@ -125,10 +111,7 @@ export default function PedidosPage() {
     setCargando(false);
   }
 
-  async function cambiarEstado(
-    pedidoId: number,
-    nuevoEstado: string
-  ) {
+  async function cambiarEstado(pedidoId: number, nuevoEstado: string) {
     if (!empresa?.id) return;
 
     const estadoAnterior = pedidos.find(
@@ -137,9 +120,7 @@ export default function PedidosPage() {
 
     setPedidos((pedidosActuales) =>
       pedidosActuales.map((pedido) =>
-        pedido.id === pedidoId
-          ? { ...pedido, estado: nuevoEstado }
-          : pedido
+        pedido.id === pedidoId ? { ...pedido, estado: nuevoEstado } : pedido
       )
     );
 
@@ -158,10 +139,7 @@ export default function PedidosPage() {
       setPedidos((pedidosActuales) =>
         pedidosActuales.map((pedido) =>
           pedido.id === pedidoId
-            ? {
-                ...pedido,
-                estado: estadoAnterior || "Pendiente",
-              }
+            ? { ...pedido, estado: estadoAnterior || "Pendiente" }
             : pedido
         )
       );
@@ -174,7 +152,9 @@ export default function PedidosPage() {
     if (!empresa?.id || pedidoEliminando !== null) return;
 
     const confirmado = window.confirm(
-      `¿Seguro que querés eliminar el pedido #${obtenerNumeroPedido(pedido)}?\n\nEsta acción no se puede deshacer.`
+      `¿Seguro que querés eliminar el pedido #${obtenerNumeroPedido(
+        pedido
+      )}?\n\nEsta acción no se puede deshacer.`
     );
     if (!confirmado) return;
 
@@ -252,9 +232,7 @@ export default function PedidosPage() {
   const pedidosFiltrados =
     estadoSeleccionado === "Todos"
       ? pedidos
-      : pedidos.filter(
-          (pedido) => pedido.estado === estadoSeleccionado
-        );
+      : pedidos.filter((pedido) => pedido.estado === estadoSeleccionado);
 
   const cantidadPendientes = pedidos.filter(
     (pedido) => pedido.estado === "Pendiente"
@@ -298,11 +276,8 @@ export default function PedidosPage() {
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw
-                  className={`h-4 w-4 ${
-                    cargando ? "animate-spin" : ""
-                  }`}
+                  className={`h-4 w-4 ${cargando ? "animate-spin" : ""}`}
                 />
-
                 Actualizar
               </button>
 
@@ -325,40 +300,28 @@ export default function PedidosPage() {
 
         <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Pedidos totales
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {pedidos.length}
-            </p>
+            <p className="text-sm text-slate-500">Pedidos totales</p>
+            <p className="mt-2 text-3xl font-bold">{pedidos.length}</p>
           </div>
 
           <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
             <p className="text-sm font-semibold text-red-700">
               🔔 Nuevos sin ver
             </p>
-
             <p className="mt-2 text-3xl font-bold text-red-700">
               {cantidadNuevos}
             </p>
           </div>
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm text-amber-700">
-              Pendientes
-            </p>
-
+            <p className="text-sm text-amber-700">Pendientes</p>
             <p className="mt-2 text-3xl font-bold text-amber-700">
               {cantidadPendientes}
             </p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Total mostrado
-            </p>
-
+            <p className="text-sm text-slate-500">Total mostrado</p>
             <p className="mt-2 text-3xl font-bold">
               {pedidosFiltrados.length}
             </p>
@@ -377,13 +340,10 @@ export default function PedidosPage() {
             <select
               id="filtro-estado"
               value={estadoSeleccionado}
-              onChange={(event) =>
-                setEstadoSeleccionado(event.target.value)
-              }
+              onChange={(event) => setEstadoSeleccionado(event.target.value)}
               className="w-full max-w-sm rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
             >
               <option value="Todos">Todos</option>
-
               {ESTADOS.map((estado) => (
                 <option key={estado} value={estado}>
                   {estado}
@@ -403,7 +363,8 @@ export default function PedidosPage() {
               </p>
 
               <p className="mt-2 text-sm text-slate-500">
-                Los pedidos del catálogo y los cargados manualmente aparecerán aquí.
+                Los pedidos del catálogo y los cargados manualmente aparecerán
+                aquí.
               </p>
 
               <Link
@@ -450,7 +411,6 @@ export default function PedidosPage() {
                       <p className="mt-3 font-semibold">
                         {pedido.cliente_nombre}
                       </p>
-
                       <p className="mt-1 text-sm text-slate-500">
                         {pedido.cliente_telefono}
                       </p>
@@ -470,11 +430,20 @@ export default function PedidosPage() {
                       <p className="text-2xl font-bold">
                         {formatearPrecio(Number(pedido.total))}
                       </p>
+
                       <Link
                         href={`/admin/pedidos/${pedido.id}`}
                         className="rounded-xl bg-[#2563EB] px-4 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
                       >
                         Ver detalle
+                      </Link>
+
+                      <Link
+                        href={`/admin/pedidos/editar/${pedido.id}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-center font-semibold text-amber-800 transition hover:bg-amber-100"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Editar
                       </Link>
 
                       <button
@@ -488,13 +457,11 @@ export default function PedidosPage() {
                           ? "Eliminando..."
                           : "Eliminar"}
                       </button>
+
                       <select
                         value={pedido.estado}
                         onChange={(event) =>
-                          cambiarEstado(
-                            pedido.id,
-                            event.target.value
-                          )
+                          cambiarEstado(pedido.id, event.target.value)
                         }
                         className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
                       >
