@@ -1,5 +1,7 @@
 "use client";
 
+import QRCode from "qrcode";
+
 import ActionBar from "@/components/ui/ActionBar";
 import HeroEmpresa from "@/components/ui/HeroEmpresa";
 
@@ -63,15 +65,6 @@ export default function HeaderDashboard({
     : undefined;
 
   async function copiarEnlaceCatalogo() {
-    if (!slugEmpresa) return;
-
-    const enlace = `${window.location.origin}/catalogo/${slugEmpresa}`;
-
-    await navigator.clipboard.writeText(enlace);
-    window.alert("Enlace del catálogo copiado.");
-  }
-
-  function descargarQR() {
     if (!slugEmpresa) {
       window.alert(
         "La empresa todavía no tiene un catálogo público disponible."
@@ -79,9 +72,79 @@ export default function HeaderDashboard({
       return;
     }
 
-    window.alert(
-      "La descarga del QR se conectará en el próximo paso."
-    );
+    try {
+      const enlace = `${window.location.origin}/catalogo/${slugEmpresa}`;
+
+      await navigator.clipboard.writeText(enlace);
+
+      window.alert("Enlace del catálogo copiado.");
+    } catch (error) {
+      console.error(
+        "Error al copiar el enlace del catálogo:",
+        error
+      );
+
+      window.alert(
+        "No se pudo copiar el enlace del catálogo."
+      );
+    }
+  }
+
+  async function descargarQR() {
+    if (!slugEmpresa) {
+      window.alert(
+        "La empresa todavía no tiene un catálogo público disponible."
+      );
+      return;
+    }
+
+    try {
+      const enlaceCatalogo =
+        `${window.location.origin}/catalogo/${slugEmpresa}`;
+
+      const qrDataUrl = await QRCode.toDataURL(
+        enlaceCatalogo,
+        {
+          errorCorrectionLevel: "H",
+          width: 1200,
+          margin: 4,
+          color: {
+            dark: "#020817",
+            light: "#FFFFFF",
+          },
+        }
+      );
+
+      const enlaceDescarga =
+        document.createElement("a");
+
+      const nombreArchivo = nombreEmpresa
+        ? nombreEmpresa
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+        : slugEmpresa;
+
+      enlaceDescarga.href = qrDataUrl;
+      enlaceDescarga.download =
+        `qr-catalogo-${nombreArchivo || "comersys"}.png`;
+
+      document.body.appendChild(enlaceDescarga);
+      enlaceDescarga.click();
+      document.body.removeChild(enlaceDescarga);
+    } catch (error) {
+      console.error(
+        "Error al generar el código QR:",
+        error
+      );
+
+      window.alert(
+        "No se pudo generar el código QR del catálogo."
+      );
+    }
   }
 
   return (
