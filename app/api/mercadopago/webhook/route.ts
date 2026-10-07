@@ -210,6 +210,128 @@ function obtenerEmpresaId(
   return empresaId;
 }
 
+async function enviarActualizacionASyS({
+  tipo,
+  empresa,
+  suscripcion,
+  empresaId,
+  dataId,
+}: {
+  tipo: string;
+  empresa: {
+    id: number;
+    nombre: string;
+  };
+  suscripcion: PreapprovalMercadoPago;
+  empresaId: number;
+  dataId: string;
+}) {
+  const url =
+    process.env.SYS_SISTEMAS_ACTUALIZACION_URL?.trim() ||
+    "https://sys-sistemas.vercel.app/api/integraciones/comersys/actualizacion";
+
+  const secret =
+    process.env.SYS_SISTEMAS_WEBHOOK_SECRET?.trim();
+
+  if (!secret) {
+    console.warn(
+      "No se envió la actualización a SyS Sistemas: falta SYS_SISTEMAS_WEBHOOK_SECRET."
+    );
+    return;
+  }
+
+  const esPago =
+    tipo === "subscription_authorized_payment";
+
+  const payload = {
+    sistema: "ComerSys",
+    evento: tipo,
+    empresa_id: empresaId,
+    referencia_externa: String(
+      suscripcion.external_reference ?? empresaId
+    ),
+    empresa: {
+      id: empresa.id,
+      nombre: empresa.nombre,
+    },
+    suscripcion: {
+      id: suscripcion.id ?? null,
+      estado: suscripcion.status ?? null,
+      proximo_pago:
+        suscripcion.next_payment_date ?? null,
+      importe:
+        suscripcion.auto_recurring?.transaction_amount ??
+        null,
+      moneda:
+        suscripcion.auto_recurring?.currency_id ??
+        null,
+      payer_email:
+        suscripcion.payer_email ?? null,
+    },
+    pago: esPago
+      ? {
+          referencia_pago: String(dataId),
+          importe:
+            suscripcion.summarized?.last_charged_amount ??
+            suscripcion.auto_recurring?.transaction_amount ??
+            null,
+          moneda:
+            suscripcion.auto_recurring?.currency_id ??
+            "ARS",
+          fecha_pago:
+            suscripcion.summarized?.last_charged_date ??
+            null,
+          estado: "aprobado",
+          proveedor: "mercadopago",
+        }
+      : null,
+  };
+
+  try {
+    const respuesta = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-sys-webhook-secret": secret,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    });
+
+    const texto = await respuesta.text();
+
+    if (!respuesta.ok) {
+      console.error(
+        "SyS Sistemas rechazó la actualización enviada desde ComerSys:",
+        {
+          status: respuesta.status,
+          respuesta: texto,
+          tipo,
+          empresaId,
+        }
+      );
+      return;
+    }
+
+    console.log(
+      "Actualización enviada correctamente a SyS Sistemas:",
+      {
+        tipo,
+        empresaId,
+        suscripcionId:
+          suscripcion.id ?? dataId,
+        pago: esPago,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "No se pudo enviar la actualización a SyS Sistemas:",
+      error
+    );
+  }
+}
+
 function convertirEstado(
   estadoMercadoPago: string
 ) {
@@ -537,6 +659,14 @@ export async function POST(
             : suscripcion.next_payment_date ?? null,
       }
     );
+
+    await enviarActualizacionASyS({
+      tipo: String(tipo),
+      empresa,
+      suscripcion,
+      empresaId: empresa.id,
+      dataId: String(dataId),
+    });
 
     return NextResponse.json(
       {

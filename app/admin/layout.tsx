@@ -27,10 +27,16 @@ export default function AdminLayout({
   const [errorSuscripcion, setErrorSuscripcion] = useState("");
   const [modoOscuro, setModoOscuro] = useState(false);
 
+  const [mostrarCorreoMercadoPago, setMostrarCorreoMercadoPago] =
+    useState(false);
+
+  const [correoMercadoPago, setCorreoMercadoPago] = useState("");
+
   useEffect(() => {
     const aplicarTema = () => {
       const oscuro =
         window.localStorage.getItem("comersys-modo-oscuro") === "true";
+
       setModoOscuro(oscuro);
     };
 
@@ -60,6 +66,7 @@ export default function AdminLayout({
           errorUsuario?.message ||
             "Tu sesión no está activa. Iniciá sesión nuevamente."
         );
+
         setCargando(false);
         return;
       }
@@ -77,6 +84,7 @@ export default function AdminLayout({
           empresaError?.message ||
             "No encontramos una empresa asociada a tu cuenta."
         );
+
         setCargando(false);
         return;
       }
@@ -104,10 +112,44 @@ export default function AdminLayout({
   const accesoPermitido =
     Boolean(empresa?.suscripcion_activa) || pruebaVigente;
 
+  const abrirFormularioMercadoPago = () => {
+    setErrorSuscripcion("");
+    setCorreoMercadoPago("");
+    setMostrarCorreoMercadoPago(true);
+  };
+
+  const cerrarFormularioMercadoPago = () => {
+    if (activandoPlan) return;
+
+    setMostrarCorreoMercadoPago(false);
+    setCorreoMercadoPago("");
+    setErrorSuscripcion("");
+  };
+
   const activarPlanProfesional = async () => {
     if (!empresa) {
       setErrorSuscripcion(
         "No encontramos la empresa asociada a tu cuenta."
+      );
+      return;
+    }
+
+    const emailMercadoPago = correoMercadoPago.trim().toLowerCase();
+
+    if (!emailMercadoPago) {
+      setErrorSuscripcion(
+        "Ingresá el correo que utilizás en Mercado Pago."
+      );
+      return;
+    }
+
+    const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      emailMercadoPago
+    );
+
+    if (!emailValido) {
+      setErrorSuscripcion(
+        "El correo de Mercado Pago no parece válido."
       );
       return;
     }
@@ -117,13 +159,13 @@ export default function AdminLayout({
 
     try {
       const {
-        data: { user },
-        error: errorUsuario,
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: errorSesion,
+      } = await supabase.auth.getSession();
 
-      if (errorUsuario || !user?.email) {
+      if (errorSesion || !session?.access_token) {
         throw new Error(
-          "No pudimos obtener el correo de tu cuenta."
+          "Tu sesión no está activa. Iniciá sesión nuevamente."
         );
       }
 
@@ -133,10 +175,11 @@ export default function AdminLayout({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: "Bearer " + session.access_token,
           },
           body: JSON.stringify({
             empresaId: empresa.id,
-            email: user.email,
+            email: emailMercadoPago,
           }),
         }
       );
@@ -157,6 +200,8 @@ export default function AdminLayout({
         );
       }
 
+      setMostrarCorreoMercadoPago(false);
+
       window.location.href = data.initPoint;
     } catch (error) {
       setErrorSuscripcion(
@@ -164,6 +209,7 @@ export default function AdminLayout({
           ? error.message
           : "No se pudo iniciar la suscripción."
       );
+
       setActivandoPlan(false);
     }
   };
@@ -176,18 +222,21 @@ export default function AdminLayout({
   if (cargando) {
     return (
       <main
-        className={`flex min-h-screen items-center justify-center p-8 ${
+        className={
           modoOscuro
-            ? "bg-slate-950 text-slate-100"
-            : "bg-[#F8FAFC]"
-        }`}
+            ? "flex min-h-screen items-center justify-center bg-slate-950 p-8 text-slate-100"
+            : "flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8"
+        }
       >
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
+
           <p
-            className={`mt-4 ${
-              modoOscuro ? "text-slate-400" : "text-slate-500"
-            }`}
+            className={
+              modoOscuro
+                ? "mt-4 text-slate-400"
+                : "mt-4 text-slate-500"
+            }
           >
             Verificando acceso...
           </p>
@@ -199,28 +248,35 @@ export default function AdminLayout({
   if (error) {
     return (
       <main
-        className={`flex min-h-screen items-center justify-center p-5 sm:p-8 ${
-          modoOscuro ? "bg-slate-950" : "bg-[#F8FAFC]"
-        }`}
+        className={
+          modoOscuro
+            ? "flex min-h-screen items-center justify-center bg-slate-950 p-5 sm:p-8"
+            : "flex min-h-screen items-center justify-center bg-[#F8FAFC] p-5 sm:p-8"
+        }
       >
         <section
-          className={`w-full max-w-xl rounded-3xl border p-8 text-center shadow-lg ${
+          className={
             modoOscuro
-              ? "border-red-900/60 bg-slate-900"
-              : "border-red-200 bg-white"
-          }`}
+              ? "w-full max-w-xl rounded-3xl border border-red-900/60 bg-slate-900 p-8 text-center shadow-lg"
+              : "w-full max-w-xl rounded-3xl border border-red-200 bg-white p-8 text-center shadow-lg"
+          }
         >
           <div className="text-4xl">⚠️</div>
+
           <h1
-            className={`mt-4 text-2xl font-black ${
-              modoOscuro ? "text-white" : "text-slate-900"
-            }`}
+            className={
+              modoOscuro
+                ? "mt-4 text-2xl font-black text-white"
+                : "mt-4 text-2xl font-black text-slate-900"
+            }
           >
             No pudimos verificar tu acceso
           </h1>
+
           <p className="mt-3 text-sm leading-6 text-red-600">
             {error}
           </p>
+
           <button
             type="button"
             onClick={cerrarSesion}
@@ -235,128 +291,265 @@ export default function AdminLayout({
 
   if (!accesoPermitido) {
     return (
-      <main
-        className={`flex min-h-screen items-center justify-center p-5 sm:p-8 ${
-          modoOscuro
-            ? "bg-slate-950 text-slate-100"
-            : "bg-[#F8FAFC] text-[#1E293B]"
-        }`}
-      >
-        <section
-          className={`w-full max-w-2xl rounded-3xl border p-7 text-center shadow-xl sm:p-10 ${
+      <>
+        <main
+          className={
             modoOscuro
-              ? "border-red-900/60 bg-slate-900"
-              : "border-red-200 bg-white"
-          }`}
+              ? "flex min-h-screen items-center justify-center bg-slate-950 p-5 text-slate-100 sm:p-8"
+              : "flex min-h-screen items-center justify-center bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8"
+          }
         >
-          <div
-            className={`mx-auto flex h-16 w-16 items-center justify-center rounded-2xl text-3xl ${
-              modoOscuro ? "bg-red-950/50" : "bg-red-50"
-            }`}
+          <section
+            className={
+              modoOscuro
+                ? "w-full max-w-2xl rounded-3xl border border-red-900/60 bg-slate-900 p-7 text-center shadow-xl sm:p-10"
+                : "w-full max-w-2xl rounded-3xl border border-red-200 bg-white p-7 text-center shadow-xl sm:p-10"
+            }
           >
-            🔒
-          </div>
-
-          <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-red-600">
-            Suscripción requerida
-          </p>
-
-          <h1
-            className={`mt-3 text-3xl font-black ${
-              modoOscuro ? "text-white" : "text-slate-900"
-            }`}
-          >
-            Tu acceso a ComerSyS está bloqueado
-          </h1>
-
-          <p
-            className={`mx-auto mt-4 max-w-xl text-base leading-7 ${
-              modoOscuro ? "text-slate-300" : "text-slate-600"
-            }`}
-          >
-            Tu período de prueba finalizó o tu suscripción no está activa.
-            Para continuar usando el panel de administración, activá el Plan
-            Profesional.
-          </p>
-
-          {empresa?.prueba_fin && empresa.plan === "prueba" && (
-            <p
-              className={`mt-3 text-sm font-semibold ${
-                modoOscuro ? "text-slate-400" : "text-slate-500"
-              }`}
+            <div
+              className={
+                modoOscuro
+                  ? "mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-950/50 text-3xl"
+                  : "mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-3xl"
+              }
             >
-              La prueba terminó el{" "}
-              {new Intl.DateTimeFormat("es-AR", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              }).format(new Date(empresa.prueba_fin))}
-              .
-            </p>
-          )}
+              🔒
+            </div>
 
-          <div
-            className={`mt-8 rounded-2xl p-5 ${
-              modoOscuro ? "bg-slate-800" : "bg-slate-50"
-            }`}
-          >
-            <p
-              className={`text-sm ${
-                modoOscuro ? "text-slate-400" : "text-slate-500"
-              }`}
+            <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-red-600">
+              Suscripción requerida
+            </p>
+
+            <h1
+              className={
+                modoOscuro
+                  ? "mt-3 text-3xl font-black text-white"
+                  : "mt-3 text-3xl font-black text-slate-900"
+              }
             >
-              Plan Profesional
-            </p>
+              Tu acceso a ComerSyS está bloqueado
+            </h1>
+
             <p
-              className={`mt-1 text-2xl font-black ${
-                modoOscuro ? "text-white" : "text-slate-900"
-              }`}
+              className={
+                modoOscuro
+                  ? "mx-auto mt-4 max-w-xl text-base leading-7 text-slate-300"
+                  : "mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600"
+              }
             >
-              $17.500 por mes
+              Tu período de prueba finalizó o tu suscripción no está activa.
+              Para continuar usando el panel de administración, activá el
+              Plan Profesional.
             </p>
-          </div>
 
-          <button
-            type="button"
-            onClick={activarPlanProfesional}
-            disabled={activandoPlan}
-            className="mt-7 w-full rounded-2xl bg-[#2563EB] px-6 py-4 font-black text-white shadow-md transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-          >
-            {activandoPlan
-              ? "Abriendo Mercado Pago..."
-              : "Activar Plan Profesional"}
-          </button>
+            {empresa?.prueba_fin && empresa.plan === "prueba" && (
+              <p
+                className={
+                  modoOscuro
+                    ? "mt-3 text-sm font-semibold text-slate-400"
+                    : "mt-3 text-sm font-semibold text-slate-500"
+                }
+              >
+                La prueba terminó el{" "}
+                {new Intl.DateTimeFormat("es-AR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                }).format(new Date(empresa.prueba_fin))}
+                .
+              </p>
+            )}
 
-          {errorSuscripcion && (
-            <p className="mx-auto mt-4 max-w-lg text-sm font-semibold text-red-600">
-              {errorSuscripcion}
-            </p>
-          )}
+            <div
+              className={
+                modoOscuro
+                  ? "mt-8 rounded-2xl bg-slate-800 p-5"
+                  : "mt-8 rounded-2xl bg-slate-50 p-5"
+              }
+            >
+              <p
+                className={
+                  modoOscuro
+                    ? "text-sm text-slate-400"
+                    : "text-sm text-slate-500"
+                }
+              >
+                Plan Profesional
+              </p>
 
-          <div className="mt-6">
+              <p
+                className={
+                  modoOscuro
+                    ? "mt-1 text-2xl font-black text-white"
+                    : "mt-1 text-2xl font-black text-slate-900"
+                }
+              >
+                $17.500 por mes
+              </p>
+            </div>
+
             <button
               type="button"
-              onClick={cerrarSesion}
-              className={`text-sm font-bold underline underline-offset-4 transition ${
-                modoOscuro
-                  ? "text-slate-400 hover:text-white"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
+              onClick={abrirFormularioMercadoPago}
+              disabled={activandoPlan}
+              className="mt-7 w-full rounded-2xl bg-[#2563EB] px-6 py-4 font-black text-white shadow-md transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              Cerrar sesión
+              Activar Plan Profesional
             </button>
-          </div>
 
-          <p
-            className={`mt-6 text-sm ${
-              modoOscuro ? "text-slate-400" : "text-slate-500"
-            }`}
+            {errorSuscripcion && (
+              <p className="mx-auto mt-4 max-w-lg text-sm font-semibold text-red-600">
+                {errorSuscripcion}
+              </p>
+            )}
+
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={cerrarSesion}
+                className={
+                  modoOscuro
+                    ? "text-sm font-bold text-slate-400 underline underline-offset-4 transition hover:text-white"
+                    : "text-sm font-bold text-slate-500 underline underline-offset-4 transition hover:text-slate-800"
+                }
+              >
+                Cerrar sesión
+              </button>
+            </div>
+
+            <p
+              className={
+                modoOscuro
+                  ? "mt-6 text-sm text-slate-400"
+                  : "mt-6 text-sm text-slate-500"
+              }
+            >
+              Tus datos permanecen guardados. El acceso se restablecerá
+              cuando la suscripción vuelva a estar activa.
+            </p>
+          </section>
+        </main>
+
+        {mostrarCorreoMercadoPago && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !activandoPlan) {
+                cerrarFormularioMercadoPago();
+              }
+            }}
           >
-            Tus datos permanecen guardados. El acceso se restablecerá cuando
-            la suscripción vuelva a estar activa.
-          </p>
-        </section>
-      </main>
+            <div
+              className={
+                modoOscuro
+                  ? "w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 text-white shadow-2xl sm:p-8"
+                  : "w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl sm:p-8"
+              }
+            >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+                💳
+              </div>
+
+              <h2 className="mt-5 text-center text-2xl font-black">
+                Correo de Mercado Pago
+              </h2>
+
+              <p
+                className={
+                  modoOscuro
+                    ? "mt-3 text-center text-sm leading-6 text-slate-300"
+                    : "mt-3 text-center text-sm leading-6 text-slate-600"
+                }
+              >
+                Ingresá el correo de la cuenta de{" "}
+                <strong>Mercado Pago</strong> que va a realizar el pago de la
+                suscripción.
+              </p>
+
+              <div className="mt-6">
+                <label
+                  htmlFor="correoMercadoPago"
+                  className={
+                    modoOscuro
+                      ? "mb-2 block text-sm font-bold text-slate-200"
+                      : "mb-2 block text-sm font-bold text-slate-700"
+                  }
+                >
+                  Correo de Mercado Pago
+                </label>
+
+                <input
+                  id="correoMercadoPago"
+                  type="email"
+                  value={correoMercadoPago}
+                  onChange={(e) => {
+                    setCorreoMercadoPago(e.target.value);
+                    setErrorSuscripcion("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !activandoPlan) {
+                      activarPlanProfesional();
+                    }
+                  }}
+                  placeholder="ejemplo@gmail.com"
+                  autoComplete="email"
+                  autoFocus
+                  disabled={activandoPlan}
+                  className={
+                    modoOscuro
+                      ? "w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3.5 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                      : "w-full rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  }
+                />
+              </div>
+
+              <div
+                className={
+                  modoOscuro
+                    ? "mt-4 rounded-2xl bg-slate-800 p-4 text-sm leading-6 text-slate-300"
+                    : "mt-4 rounded-2xl bg-blue-50 p-4 text-sm leading-6 text-slate-600"
+                }
+              >
+                <strong>Importante:</strong> este correo es solamente para
+                Mercado Pago. No cambia el correo con el que iniciás sesión
+                en ComerSys.
+              </div>
+
+              {errorSuscripcion && (
+                <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold leading-6 text-red-600">
+                  {errorSuscripcion}
+                </div>
+              )}
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={cerrarFormularioMercadoPago}
+                  disabled={activandoPlan}
+                  className={
+                    modoOscuro
+                      ? "w-full rounded-2xl border border-slate-700 px-5 py-3.5 font-bold text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      : "w-full rounded-2xl border border-slate-300 px-5 py-3.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  }
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={activarPlanProfesional}
+                  disabled={activandoPlan}
+                  className="w-full rounded-2xl bg-[#2563EB] px-5 py-3.5 font-black text-white shadow-md transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {activandoPlan
+                    ? "Abriendo Mercado Pago..."
+                    : "Continuar con Mercado Pago"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 

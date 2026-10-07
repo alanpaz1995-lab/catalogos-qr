@@ -1,8 +1,13 @@
+```ts
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
+    // ============================================================
+    // 1. TOKEN DE MERCADO PAGO
+    // ============================================================
+
     const accessToken =
       process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
 
@@ -10,12 +15,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Falta MERCADOPAGO_ACCESS_TOKEN.",
+          error: "Falta MERCADOPAGO_ACCESS_TOKEN.",
         },
         { status: 500 }
       );
     }
+
+    // ============================================================
+    // 2. VERIFICAR USUARIO DE SUPABASE
+    // ============================================================
+
+    const authorization =
+      request.headers.get("authorization");
+
+    if (!authorization?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Sesión no autorizada.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const usuarioAccessToken =
+      authorization.replace("Bearer ", "").trim();
+
+    if (!usuarioAccessToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Token de sesión inválido.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const {
+      data: {
+        user,
+      },
+      error: errorUsuario,
+    } = await supabaseAdmin.auth.getUser(
+      usuarioAccessToken
+    );
+
+    if (errorUsuario || !user) {
+      console.error(
+        "Error verificando usuario de Supabase:",
+        errorUsuario
+      );
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Tu sesión no es válida o expiró. Iniciá sesión nuevamente.",
+        },
+        { status: 401 }
+      );
+    }
+
+    // ============================================================
+    // 3. LEER DATOS RECIBIDOS
+    // ============================================================
 
     const body = await request.json();
 
@@ -26,6 +89,10 @@ export async function POST(request: NextRequest) {
       String(body?.email ?? "")
         .trim()
         .toLowerCase();
+
+    // ============================================================
+    // 4. VALIDAR EMPRESA ID
+    // ============================================================
 
     if (
       !Number.isInteger(empresaId) ||
@@ -40,36 +107,71 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (
-      !payerEmail ||
-      !payerEmail.includes("@")
-    ) {
+    // ============================================================
+    // 5. VALIDAR CORREO DE MERCADO PAGO
+    // ============================================================
+
+    if (!payerEmail) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Email inválido.",
+          error:
+            "Ingresá el correo de Mercado Pago.",
         },
         { status: 400 }
       );
     }
 
-    /*
-     * Comprobamos que la empresa exista.
-     */
+    const emailValido =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        payerEmail
+      );
+
+    if (!emailValido) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "El correo de Mercado Pago no es válido.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // ============================================================
+    // 6. BUSCAR LA EMPRESA DEL USUARIO
+    //
+    // MUY IMPORTANTE:
+    // También filtramos por auth_user_id.
+    //
+    // De esta forma, aunque alguien intentara mandar otro
+    // empresaId manualmente, no podría crear una suscripción
+    // para una empresa que no le pertenece.
+    // ============================================================
+
     const {
       data: empresa,
       error: errorEmpresa,
     } = await supabaseAdmin
       .from("empresas")
       .select(
-        "id, nombre, plan, estado_suscripcion, suscripcion_activa, mercado_pago_suscripcion_id"
+        `
+          id,
+          nombre,
+          plan,
+          estado_suscripcion,
+          suscripcion_activa,
+          mercado_pago_suscripcion_id,
+          auth_user_id
+        `
       )
       .eq("id", empresaId)
+      .eq("auth_user_id", user.id)
       .maybeSingle();
 
     if (errorEmpresa) {
       console.error(
-        "Error buscando empresa:",
+        "Error buscando empresa del usuario:",
         errorEmpresa
       );
 
@@ -77,27 +179,31 @@ export async function POST(request: NextRequest) {
         {
           ok: false,
           error:
-            "No se pudo verificar la empresa.",
+            "No se pudo verificar la empresa asociada a tu cuenta.",
         },
         { status: 500 }
       );
     }
+
+    // ============================================================
+    // 7. EMPRESA NO ENCONTRADA
+    // ============================================================
 
     if (!empresa) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "La empresa indicada no existe.",
+            "La empresa indicada no existe o no pertenece a tu cuenta.",
         },
-        { status: 404 }
+        { status: 403 }
       );
     }
 
-    /*
-     * Evitamos generar otra suscripción si
-     * ComerSys ya tiene una activa.
-     */
+    // ============================================================
+    // 8. EVITAR DUPLICAR UNA SUSCRIPCIÓN ACTIVA
+    // ============================================================
+
     if (
       empresa.suscripcion_activa &&
       empresa.mercado_pago_suscripcion_id
@@ -114,14 +220,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ============================================================
+    // 9. REFERENCIA EXTERNA
+    // ============================================================
+
     const externalReference =
       `COMERSYS-EMPRESA-${empresaId}`;
 
-    /*
-     * Este es el mismo flujo que ya probamos
-     * correctamente con las cuentas de prueba,
-     * pero utilizando las credenciales reales.
-     */
+    // ============================================================
+    // 10. DATOS QUE ENVIAMOS A MERCADO PAGO
+    // ============================================================
+
     const payload = {
       reason:
         "Plan Profesional ComerSys",
@@ -129,6 +238,8 @@ export async function POST(request: NextRequest) {
       external_reference:
         externalReference,
 
+      // ESTE ES EL CORREO QUE EL USUARIO ESCRIBIÓ
+      // EN EL MODAL DE MERCADO PAGO.
       payer_email:
         payerEmail,
 
@@ -150,10 +261,15 @@ export async function POST(request: NextRequest) {
       "Creando suscripción Mercado Pago:",
       {
         empresaId,
+        usuarioId: user.id,
         externalReference,
         payerEmail,
       }
     );
+
+    // ============================================================
+    // 11. CREAR SUSCRIPCIÓN EN MERCADO PAGO
+    // ============================================================
 
     const respuesta =
       await fetch(
@@ -174,6 +290,7 @@ export async function POST(request: NextRequest) {
         }
       );
 
+    // Mercado Pago puede devolver JSON o texto.
     const texto =
       await respuesta.text();
 
@@ -188,12 +305,17 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    // ============================================================
+    // 12. ERROR DE MERCADO PAGO
+    // ============================================================
+
     if (!respuesta.ok) {
       console.error(
         "Mercado Pago rechazó la creación de la suscripción:",
         {
           statusHttp:
             respuesta.status,
+
           data,
         }
       );
@@ -201,10 +323,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
+
           error:
             "Mercado Pago no pudo crear la suscripción.",
+
           statusHttp:
             respuesta.status,
+
           detalle:
             data,
         },
@@ -214,6 +339,10 @@ export async function POST(request: NextRequest) {
         }
       );
     }
+
+    // ============================================================
+    // 13. OBTENER ID Y LINK DE MERCADO PAGO
+    // ============================================================
 
     const suscripcionId =
       String(data?.id ?? "");
@@ -240,14 +369,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /*
-     * Guardamos inmediatamente que la empresa
-     * inició el proceso.
-     *
-     * Todavía NO la activamos.
-     * El webhook será quien la active cuando
-     * Mercado Pago informe "authorized".
-     */
+    // ============================================================
+    // 14. GUARDAR SUSCRIPCIÓN EN SUPABASE
+    //
+    // IMPORTANTE:
+    // Todavía NO activamos la cuenta.
+    //
+    // El webhook de Mercado Pago será quien confirme
+    // posteriormente que la suscripción fue autorizada.
+    // ============================================================
+
     const {
       data: empresaActualizada,
       error: errorActualizar,
@@ -268,6 +399,7 @@ export async function POST(request: NextRequest) {
           null,
       })
       .eq("id", empresaId)
+      .eq("auth_user_id", user.id)
       .select(
         "id, nombre, plan, estado_suscripcion, suscripcion_activa, mercado_pago_suscripcion_id, proximo_pago"
       )
@@ -282,20 +414,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
+
           error:
             "La suscripción fue creada en Mercado Pago, pero ComerSys no pudo registrarla.",
+
           suscripcionId,
         },
         { status: 500 }
       );
     }
 
+    // ============================================================
+    // 15. RESPUESTA FINAL
+    // ============================================================
+
     console.log(
-      "Suscripción Mercado Pago creada:",
+      "Suscripción Mercado Pago creada correctamente:",
       {
         empresaId,
+
         suscripcionId,
+
         externalReference,
+
         status:
           data?.status ?? null,
       }
@@ -319,6 +460,10 @@ export async function POST(request: NextRequest) {
         empresaActualizada,
     });
   } catch (error) {
+    // ============================================================
+    // ERROR GENERAL
+    // ============================================================
+
     console.error(
       "Error creando suscripción Mercado Pago:",
       error
@@ -327,6 +472,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
+
         error:
           error instanceof Error
             ? error.message
@@ -336,3 +482,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+```
