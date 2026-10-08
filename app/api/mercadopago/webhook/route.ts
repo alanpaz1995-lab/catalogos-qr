@@ -323,12 +323,10 @@ async function obtenerSuscripcionMercadoPago(
             errorMercadoPago
               .mercadoPagoStatus ??
             null,
-          message:
-            errorMercadoPago
-              .mercadoPagoMessage ??
-            error instanceof Error
-              ? error.message
-              : String(error),
+          mensaje:
+  error instanceof Error
+    ? error.message
+    : String(error),
         }
       );
 
