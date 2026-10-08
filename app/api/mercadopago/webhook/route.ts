@@ -24,11 +24,15 @@ type PreapprovalMercadoPago = {
   };
 };
 
+type ResultadoConsultaMercadoPago = {
+  suscripcion: PreapprovalMercadoPago;
+  entornoUsado: "produccion" | "prueba";
+};
+
 function validarFirmaWebhook(
   request: NextRequest,
   secret: string
 ) {
-
   const xSignature =
     request.headers.get("x-signature") ?? "";
 
@@ -126,11 +130,10 @@ function validarFirmaWebhook(
   );
 }
 
-async function obtenerSuscripcionMercadoPago(
+async function consultarSuscripcionConToken(
   suscripcionId: string,
   accessToken: string
 ): Promise<PreapprovalMercadoPago> {
-
   const respuesta =
     await fetch(
       `https://api.mercadopago.com/preapproval/${encodeURIComponent(
@@ -168,12 +171,195 @@ async function obtenerSuscripcionMercadoPago(
       }
     );
 
-    throw new Error(
-      "No se pudo consultar la suscripción en Mercado Pago."
-    );
+    const mensaje =
+      typeof data === "object" &&
+      data !== null &&
+      "message" in data
+        ? String(
+            (
+              data as {
+                message?: unknown;
+              }
+            ).message ?? ""
+          )
+        : "";
+
+    const error =
+      new Error(
+        "No se pudo consultar la suscripción en Mercado Pago."
+      );
+
+    (
+      error as Error & {
+        mercadoPagoStatus?: number;
+        mercadoPagoMessage?: string;
+      }
+    ).mercadoPagoStatus =
+      respuesta.status;
+
+    (
+      error as Error & {
+        mercadoPagoStatus?: number;
+        mercadoPagoMessage?: string;
+      }
+    ).mercadoPagoMessage =
+      mensaje;
+
+    throw error;
   }
 
   return data as PreapprovalMercadoPago;
+}
+
+async function obtenerSuscripcionMercadoPago(
+  suscripcionId: string,
+  liveMode: boolean
+): Promise<ResultadoConsultaMercadoPago> {
+  const tokenProduccion =
+    process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+
+  const tokenPrueba =
+    process.env.MERCADOPAGO_TEST_ACCESS_TOKEN?.trim();
+
+  if (!tokenProduccion && !tokenPrueba) {
+    throw new Error(
+      "No hay credenciales de Mercado Pago configuradas."
+    );
+  }
+
+  /*
+   * Primero usamos el token que corresponde al
+   * live_mode enviado por Mercado Pago.
+   */
+  const intentos: Array<{
+    entorno: "produccion" | "prueba";
+    token: string;
+  }> = [];
+
+  if (liveMode && tokenProduccion) {
+    intentos.push({
+      entorno: "produccion",
+      token: tokenProduccion,
+    });
+
+    if (tokenPrueba) {
+      intentos.push({
+        entorno: "prueba",
+        token: tokenPrueba,
+      });
+    }
+  } else if (!liveMode && tokenPrueba) {
+    intentos.push({
+      entorno: "prueba",
+      token: tokenPrueba,
+    });
+
+    /*
+     * IMPORTANTE:
+     *
+     * Mercado Pago está enviando actualmente
+     * liveMode=false en la simulación, aunque
+     * estamos probando una suscripción real.
+     *
+     * Por eso, si el token de prueba no puede
+     * consultar el preapproval por callerId,
+     * intentamos con el token de producción.
+     */
+    if (tokenProduccion) {
+      intentos.push({
+        entorno: "produccion",
+        token: tokenProduccion,
+      });
+    }
+  }
+
+  let ultimoError: unknown = null;
+
+  for (
+    const intento of intentos
+  ) {
+    try {
+      const suscripcion =
+        await consultarSuscripcionConToken(
+          suscripcionId,
+          intento.token
+        );
+
+      console.log(
+        "Suscripción Mercado Pago consultada correctamente:",
+        {
+          suscripcionId,
+          entornoUsado:
+            intento.entorno,
+          estado:
+            suscripcion.status ?? null,
+          externalReference:
+            suscripcion.external_reference ??
+            null,
+        }
+      );
+
+      return {
+        suscripcion,
+        entornoUsado:
+          intento.entorno,
+      };
+    } catch (error) {
+      ultimoError = error;
+
+      const errorMercadoPago =
+        error as Error & {
+          mercadoPagoStatus?: number;
+          mercadoPagoMessage?: string;
+        };
+
+      console.warn(
+        "Falló consulta de suscripción con credencial:",
+        {
+          suscripcionId,
+          entorno:
+            intento.entorno,
+          status:
+            errorMercadoPago
+              .mercadoPagoStatus ??
+            null,
+          message:
+            errorMercadoPago
+              .mercadoPagoMessage ??
+            error instanceof Error
+              ? error.message
+              : String(error),
+        }
+      );
+
+      /*
+       * Si el primer token falla por callerId,
+       * continuamos con el siguiente token.
+       *
+       * También permitimos continuar ante 404/400,
+       * porque la simulación puede mezclar el
+       * entorno de la notificación con el entorno
+       * real del preapproval.
+       */
+      const puedeProbarOtroToken =
+        errorMercadoPago.mercadoPagoStatus ===
+          400 ||
+        errorMercadoPago.mercadoPagoStatus ===
+          404;
+
+      if (!puedeProbarOtroToken) {
+        throw error;
+      }
+    }
+  }
+
+  if (ultimoError instanceof Error) {
+    throw ultimoError;
+  }
+
+  throw new Error(
+    "No se pudo consultar la suscripción en Mercado Pago."
+  );
 }
 
 function obtenerEmpresaId(
@@ -248,69 +434,97 @@ async function enviarActualizacionASyS({
     evento: tipo,
     empresa_id: empresaId,
     referencia_externa: String(
-      suscripcion.external_reference ?? empresaId
+      suscripcion.external_reference ??
+        empresaId
     ),
     empresa: {
       id: empresa.id,
       nombre: empresa.nombre,
     },
     suscripcion: {
-      id: suscripcion.id ?? null,
-      estado: suscripcion.status ?? null,
+      id:
+        suscripcion.id ??
+        null,
+      estado:
+        suscripcion.status ??
+        null,
       proximo_pago:
-        suscripcion.next_payment_date ?? null,
+        suscripcion.next_payment_date ??
+        null,
       importe:
-        suscripcion.auto_recurring?.transaction_amount ??
+        suscripcion.auto_recurring
+          ?.transaction_amount ??
         null,
       moneda:
-        suscripcion.auto_recurring?.currency_id ??
+        suscripcion.auto_recurring
+          ?.currency_id ??
         null,
       payer_email:
-        suscripcion.payer_email ?? null,
+        suscripcion.payer_email ??
+        null,
     },
     pago: esPago
       ? {
-          referencia_pago: String(dataId),
+          referencia_pago:
+            String(dataId),
           importe:
-            suscripcion.summarized?.last_charged_amount ??
-            suscripcion.auto_recurring?.transaction_amount ??
+            suscripcion.summarized
+              ?.last_charged_amount ??
+            suscripcion.auto_recurring
+              ?.transaction_amount ??
             null,
           moneda:
-            suscripcion.auto_recurring?.currency_id ??
+            suscripcion.auto_recurring
+              ?.currency_id ??
             "ARS",
           fecha_pago:
-            suscripcion.summarized?.last_charged_date ??
+            suscripcion.summarized
+              ?.last_charged_date ??
             null,
           estado: "aprobado",
-          proveedor: "mercadopago",
+          proveedor:
+            "mercadopago",
         }
       : null,
   };
 
   try {
-    const respuesta = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-sys-webhook-secret": secret,
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(5000),
-      cache: "no-store",
-    });
+    const respuesta =
+      await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+          "x-sys-webhook-secret":
+            secret,
+        },
+        body:
+          JSON.stringify(
+            payload
+          ),
+        signal:
+          AbortSignal.timeout(
+            5000
+          ),
+        cache: "no-store",
+      });
 
-    const texto = await respuesta.text();
+    const texto =
+      await respuesta.text();
 
     if (!respuesta.ok) {
       console.error(
         "SyS Sistemas rechazó la actualización enviada desde ComerSys:",
         {
-          status: respuesta.status,
-          respuesta: texto,
+          status:
+            respuesta.status,
+          respuesta:
+            texto,
           tipo,
           empresaId,
         }
       );
+
       return;
     }
 
@@ -320,7 +534,8 @@ async function enviarActualizacionASyS({
         tipo,
         empresaId,
         suscripcionId:
-          suscripcion.id ?? dataId,
+          suscripcion.id ??
+          dataId,
         pago: esPago,
       }
     );
@@ -335,22 +550,27 @@ async function enviarActualizacionASyS({
 function convertirEstado(
   estadoMercadoPago: string
 ) {
-  switch (estadoMercadoPago) {
+  switch (
+    estadoMercadoPago
+  ) {
     case "authorized":
       return {
-        estadoComerSys: "activa",
+        estadoComerSys:
+          "activa",
         activa: true,
       };
 
     case "paused":
       return {
-        estadoComerSys: "pausada",
+        estadoComerSys:
+          "pausada",
         activa: false,
       };
 
     case "cancelled":
       return {
-        estadoComerSys: "cancelada",
+        estadoComerSys:
+          "cancelada",
         activa: false,
       };
 
@@ -384,8 +604,10 @@ export async function POST(
     const webhookSecret =
       (
         liveMode
-          ? process.env.MERCADOPAGO_WEBHOOK_SECRET_PROD
-          : process.env.MERCADOPAGO_WEBHOOK_SECRET
+          ? process.env
+              .MERCADOPAGO_WEBHOOK_SECRET_PROD
+          : process.env
+              .MERCADOPAGO_WEBHOOK_SECRET
       )?.trim();
 
     if (!webhookSecret) {
@@ -393,21 +615,6 @@ export async function POST(
         liveMode
           ? "Falta MERCADOPAGO_WEBHOOK_SECRET_PROD."
           : "Falta MERCADOPAGO_WEBHOOK_SECRET."
-      );
-    }
-
-    const accessToken =
-      (
-        liveMode
-          ? process.env.MERCADOPAGO_ACCESS_TOKEN
-          : process.env.MERCADOPAGO_TEST_ACCESS_TOKEN
-      )?.trim();
-
-    if (!accessToken) {
-      throw new Error(
-        liveMode
-          ? "Falta MERCADOPAGO_ACCESS_TOKEN."
-          : "Falta MERCADOPAGO_TEST_ACCESS_TOKEN."
       );
     }
 
@@ -428,7 +635,8 @@ export async function POST(
       return NextResponse.json(
         {
           ok: false,
-          error: "Firma inválida.",
+          error:
+            "Firma inválida.",
         },
         {
           status: 401,
@@ -456,7 +664,8 @@ export async function POST(
         tipo,
         dataId,
         action:
-          body?.action ?? null,
+          body?.action ??
+          null,
         liveMode,
       }
     );
@@ -499,16 +708,31 @@ export async function POST(
     }
 
     /*
-     * Para ambos tópicos estamos usando data.id
-     * como identificador de la suscripción/preapproval,
-     * que es justamente lo que Mercado Pago envió
-     * en nuestra prueba real.
+     * Consultamos la suscripción.
+     *
+     * Si la simulación llega con liveMode=false
+     * pero el preapproval pertenece a producción,
+     * la función puede probar el Access Token de
+     * producción como respaldo.
      */
-    const suscripcion =
+    const {
+      suscripcion,
+      entornoUsado,
+    } =
       await obtenerSuscripcionMercadoPago(
         String(dataId),
-        accessToken
+        liveMode
       );
+
+    console.log(
+      "Entorno utilizado para consultar Mercado Pago:",
+      {
+        entornoUsado,
+        suscripcionId:
+          suscripcion.id ??
+          String(dataId),
+      }
+    );
 
     const empresaId =
       obtenerEmpresaId(
@@ -544,14 +768,19 @@ export async function POST(
 
     const {
       data: empresa,
-      error: errorEmpresa,
-    } = await supabaseAdmin
-      .from("empresas")
-      .select(
-        "id, nombre, plan, estado_suscripcion, suscripcion_activa, mercado_pago_suscripcion_id"
-      )
-      .eq("id", empresaId)
-      .maybeSingle();
+      error:
+        errorEmpresa,
+    } =
+      await supabaseAdmin
+        .from("empresas")
+        .select(
+          "id, nombre, plan, estado_suscripcion, suscripcion_activa, mercado_pago_suscripcion_id"
+        )
+        .eq(
+          "id",
+          empresaId
+        )
+        .maybeSingle();
 
     if (errorEmpresa) {
       throw new Error(
@@ -585,48 +814,58 @@ export async function POST(
 
     const estadoMercadoPago =
       String(
-        suscripcion.status ?? ""
+        suscripcion.status ??
+          ""
       );
 
     const {
       estadoComerSys,
       activa,
-    } = convertirEstado(
-      estadoMercadoPago
-    );
+    } =
+      convertirEstado(
+        estadoMercadoPago
+      );
 
     const {
-      data: empresaActualizada,
+      data:
+        empresaActualizada,
       error:
         errorActualizarEmpresa,
-    } = await supabaseAdmin
-      .from("empresas")
-      .update({
-        plan:
-          activa
-            ? "profesional"
-            : empresa.plan,
+    } =
+      await supabaseAdmin
+        .from("empresas")
+        .update({
+          plan:
+            activa
+              ? "profesional"
+              : empresa.plan,
 
-        estado_suscripcion:
-          estadoComerSys,
+          estado_suscripcion:
+            estadoComerSys,
 
-        suscripcion_activa:
-          activa,
+          suscripcion_activa:
+            activa,
 
-        mercado_pago_suscripcion_id:
-          suscripcion.id ??
-          String(dataId),
+          mercado_pago_suscripcion_id:
+            suscripcion.id ??
+            String(dataId),
 
-        proximo_pago:
-          estadoMercadoPago === "cancelled"
-            ? null
-            : suscripcion.next_payment_date ?? null,
-      })
-      .eq("id", empresa.id)
-      .select(
-        "id, nombre, plan, estado_suscripcion, suscripcion_activa, mercado_pago_suscripcion_id, proximo_pago"
-      )
-      .single();
+          proximo_pago:
+            estadoMercadoPago ===
+            "cancelled"
+              ? null
+              : suscripcion
+                  .next_payment_date ??
+                null,
+        })
+        .eq(
+          "id",
+          empresa.id
+        )
+        .select(
+          "id, nombre, plan, estado_suscripcion, suscripcion_activa, mercado_pago_suscripcion_id, proximo_pago"
+        )
+        .single();
 
     if (
       errorActualizarEmpresa
@@ -654,9 +893,12 @@ export async function POST(
         suscripcionActiva:
           activa,
         proximoPago:
-          estadoMercadoPago === "cancelled"
+          estadoMercadoPago ===
+          "cancelled"
             ? null
-            : suscripcion.next_payment_date ?? null,
+            : suscripcion
+                .next_payment_date ??
+              null,
       }
     );
 
@@ -664,8 +906,10 @@ export async function POST(
       tipo: String(tipo),
       empresa,
       suscripcion,
-      empresaId: empresa.id,
-      dataId: String(dataId),
+      empresaId:
+        empresa.id,
+      dataId:
+        String(dataId),
     });
 
     return NextResponse.json(
@@ -676,6 +920,7 @@ export async function POST(
         empresa:
           empresaActualizada,
         estadoMercadoPago,
+        entornoUsado,
       },
       {
         status: 200,
