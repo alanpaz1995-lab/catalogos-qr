@@ -1,17 +1,16 @@
 "use client";
-
 import { FormEvent, useState } from "react";
 import { Empresa } from "@/types/empresa";
 import { ItemPedido } from "@/types/pedido";
-import { crearPedido } from "@/services/pedidos";
+import { crearPedido, crearPedidoLista } from "@/services/pedidos";
 import {
   crearEnlaceWhatsApp,
   generarMensajePedido,
 } from "@/lib/whatsapp";
-
 type CheckoutModalProps = {
   abierto: boolean;
   empresa: Empresa;
+  listaSlug?: string;
   items: ItemPedido[];
   total: number;
   formatearPrecio: (precio: number) => string;
@@ -25,12 +24,11 @@ type CheckoutModalProps = {
     direccion?: string;
   } | null;
 };
-
 type AccionPedido = "solo-finalizar" | "finalizar-whatsapp";
-
 export default function CheckoutModal({
   abierto,
   empresa,
+  listaSlug,
   items,
   total,
   formatearPrecio,
@@ -53,35 +51,27 @@ export default function CheckoutModal({
     useState<AccionPedido | null>(null);
   const [error, setError] = useState("");
   const [mensajeExito, setMensajeExito] = useState("");
-
   if (!abierto) return null;
-
   async function confirmarPedido(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
-
     const submitter = (
       event.nativeEvent as SubmitEvent
     ).submitter as HTMLButtonElement | null;
-
     const accion =
       (submitter?.value as AccionPedido | undefined) ??
       "solo-finalizar";
-
     const nombreLimpio = nombre.trim();
     const telefonoLimpio = telefono.trim();
-
     if (!nombreLimpio || !telefonoLimpio) {
       setError("Completá el nombre y el teléfono.");
       return;
     }
-
     if (items.length === 0) {
       setError("El carrito está vacío.");
       return;
     }
-
     if (
       accion === "finalizar-whatsapp" &&
       !empresa.whatsapp?.trim()
@@ -91,22 +81,18 @@ export default function CheckoutModal({
       );
       return;
     }
-
     let ventanaWhatsApp: Window | null = null;
-
     if (accion === "finalizar-whatsapp") {
       // Se abre antes de la operación asíncrona para evitar
       // que el navegador bloquee la nueva pestaña.
-      ventanaWhatsApp = window.open("", "_blank");
+    ventanaWhatsApp = window.open("", "_blank");
     }
-
     setEnviando(true);
     setAccionEnCurso(accion);
     setError("");
     setMensajeExito("");
-
     try {
-      const resultado = await crearPedido({
+      const datosPedido = {
         empresaId: empresa.id,
         nombre: nombreLimpio,
         telefono: telefonoLimpio,
@@ -116,61 +102,54 @@ export default function CheckoutModal({
           producto_id: item.producto.id,
           cantidad: item.cantidad,
         })),
-      });
-
+      };
+      const resultado = listaSlug
+        ? await crearPedidoLista({ ...datosPedido, listaSlug })
+        : await crearPedido(datosPedido);
       if (accion === "finalizar-whatsapp") {
         const mensaje = generarMensajePedido(
           resultado.numero_pedido,
           nombreLimpio
         );
-
         const enlace = crearEnlaceWhatsApp(
           empresa.whatsapp || "",
           mensaje
         );
-
         if (ventanaWhatsApp) {
           ventanaWhatsApp.location.href = enlace;
         } else {
           window.location.href = enlace;
         }
       }
-
       setMensajeExito(
         `Pedido #${String(resultado.numero_pedido).padStart(
           6,
           "0"
         )} creado correctamente.`
       );
-
       setNombre("");
       setTelefono("");
       setDireccion("");
       setObservaciones("");
-
       onPedidoCreado();
     } catch (errorDesconocido) {
       if (ventanaWhatsApp) {
         ventanaWhatsApp.close();
       }
-
       console.error(
         "Error al crear el pedido:",
         errorDesconocido
       );
-
       const mensajeError =
         errorDesconocido instanceof Error
           ? errorDesconocido.message
           : "No se pudo crear el pedido.";
-
       setError(mensajeError);
     } finally {
       setEnviando(false);
       setAccionEnCurso(null);
     }
   }
-
   return (
     <>
       <button
@@ -179,7 +158,6 @@ export default function CheckoutModal({
         onClick={onCerrar}
         className="fixed inset-0 z-[60] bg-black/50"
       />
-
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
         <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
@@ -187,12 +165,10 @@ export default function CheckoutModal({
               <h2 className="text-2xl font-bold">
                 Finalizar pedido
               </h2>
-
               <p className="mt-1 text-sm text-slate-500">
                 Completá tus datos para confirmar la compra.
               </p>
             </div>
-
             <button
               type="button"
               onClick={onCerrar}
@@ -202,7 +178,6 @@ export default function CheckoutModal({
               ✕
             </button>
           </div>
-
           <form onSubmit={confirmarPedido} className="p-6">
             <div>
               <label
@@ -211,7 +186,6 @@ export default function CheckoutModal({
               >
                 Nombre
               </label>
-
               <input
                 id="cliente-nombre"
                 type="text"
@@ -224,7 +198,6 @@ export default function CheckoutModal({
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
               />
             </div>
-
             <div className="mt-5">
               <label
                 htmlFor="cliente-telefono"
@@ -232,7 +205,6 @@ export default function CheckoutModal({
               >
                 Teléfono
               </label>
-
               <input
                 id="cliente-telefono"
                 type="tel"
@@ -245,7 +217,6 @@ export default function CheckoutModal({
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
               />
             </div>
-
             <div className="mt-5">
               <label
                 htmlFor="cliente-direccion"
@@ -256,7 +227,6 @@ export default function CheckoutModal({
                   (opcional)
                 </span>
               </label>
-
               <input
                 id="cliente-direccion"
                 type="text"
@@ -268,7 +238,6 @@ export default function CheckoutModal({
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
               />
             </div>
-
             <div className="mt-5">
               <label
                 htmlFor="cliente-observaciones"
@@ -279,7 +248,6 @@ export default function CheckoutModal({
                   (opcional)
                 </span>
               </label>
-
               <textarea
                 id="cliente-observaciones"
                 rows={4}
@@ -291,13 +259,11 @@ export default function CheckoutModal({
                 className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
               />
             </div>
-
             <div className="mt-6 rounded-2xl bg-slate-50 p-5">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-600">
                   Productos
                 </span>
-
                 <span className="font-semibold">
                   {items.reduce(
                     (totalItems, item) =>
@@ -306,30 +272,25 @@ export default function CheckoutModal({
                   )}
                 </span>
               </div>
-
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-lg font-semibold">
                   Total
                 </span>
-
                 <span className="text-2xl font-bold">
                   {formatearPrecio(total)}
                 </span>
               </div>
             </div>
-
             {error && (
               <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
               </div>
             )}
-
             {mensajeExito && (
               <div className="mt-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
                 ✓ {mensajeExito}
               </div>
             )}
-
             <div className="mt-6 grid gap-3">
               <button
                 type="submit"
@@ -343,7 +304,6 @@ export default function CheckoutModal({
                   ? "Finalizando pedido..."
                   : "Finalizar pedido"}
               </button>
-
               <button
                 type="submit"
                 name="accion"

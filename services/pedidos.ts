@@ -64,4 +64,54 @@ export async function crearPedido(
     numero_pedido: Number(resultado.numero_pedido),
     total_pedido: Number(resultado.total_pedido),
   };
+}export interface CrearPedidoListaInput {
+  empresaId: number;
+  listaSlug: string;
+  nombre: string;
+  telefono: string;
+  direccion?: string;
+  observaciones?: string;
+  items: {
+    producto_id: number;
+    cantidad: number;
+  }[];
+}
+
+export async function crearPedidoLista(
+  datos: CrearPedidoListaInput
+): Promise<CrearPedidoResultado> {
+  const { data, error } = await supabase.rpc(
+    "crear_pedido_catalogo_lista",
+    {
+      p_empresa_id: datos.empresaId,
+      p_lista_slug: datos.listaSlug,
+      p_cliente_nombre: datos.nombre,
+      p_cliente_telefono: datos.telefono,
+      p_cliente_direccion: datos.direccion ?? "",
+      p_observaciones: datos.observaciones ?? "",
+      p_items: datos.items,
+    }
+  );
+
+  if (error) {
+    console.error(
+      "Error al crear pedido de lista:",
+      error
+    );
+    throw new Error(error.message);
+  }
+
+  const resultado = Array.isArray(data) ? data[0] : data;
+
+  if (!resultado) {
+    throw new Error(
+      "Supabase no devolvió los datos del pedido."
+    );
+  }
+
+  return {
+    pedido_id: Number(resultado.pedido_id),
+    numero_pedido: Number(resultado.numero_pedido),
+    total_pedido: Number(resultado.total_pedido),
+  };
 }

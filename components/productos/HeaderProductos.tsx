@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -58,15 +59,20 @@ export default function HeaderProductos({
               🏷️ Categorías
             </Link>
 
+            <Link
+              href="/admin/listas-catalogos"
+              className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-center font-semibold text-white backdrop-blur transition hover:bg-white/20"
+            >
+              📋 Listas de catálogos
+            </Link>
+
             <button
               type="button"
               disabled={cargando}
               onClick={onActualizar}
               className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {cargando
-                ? "Actualizando..."
-                : "↻ Actualizar"}
+              {cargando ? "Actualizando..." : "↻ Actualizar"}
             </button>
           </div>
         </div>
@@ -106,9 +112,7 @@ function DatoRapido({
 }) {
   return (
     <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
-      <span className="text-2xl">
-        {icono}
-      </span>
+      <span className="text-2xl">{icono}</span>
 
       <div>
         <p className="font-bold text-slate-800">

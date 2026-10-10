@@ -62,6 +62,16 @@ type Producto = {
 
 };
 
+type ListaCatalogo = { id: number; nombre: string; activa: boolean };
+type PrecioPorLista = { visible: boolean; minorista: string; mayorista: string };
+type PreciosPorLista = Record<number, PrecioPorLista>;
+type PrecioGuardado = {
+  lista_id: number;
+  precio_minorista: number | null;
+  precio_mayorista: number | null;
+  visible: boolean;
+};
+
 export default function EditarProductoPage() {
 
   const params = useParams();
@@ -130,6 +140,9 @@ export default function EditarProductoPage() {
 
     useState(true);
 
+  const [listas, setListas] = useState<ListaCatalogo[]>([]);
+  const [preciosPorLista, setPreciosPorLista] = useState<PreciosPorLista>({});
+  const [errorListas, setErrorListas] = useState("");
   const [cargando, setCargando] = useState(true);
 
   const [guardando, setGuardando] = useState(false);
@@ -318,6 +331,46 @@ export default function EditarProductoPage() {
 
       setControlarStock(producto.controlar_stock ?? true);
 
+      // Cargamos todas las listas y los precios de este producto.
+      const { data: listasData, error: errorConsultaListas } = await supabase
+        .from("listas_catalogos")
+        .select("id, nombre, activa")
+        .eq("empresa_id", empresa.id)
+        .order("created_at", { ascending: true });
+      if (errorConsultaListas) {
+        setErrorListas(`No se pudieron cargar las listas: ${errorConsultaListas.message}`);
+        setCargando(false);
+        return;
+      }
+      const listasDisponibles = (listasData || []) as ListaCatalogo[];
+      setListas(listasDisponibles);
+      if (listasDisponibles.length > 0) {
+        const { data: preciosData, error: errorConsultaPrecios } = await supabase
+          .from("lista_productos")
+          .select("lista_id, precio_minorista, precio_mayorista, visible")
+          .eq("producto_id", id)
+          .in("lista_id", listasDisponibles.map((lista) => lista.id));
+        if (errorConsultaPrecios) {
+          setErrorListas(`No se pudieron cargar los precios: ${errorConsultaPrecios.message}`);
+          setCargando(false);
+          return;
+        }
+        const porId = new Map((preciosData || []).map((fila) => {
+          const precio = fila as PrecioGuardado;
+          return [precio.lista_id, precio] as const;
+        }));
+        const valores: PreciosPorLista = {};
+        for (const lista of listasDisponibles) {
+          const fila = porId.get(lista.id);
+          valores[lista.id] = {
+            visible: fila?.visible ?? false,
+            minorista: fila?.precio_minorista == null ? "" : String(fila.precio_minorista),
+            mayorista: fila?.precio_mayorista == null ? "" : String(fila.precio_mayorista),
+          };
+        }
+        setPreciosPorLista(valores);
+      }
+      setErrorListas("");
       setCargando(false);
 
     }
@@ -357,6 +410,16 @@ export default function EditarProductoPage() {
     );
   }
 
+  function actualizarPrecioLista(listaId: number, campo: keyof PrecioPorLista, valor: string | boolean) {
+    setPreciosPorLista((actuales) => ({
+      ...actuales,
+      [listaId]: {
+        ...(actuales[listaId] || { visible: false, minorista: "", mayorista: "" }),
+        [campo]: valor,
+      },
+    }));
+  }
+
   async function actualizarProducto(
 
     event: FormEvent<HTMLFormElement>
@@ -379,6 +442,11 @@ export default function EditarProductoPage() {
 
     }
 
+    if (errorListas) {
+      setMensaje(errorListas + ". Recargá la página antes de guardar.");
+      setTipoMensaje("error");
+      return;
+    }
     setGuardando(true);
 
     setMensaje("");
@@ -563,6 +631,37 @@ export default function EditarProductoPage() {
 
     }
 
+    // Validamos los precios de las listas antes de modificar el producto.
+    const filasPrecios: {
+      lista_id: number; producto_id: number;
+      precio_minorista: number | null; precio_mayorista: number | null;
+      visible: boolean;
+    }[] = [];
+    for (const lista of listas) {
+      const valores = preciosPorLista[lista.id] || { visible: false, minorista: "", mayorista: "" };
+      if (valores.visible && !lista.activa) {
+        setMensaje(`La lista "${lista.nombre}" está inactiva. Desmarcala antes de guardar.`);
+        setTipoMensaje("error"); setGuardando(false); return;
+      }
+      if (valores.visible && !valores.minorista.trim()) {
+        setMensaje(`Ingresá el precio minorista de "${lista.nombre}".`);
+        setTipoMensaje("error"); setGuardando(false); return;
+      }
+      const minorista = valores.minorista.trim() ? convertirNumero(valores.minorista) : null;
+      const mayorista = valores.mayorista.trim() ? convertirNumero(valores.mayorista) : null;
+      if ((minorista !== null && (!Number.isFinite(minorista) || minorista < 0)) ||
+          (mayorista !== null && (!Number.isFinite(mayorista) || mayorista < 0))) {
+        setMensaje(`Revisá los precios de "${lista.nombre}".`);
+        setTipoMensaje("error"); setGuardando(false); return;
+      }
+      filasPrecios.push({
+        lista_id: lista.id, producto_id: id,
+        precio_minorista: minorista,
+        precio_mayorista: mayorista,
+        visible: valores.visible,
+      });
+    }
+
     const actualizadoAt = new Date().toISOString();
 
     const { error } = await supabase
@@ -635,6 +734,19 @@ export default function EditarProductoPage() {
 
       return;
 
+    }
+
+    // Upsert mantiene una fila por producto y lista; también permite ocultarlo.
+    if (filasPrecios.length > 0) {
+      const { error: errorPrecios } = await supabase
+        .from("lista_productos")
+        .upsert(filasPrecios, { onConflict: "lista_id,producto_id" });
+      if (errorPrecios) {
+        setMensaje(`Los datos generales del producto se actualizaron, pero los precios por lista NO se pudieron guardar: ${errorPrecios.message}. Volvé a abrir el producto para revisar antes de intentar de nuevo.`);
+        setTipoMensaje("error");
+        setGuardando(false);
+        return;
+      }
     }
 
     setProductoOriginal((productoActual) =>
@@ -1305,6 +1417,48 @@ export default function EditarProductoPage() {
 
           </div>
 
+          {listas.length > 0 && (
+            <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="text-xl font-bold">Precios por lista de catálogo</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Cada lista tiene sus precios y visibilidad. El stock sigue siendo único.
+                Si dejás vacío el precio mayorista, se utilizará el minorista.
+              </p>
+              <div className="mt-6 space-y-4">
+                {listas.map((lista) => {
+                  const valores = preciosPorLista[lista.id] || { visible: false, minorista: "", mayorista: "" };
+                  return (
+                    <div key={lista.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <label className="flex items-center gap-3 font-bold">
+                        <input type="checkbox" checked={valores.visible}
+                          onChange={(event) => actualizarPrecioLista(lista.id, "visible", event.target.checked)}
+                          className="h-5 w-5 rounded border-slate-300" />
+                        Mostrar en {lista.nombre}
+                        {!lista.activa && <span className="text-xs font-normal text-slate-500">(Lista inactiva)</span>}
+                      </label>
+                      {valores.visible && (
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                          <CampoTexto id={`minorista-lista-${lista.id}`} label="Precio minorista"
+                            value={valores.minorista}
+                            onChange={(valor) => actualizarPrecioLista(lista.id, "minorista", valor)}
+                            placeholder="Ejemplo: 25000" numerico />
+                          <CampoTexto id={`mayorista-lista-${lista.id}`} label="Precio mayorista (opcional)"
+                            value={valores.mayorista}
+                            onChange={(valor) => actualizarPrecioLista(lista.id, "mayorista", valor)}
+                            placeholder="Sin mayorista: usar minorista" numerico />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+          {errorListas && (
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
+              {errorListas}. No guardes hasta resolver este error.
+            </div>
+          )}
           {mensaje && (
 
             <div
@@ -1359,7 +1513,7 @@ export default function EditarProductoPage() {
 
               type="submit"
 
-              disabled={guardando}
+              disabled={guardando || Boolean(errorListas)}
 
               className="rounded-xl bg-[#2563EB] px-7 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
 
