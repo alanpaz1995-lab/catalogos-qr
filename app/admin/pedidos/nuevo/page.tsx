@@ -2570,7 +2570,7 @@ function convertirPrecioManual(valor: string) {
 
     .replace(/\s/g, "")
 
-    .replace(/**\\$**/g, "")
+  .replace(/\$/g, "")
 
     .replace(/\./g, "")
 
