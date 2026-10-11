@@ -1,7 +1,5 @@
 "use client";
 
-
-
 import Link from "next/link";
 
 import {
@@ -17,8 +15,6 @@ import {
 } from "react";
 
 import { supabase } from "@/lib/supabase";
-
-
 
 import HeaderDashboard from "@/components/dashboard/HeaderDashboard";
 
@@ -46,8 +42,6 @@ import RecentActivity, {
 
 } from "@/components/dashboard/RecentActivity";
 
-
-
 type Pedido = {
 
   id: number;
@@ -68,8 +62,6 @@ type Pedido = {
 
 };
 
-
-
 type ClienteResumen = {
 
   id: number;
@@ -88,8 +80,6 @@ type ClienteResumen = {
 
 };
 
-
-
 type Producto = {
 
   id: number;
@@ -103,8 +93,6 @@ type Producto = {
   created_at: string;
 
 };
-
-
 
 type DetallePedido = {
 
@@ -122,8 +110,6 @@ type DetallePedido = {
 
 };
 
-
-
 type Caja = {
 
   id: number;
@@ -135,8 +121,6 @@ type Caja = {
   abierta_at: string;
 
 };
-
-
 
 type PagoPedido = {
 
@@ -155,8 +139,6 @@ type PagoPedido = {
   caja_id?: number | null;
 
 };
-
-
 
 type EmpresaDashboard = {
 
@@ -200,13 +182,9 @@ type EmpresaDashboard = {
 
 };
 
-
-
 const STOCK_BAJO = 5;
 
 const HORAS_PEDIDO_DEMORADO = 24;
-
-
 
 export default function DashboardPage() {
 
@@ -254,8 +232,6 @@ export default function DashboardPage() {
 
     useState<EmpresaDashboard | null>(null);
 
-
-
   const [cargando, setCargando] =
 
     useState(true);
@@ -270,37 +246,52 @@ export default function DashboardPage() {
 
     useState("");
 
-
-
-  
   const [modoOscuro, setModoOscuro] =
+
     useState(false);
 
   useEffect(() => {
+
     const aplicarTema = () => {
+
       setModoOscuro(
+
         window.localStorage.getItem("comersys-modo-oscuro") === "true"
+
       );
+
     };
 
     aplicarTema();
 
     const manejarCambioTema = (event: Event) => {
+
       const evento = event as CustomEvent<boolean>;
+
       setModoOscuro(Boolean(evento.detail));
+
     };
 
     window.addEventListener(
+
       "comersys-modo-oscuro-cambio",
+
       manejarCambioTema
+
     );
 
     return () => {
+
       window.removeEventListener(
+
         "comersys-modo-oscuro-cambio",
+
         manejarCambioTema
+
       );
+
     };
+
   }, []);
 
 const cargarDashboard = useCallback(async () => {
@@ -309,8 +300,6 @@ const cargarDashboard = useCallback(async () => {
 
     setError("");
 
-
-
     const {
 
       data: { user },
@@ -318,8 +307,6 @@ const cargarDashboard = useCallback(async () => {
       error: errorUsuario,
 
     } = await supabase.auth.getUser();
-
-
 
     if (errorUsuario || !user) {
 
@@ -336,8 +323,6 @@ const cargarDashboard = useCallback(async () => {
       return;
 
     }
-
-
 
     const {
 
@@ -359,8 +344,6 @@ const cargarDashboard = useCallback(async () => {
 
       .maybeSingle();
 
-
-
     if (empresaError || !empresaData) {
 
       setError(
@@ -377,25 +360,17 @@ const cargarDashboard = useCallback(async () => {
 
     }
 
-
-
     const empresaActual =
 
       empresaData as EmpresaDashboard;
 
     const empresaId = empresaActual.id;
 
-
-
     setEmpresa(empresaActual);
-
-
 
     const inicioHoy = obtenerInicioDelDia();
 
     const inicioMes = obtenerInicioDelMes();
-
-
 
     const [
 
@@ -431,8 +406,6 @@ const cargarDashboard = useCallback(async () => {
 
         .order("created_at", { ascending: false }),
 
-
-
       supabase
 
         .from("pedidos")
@@ -448,8 +421,6 @@ const cargarDashboard = useCallback(async () => {
         .gte("created_at", inicioMes)
 
         .order("created_at", { ascending: false }),
-
-
 
       supabase
 
@@ -479,8 +450,6 @@ const cargarDashboard = useCallback(async () => {
 
         .limit(12),
 
-
-
       supabase
 
         .from("pedidos")
@@ -499,8 +468,6 @@ const cargarDashboard = useCallback(async () => {
 
         .order("created_at", { ascending: true }),
 
-
-
       supabase
 
         .from("clientes_resumen")
@@ -518,8 +485,6 @@ const cargarDashboard = useCallback(async () => {
           ascending: false,
 
         }),
-
-
 
       supabase
 
@@ -540,8 +505,6 @@ const cargarDashboard = useCallback(async () => {
           ascending: false,
 
         }),
-
-
 
       supabase
 
@@ -569,8 +532,6 @@ const cargarDashboard = useCallback(async () => {
 
     ]);
 
-
-
     const primerError =
 
       pedidosHoyError ||
@@ -587,8 +548,6 @@ const cargarDashboard = useCallback(async () => {
 
       cajaError;
 
-
-
     if (primerError) {
 
       setError(
@@ -603,13 +562,9 @@ const cargarDashboard = useCallback(async () => {
 
     }
 
-
-
     const pedidosDelMes =
 
       (pedidosMesData as Pedido[]) || [];
-
-
 
     const pedidosIds = pedidosDelMes.map(
 
@@ -617,11 +572,7 @@ const cargarDashboard = useCallback(async () => {
 
     );
 
-
-
     let detallesCargados: DetallePedido[] = [];
-
-
 
     if (pedidosIds.length > 0) {
 
@@ -643,8 +594,6 @@ const cargarDashboard = useCallback(async () => {
 
         .in("pedido_id", pedidosIds);
 
-
-
       if (detallesError) {
 
         setError(
@@ -659,25 +608,17 @@ const cargarDashboard = useCallback(async () => {
 
       }
 
-
-
       detallesCargados =
 
         (detallesData as DetallePedido[]) || [];
 
     }
 
-
-
     const cajaActual =
 
       (cajaData as Caja | null) || null;
 
-
-
     let pagosCargados: PagoPedido[] = [];
-
-
 
     if (cajaActual) {
 
@@ -709,8 +650,6 @@ const cargarDashboard = useCallback(async () => {
 
         });
 
-
-
       if (pagosError) {
 
         setError(
@@ -725,15 +664,11 @@ const cargarDashboard = useCallback(async () => {
 
       }
 
-
-
       pagosCargados =
 
         (pagosData as PagoPedido[]) || [];
 
     }
-
-
 
     setPedidosHoy(
 
@@ -753,11 +688,7 @@ const cargarDashboard = useCallback(async () => {
 
       (pedidosConDeudaData as Pedido[]) || [];
 
-
-
     let pagosDeudasCargados: PagoPedido[] = [];
-
-
 
     if (pedidosDeudaCargados.length > 0) {
 
@@ -766,8 +697,6 @@ const cargarDashboard = useCallback(async () => {
         (pedido) => pedido.id
 
       );
-
-
 
       const {
 
@@ -793,8 +722,6 @@ const cargarDashboard = useCallback(async () => {
 
         .order("created_at", { ascending: false });
 
-
-
       if (pagosDeudasError) {
 
         setError(
@@ -809,15 +736,11 @@ const cargarDashboard = useCallback(async () => {
 
       }
 
-
-
       pagosDeudasCargados =
 
         (pagosDeudasData as PagoPedido[]) || [];
 
     }
-
-
 
     setPedidosConDeuda(pedidosDeudaCargados);
 
@@ -845,15 +768,11 @@ const cargarDashboard = useCallback(async () => {
 
   }, []);
 
-
-
   useEffect(() => {
 
     cargarDashboard();
 
   }, [cargarDashboard]);
-
-
 
   const pedidosHoyValidos = useMemo(
 
@@ -871,8 +790,6 @@ const cargarDashboard = useCallback(async () => {
 
   );
 
-
-
   const pedidosMesValidos = useMemo(
 
     () =>
@@ -888,8 +805,6 @@ const cargarDashboard = useCallback(async () => {
     [pedidosMes]
 
   );
-
-
 
   const ventasHoy = useMemo(
 
@@ -909,8 +824,6 @@ const cargarDashboard = useCallback(async () => {
 
   );
 
-
-
   const ventasMes = useMemo(
 
     () =>
@@ -929,8 +842,6 @@ const cargarDashboard = useCallback(async () => {
 
   );
 
-
-
   const ticketPromedioMes =
 
     pedidosMesValidos.length > 0
@@ -940,8 +851,6 @@ const cargarDashboard = useCallback(async () => {
         pedidosMesValidos.length
 
       : 0;
-
-
 
   const productosStockBajo = useMemo(
 
@@ -963,8 +872,6 @@ const cargarDashboard = useCallback(async () => {
 
   );
 
-
-
   const productosNuevos = useMemo(() => {
 
     const hace30Dias = new Date();
@@ -974,8 +881,6 @@ const cargarDashboard = useCallback(async () => {
       hace30Dias.getDate() - 30
 
     );
-
-
 
     return productos.filter(
 
@@ -988,8 +893,6 @@ const cargarDashboard = useCallback(async () => {
     );
 
   }, [productos]);
-
-
 
   const pedidosDemorados = useMemo(() => {
 
@@ -1004,8 +907,6 @@ const cargarDashboard = useCallback(async () => {
         60 *
 
         1000;
-
-
 
     return pedidosPendientes.filter(
 
@@ -1022,8 +923,6 @@ const cargarDashboard = useCallback(async () => {
     );
 
   }, [pedidosPendientes]);
-
-
 
   const pedidosConPagoPendiente =
 
@@ -1048,8 +947,6 @@ const cargarDashboard = useCallback(async () => {
       [pedidosPendientes]
 
     );
-
-
 
   const clientesConDeuda = useMemo(
 
@@ -1091,15 +988,11 @@ const cargarDashboard = useCallback(async () => {
 
   );
 
-
-
   const deudasConAntiguedad = useMemo(() => {
 
     const ahora = Date.now();
 
     const quinceDiasMs = 15 * 24 * 60 * 60 * 1000;
-
-
 
     return pedidosConDeuda.map((pedido) => {
 
@@ -1117,15 +1010,11 @@ const cargarDashboard = useCallback(async () => {
 
         );
 
-
-
       const ultimoPago = pagosDelPedido[0] || null;
 
       const fechaReferencia =
 
         ultimoPago?.created_at || pedido.created_at;
-
-
 
       const diasSinPago = Math.max(
 
@@ -1140,8 +1029,6 @@ const cargarDashboard = useCallback(async () => {
         )
 
       );
-
-
 
       return {
 
@@ -1163,8 +1050,6 @@ const cargarDashboard = useCallback(async () => {
 
   }, [pedidosConDeuda, pagosDeudas]);
 
-
-
   const clientesNuevosMes = useMemo(() => {
 
     const inicioMes = new Date(
@@ -1172,8 +1057,6 @@ const cargarDashboard = useCallback(async () => {
       obtenerInicioDelMes()
 
     );
-
-
 
     return clientes.filter(
 
@@ -1187,13 +1070,9 @@ const cargarDashboard = useCallback(async () => {
 
   }, [clientes]);
 
-
-
   const clientePrincipal =
 
     clientes[0] || null;
-
-
 
   const productoMasVendido = useMemo(() => {
 
@@ -1213,8 +1092,6 @@ const cargarDashboard = useCallback(async () => {
 
     >();
 
-
-
     for (const detalle of detallesMes) {
 
       const clave =
@@ -1226,8 +1103,6 @@ const cargarDashboard = useCallback(async () => {
           ? String(detalle.producto_id)
 
           : detalle.producto_nombre;
-
-
 
       const actual =
 
@@ -1243,8 +1118,6 @@ const cargarDashboard = useCallback(async () => {
 
         };
 
-
-
       actual.cantidad += Number(
 
         detalle.cantidad
@@ -1257,13 +1130,9 @@ const cargarDashboard = useCallback(async () => {
 
       );
 
-
-
       acumulado.set(clave, actual);
 
     }
-
-
 
     return (
 
@@ -1283,8 +1152,6 @@ const cargarDashboard = useCallback(async () => {
 
   }, [detallesMes]);
 
-
-
   const ingresosCaja = useMemo(
 
     () =>
@@ -1302,8 +1169,6 @@ const cargarDashboard = useCallback(async () => {
     [pagosCaja]
 
   );
-
-
 
   const saldoPendienteTotal = useMemo(
 
@@ -1329,8 +1194,6 @@ const cargarDashboard = useCallback(async () => {
 
   );
 
-
-
   const estadoPrueba = useMemo(() => {
 
     if (
@@ -1349,8 +1212,6 @@ const cargarDashboard = useCallback(async () => {
 
     }
 
-
-
     const ahora = Date.now();
 
     const fin = new Date(empresa.prueba_fin).getTime();
@@ -1364,8 +1225,6 @@ const cargarDashboard = useCallback(async () => {
       Math.ceil(diferencia / (1000 * 60 * 60 * 24))
 
     );
-
-
 
     return {
 
@@ -1381,8 +1240,6 @@ const cargarDashboard = useCallback(async () => {
 
   }, [empresa]);
 
-
-
   const nombreDia =
 
     new Intl.DateTimeFormat("es-AR", {
@@ -1394,8 +1251,6 @@ const cargarDashboard = useCallback(async () => {
       month: "long",
 
     }).format(new Date());
-
-
 
   const kpis: KPIItem[] = [
 
@@ -1553,8 +1408,6 @@ const cargarDashboard = useCallback(async () => {
 
   ];
 
-
-
   const modulos: ModuloDashboard[] = [
 
     {
@@ -1563,7 +1416,7 @@ const cargarDashboard = useCallback(async () => {
 
       descripcion:
 
-        "Administrá el catálogo, stock, imágenes y herramientas de IA.",
+        "Administrá el catálogo, stock e imágenes de tus productos.",
 
       icono: "📦",
 
@@ -1589,17 +1442,17 @@ const cargarDashboard = useCallback(async () => {
 
         {
 
-          texto: "🤖 Crear con IA",
+          texto: "🏷️ Categorías",
 
-          href: "/admin/productos/nuevo/ia",
+          href: "/admin/categorias",
 
         },
 
         {
 
-          texto: "🏷️ Categorías",
+          texto: "📋 Listas de catálogos",
 
-          href: "/admin/categorias",
+          href: "/admin/listas-catalogos",
 
         },
 
@@ -1730,32 +1583,48 @@ const cargarDashboard = useCallback(async () => {
     },
 
     {
+
       titulo: "Ganancias",
+
       descripcion:
+
         "Analizá ventas, costos y la rentabilidad de los productos vendidos.",
+
       icono: "💹",
+
       color: "verde",
+
       accesos: [
+
         {
+
           texto: "💰 Ver ganancias",
+
           href: "/admin/ganancias",
+
         },
+
         {
+
           texto: "📊 Rentabilidad por producto",
+
           href: "/admin/ganancias",
+
         },
+
       ],
+
     },
 
     {
 
-      titulo: "Marketing",
+      titulo: "Actualización de precios",
 
       descripcion:
 
-        "Prepará publicaciones y contenido comercial para tus productos.",
+        "Aumentá o disminuí precios minoristas y mayoristas de varios productos y listas a la vez.",
 
-      icono: "📣",
+      icono: "📈",
 
       color: "rosa",
 
@@ -1763,51 +1632,9 @@ const cargarDashboard = useCallback(async () => {
 
         {
 
-          texto: "📱 Productos para publicar",
+          texto: "📈 Actualización masiva de precios",
 
-          href: "/admin/productos",
-
-        },
-
-        {
-
-          texto: "🤖 Crear contenido con IA",
-
-          href: "/admin/productos",
-
-        },
-
-      ],
-
-    },
-
-    {
-
-      titulo: "IA Comercial",
-
-      descripcion:
-
-        "Analizá imágenes y mejorá la información de tus productos.",
-
-      icono: "🤖",
-
-      color: "gris",
-
-      accesos: [
-
-        {
-
-          texto: "📷 Crear producto con IA",
-
-          href: "/admin/productos/nuevo/ia",
-
-        },
-
-        {
-
-          texto: "📦 Revisar productos",
-
-          href: "/admin/productos",
+          href: "/admin/productos/actualizacion-masiva",
 
         },
 
@@ -1817,15 +1644,11 @@ const cargarDashboard = useCallback(async () => {
 
   ];
 
-
-
   const alertas: AlertaDashboard[] =
 
     useMemo(() => {
 
       const items: AlertaDashboard[] = [];
-
-
 
       if (
 
@@ -1849,8 +1672,6 @@ const cargarDashboard = useCallback(async () => {
 
       }
 
-
-
       if (pedidosDemorados.length > 0) {
 
         items.push({
@@ -1866,8 +1687,6 @@ const cargarDashboard = useCallback(async () => {
         });
 
       }
-
-
 
       if (
 
@@ -1890,8 +1709,6 @@ const cargarDashboard = useCallback(async () => {
         });
 
       }
-
-
 
       deudasConAntiguedad.forEach(
 
@@ -1943,8 +1760,6 @@ const cargarDashboard = useCallback(async () => {
 
       );
 
-
-
       return items;
 
     }, [
@@ -1959,8 +1774,6 @@ const cargarDashboard = useCallback(async () => {
 
     ]);
 
-
-
   const actividades: ActividadReciente[] =
 
     useMemo(() => {
@@ -1974,8 +1787,6 @@ const cargarDashboard = useCallback(async () => {
         }
 
       > = [];
-
-
 
       pedidosPendientes
 
@@ -2017,8 +1828,6 @@ const cargarDashboard = useCallback(async () => {
 
         });
 
-
-
       productos
 
         .slice(0, 3)
@@ -2052,8 +1861,6 @@ const cargarDashboard = useCallback(async () => {
           });
 
         });
-
-
 
       clientes
 
@@ -2089,8 +1896,6 @@ const cargarDashboard = useCallback(async () => {
 
         });
 
-
-
       return items
 
         .sort(
@@ -2125,8 +1930,6 @@ const cargarDashboard = useCallback(async () => {
 
     ]);
 
-
-
   const activarPlanProfesional = async () => {
 
     if (!empresa) {
@@ -2141,13 +1944,9 @@ const cargarDashboard = useCallback(async () => {
 
     }
 
-
-
     setActivandoPlan(true);
 
     setErrorSuscripcion("");
-
-
 
     try {
 
@@ -2159,8 +1958,6 @@ const cargarDashboard = useCallback(async () => {
 
       } = await supabase.auth.getUser();
 
-
-
       if (errorUsuario || !user?.email) {
 
         throw new Error(
@@ -2170,8 +1967,6 @@ const cargarDashboard = useCallback(async () => {
         );
 
       }
-
-
 
       const respuesta = await fetch(
 
@@ -2199,11 +1994,7 @@ const cargarDashboard = useCallback(async () => {
 
       );
 
-
-
       const data = await respuesta.json();
-
-
 
       if (!respuesta.ok) {
 
@@ -2214,8 +2005,6 @@ const cargarDashboard = useCallback(async () => {
           data
 
         );
-
-
 
         throw new Error(
 
@@ -2229,8 +2018,6 @@ const cargarDashboard = useCallback(async () => {
 
       }
 
-
-
       if (!data?.initPoint) {
 
         throw new Error(
@@ -2240,8 +2027,6 @@ const cargarDashboard = useCallback(async () => {
         );
 
       }
-
-
 
       window.location.href = data.initPoint;
 
@@ -2255,8 +2040,6 @@ const cargarDashboard = useCallback(async () => {
 
           : "No se pudo iniciar la suscripción.";
 
-
-
       setErrorSuscripcion(mensaje);
 
       setActivandoPlan(false);
@@ -2264,8 +2047,6 @@ const cargarDashboard = useCallback(async () => {
     }
 
   };
-
-
 
   if (cargando) {
 
@@ -2276,8 +2057,6 @@ const cargarDashboard = useCallback(async () => {
         <div className="text-center">
 
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
-
-
 
           <p className="mt-4 text-slate-500">
 
@@ -2293,10 +2072,6 @@ const cargarDashboard = useCallback(async () => {
 
   }
 
-
-
-
-
   if (estadoPrueba?.vencida) {
 
     return (
@@ -2311,23 +2086,17 @@ const cargarDashboard = useCallback(async () => {
 
           </div>
 
-
-
           <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-red-600">
 
             Suscripción requerida
 
           </p>
 
-
-
           <h1 className="mt-3 text-3xl font-black text-slate-900">
 
             Tu prueba gratuita finalizó
 
           </h1>
-
-
 
           <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600">
 
@@ -2341,8 +2110,6 @@ const cargarDashboard = useCallback(async () => {
 
           </p>
 
-
-
           <div className="mt-8 rounded-2xl bg-slate-50 p-5">
 
             <p className="text-sm text-slate-500">Plan Profesional</p>
@@ -2354,8 +2121,6 @@ const cargarDashboard = useCallback(async () => {
             </p>
 
           </div>
-
-
 
           <button
 
@@ -2377,8 +2142,6 @@ const cargarDashboard = useCallback(async () => {
 
           </button>
 
-
-
           {errorSuscripcion && (
 
             <p className="mx-auto mt-4 max-w-lg text-sm font-semibold text-red-600">
@@ -2388,8 +2151,6 @@ const cargarDashboard = useCallback(async () => {
             </p>
 
           )}
-
-
 
           <p className="mt-6 text-sm text-slate-500">
 
@@ -2407,56 +2168,98 @@ const cargarDashboard = useCallback(async () => {
 
   }
 
-
-
   return (
 
     <main
+
       className={`dashboard-comersys min-h-screen p-5 transition-colors sm:p-8 ${
+
         modoOscuro
+
           ? "bg-slate-950 text-slate-100"
+
           : "bg-[#F8FAFC] text-[#1E293B]"
+
       }`}
+
     >
 
       {modoOscuro && (
+
         <style jsx global>{`
+
           .dashboard-comersys .bg-white {
+
             background-color: #0f172a !important;
+
           }
+
           .dashboard-comersys .bg-slate-50,
+
           .dashboard-comersys .bg-slate-100 {
+
             background-color: #111827 !important;
+
           }
+
           .dashboard-comersys .border-slate-100,
+
           .dashboard-comersys .border-slate-200,
+
           .dashboard-comersys .border-slate-300 {
+
             border-color: #334155 !important;
+
           }
+
           .dashboard-comersys .text-slate-900,
+
           .dashboard-comersys .text-slate-800,
+
           .dashboard-comersys .text-slate-700 {
+
             color: #f1f5f9 !important;
+
           }
+
           .dashboard-comersys .text-slate-600 {
+
             color: #cbd5e1 !important;
+
           }
+
           .dashboard-comersys .text-slate-500,
+
           .dashboard-comersys .text-slate-400 {
+
             color: #94a3b8 !important;
+
           }
+
           .dashboard-comersys input,
+
           .dashboard-comersys textarea,
+
           .dashboard-comersys select {
+
             background-color: #111827 !important;
+
             border-color: #475569 !important;
+
             color: #f8fafc !important;
+
           }
+
           .dashboard-comersys input::placeholder,
+
           .dashboard-comersys textarea::placeholder {
+
             color: #64748b !important;
+
           }
+
         `}</style>
+
       )}
 
       <div className="mx-auto max-w-7xl space-y-8">
@@ -2505,8 +2308,6 @@ const cargarDashboard = useCallback(async () => {
 
         />
 
-
-
         {error && (
 
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
@@ -2516,8 +2317,6 @@ const cargarDashboard = useCallback(async () => {
           </div>
 
         )}
-
-
 
         {empresa?.id === 1 && (
 
@@ -2547,8 +2346,6 @@ const cargarDashboard = useCallback(async () => {
 
               </div>
 
-
-
               <Link
 
                 href="/admin-comersys"
@@ -2566,8 +2363,6 @@ const cargarDashboard = useCallback(async () => {
           </section>
 
         )}
-
-
 
         {estadoPrueba?.mostrarAviso && (
 
@@ -2599,8 +2394,6 @@ const cargarDashboard = useCallback(async () => {
 
                 </div>
 
-
-
                 <div>
 
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
@@ -2608,8 +2401,6 @@ const cargarDashboard = useCallback(async () => {
                     Plan de ComerSys
 
                   </p>
-
-
 
                   <h2 className="mt-1 text-xl font-black text-slate-900">
 
@@ -2624,8 +2415,6 @@ const cargarDashboard = useCallback(async () => {
                         : `Te quedan ${estadoPrueba.diasRestantes} días de prueba gratuita`}
 
                   </h2>
-
-
 
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
 
@@ -2644,8 +2433,6 @@ const cargarDashboard = useCallback(async () => {
                 </div>
 
               </div>
-
-
 
               <div className="shrink-0">
 
@@ -2669,8 +2456,6 @@ const cargarDashboard = useCallback(async () => {
 
                 </button>
 
-
-
                 {errorSuscripcion && (
 
                   <p className="mt-2 max-w-xs text-sm font-semibold text-red-600">
@@ -2689,21 +2474,13 @@ const cargarDashboard = useCallback(async () => {
 
         )}
 
-
-
         <KPICards items={kpis} />
 
-
-
         <ModuleGrid modulos={modulos} />
-
-
 
         <div className="grid gap-6 xl:grid-cols-[1fr_1.15fr]">
 
           <AlertsPanel alertas={alertas} />
-
-
 
           <RecentActivity
 
@@ -2712,8 +2489,6 @@ const cargarDashboard = useCallback(async () => {
           />
 
         </div>
-
-
 
         <div className="grid gap-6 xl:grid-cols-[1.25fr_1fr]">
 
@@ -2729,8 +2504,6 @@ const cargarDashboard = useCallback(async () => {
 
                 </h2>
 
-
-
                 <p className="mt-1 text-sm text-slate-500">
 
                   Pedidos que necesitan seguimiento.
@@ -2738,8 +2511,6 @@ const cargarDashboard = useCallback(async () => {
                 </p>
 
               </div>
-
-
 
               <Link
 
@@ -2754,8 +2525,6 @@ const cargarDashboard = useCallback(async () => {
               </Link>
 
             </div>
-
-
 
             {pedidosPendientes.length === 0 ? (
 
@@ -2784,8 +2553,6 @@ const cargarDashboard = useCallback(async () => {
                           item.id === pedido.id
 
                       );
-
-
 
                     return (
 
@@ -2821,8 +2588,6 @@ const cargarDashboard = useCallback(async () => {
 
                               </h3>
 
-
-
                               <span
 
                                 className={`rounded-full px-3 py-1 text-xs font-semibold ${clasesEstado(
@@ -2841,8 +2606,6 @@ const cargarDashboard = useCallback(async () => {
 
                               </span>
 
-
-
                               {pedido.estado_pago !==
 
                                 "Pagado" && (
@@ -2857,8 +2620,6 @@ const cargarDashboard = useCallback(async () => {
 
                               )}
 
-
-
                               {demorado && (
 
                                 <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
@@ -2870,8 +2631,6 @@ const cargarDashboard = useCallback(async () => {
                               )}
 
                             </div>
-
-
 
                             <p className="mt-2 text-sm text-slate-500">
 
@@ -2893,8 +2652,6 @@ const cargarDashboard = useCallback(async () => {
 
                           </div>
 
-
-
                           <div className="flex flex-col gap-2 sm:items-end">
 
                             <p className="text-xl font-bold">
@@ -2910,8 +2667,6 @@ const cargarDashboard = useCallback(async () => {
                               )}
 
                             </p>
-
-
 
                             <Link
 
@@ -2941,8 +2696,6 @@ const cargarDashboard = useCallback(async () => {
 
           </section>
 
-
-
           <div className="space-y-6">
 
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -2957,8 +2710,6 @@ const cargarDashboard = useCallback(async () => {
 
                   </h2>
 
-
-
                   <p className="mt-1 text-sm text-slate-500">
 
                     Situación actual
@@ -2966,8 +2717,6 @@ const cargarDashboard = useCallback(async () => {
                   </p>
 
                 </div>
-
-
 
                 <span
 
@@ -2993,8 +2742,6 @@ const cargarDashboard = useCallback(async () => {
 
               </div>
 
-
-
               {caja ? (
 
                 <div className="mt-5 space-y-4">
@@ -3006,8 +2753,6 @@ const cargarDashboard = useCallback(async () => {
                       Ingresos registrados
 
                     </p>
-
-
 
                     <p className="mt-2 text-3xl font-bold text-green-700">
 
@@ -3021,8 +2766,6 @@ const cargarDashboard = useCallback(async () => {
 
                   </div>
 
-
-
                   <p className="text-sm text-slate-500">
 
                     Abierta el{" "}
@@ -3034,8 +2777,6 @@ const cargarDashboard = useCallback(async () => {
                     )}
 
                   </p>
-
-
 
                   <Link
 
@@ -3061,8 +2802,6 @@ const cargarDashboard = useCallback(async () => {
 
                   </p>
 
-
-
                   <Link
 
                     href="/admin/caja"
@@ -3081,8 +2820,6 @@ const cargarDashboard = useCallback(async () => {
 
             </section>
 
-
-
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
 
               <h2 className="text-xl font-bold">
@@ -3090,8 +2827,6 @@ const cargarDashboard = useCallback(async () => {
                 Destacados del mes
 
               </h2>
-
-
 
               <div className="mt-5 space-y-4">
 
@@ -3124,8 +2859,6 @@ const cargarDashboard = useCallback(async () => {
                   icono="🏆"
 
                 />
-
-
 
                 <Destacado
 
@@ -3163,8 +2896,6 @@ const cargarDashboard = useCallback(async () => {
 
                 />
 
-
-
                 <Destacado
 
                   titulo="Productos nuevos"
@@ -3193,8 +2924,6 @@ const cargarDashboard = useCallback(async () => {
 
 }
 
-
-
 function obtenerInicioDelDia() {
 
   const fecha = new Date();
@@ -3204,8 +2933,6 @@ function obtenerInicioDelDia() {
   return fecha.toISOString();
 
 }
-
-
 
 function obtenerInicioDelMes() {
 
@@ -3218,8 +2945,6 @@ function obtenerInicioDelMes() {
   return fecha.toISOString();
 
 }
-
-
 
 function formatearPrecio(
 
@@ -3241,8 +2966,6 @@ function formatearPrecio(
 
 }
 
-
-
 function formatearFecha(
 
   fecha: string
@@ -3258,8 +2981,6 @@ function formatearFecha(
   }).format(new Date(fecha));
 
 }
-
-
 
 function formatearFechaCorta(
 
@@ -3281,8 +3002,6 @@ function formatearFechaCorta(
 
 }
 
-
-
 function formatearFechaSoloDia(
 
   fecha: string
@@ -3300,8 +3019,6 @@ function formatearFechaSoloDia(
   }).format(new Date(fecha));
 
 }
-
-
 
 function clasesEstado(
 
@@ -3343,8 +3060,6 @@ function clasesEstado(
 
 }
 
-
-
 function Destacado({
 
   titulo,
@@ -3379,8 +3094,6 @@ function Destacado({
 
         </span>
 
-
-
         <div>
 
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -3389,15 +3102,11 @@ function Destacado({
 
           </p>
 
-
-
           <p className="mt-1 font-bold">
 
             {principal}
 
           </p>
-
-
 
           <p className="mt-1 text-sm text-slate-500">
 

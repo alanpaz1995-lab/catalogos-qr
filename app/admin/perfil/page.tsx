@@ -1,27 +1,31 @@
 "use client";
-
 import {
   ChangeEvent,
   FormEvent,
   useEffect,
   useState,
 } from "react";
-
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-
 const BUCKET_EMPRESAS = "empresas";
+
+type ListaCatalogoConfig = { id: number; nombre: string; activa: boolean };
+type ConfiguracionCarritos = Record<string, boolean>;
+const normalizarCarritos = (valor: unknown): ConfiguracionCarritos => {
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return {};
+  return Object.fromEntries(
+    Object.entries(valor).filter((entrada): entrada is [string, boolean] => typeof entrada[1] === "boolean")
+  );
+};
 
 type TurnoHorario = {
   desde: string;
   hasta: string;
 };
-
 type HorarioDia = {
   activo: boolean;
   turnos: TurnoHorario[];
 };
-
 type DiaSemana =
   | "lunes"
   | "martes"
@@ -30,9 +34,7 @@ type DiaSemana =
   | "viernes"
   | "sabado"
   | "domingo";
-
 type HorariosSemana = Record<DiaSemana, HorarioDia>;
-
 type PerfilEmpresa = {
   nombre: string;
   descripcion: string;
@@ -58,7 +60,6 @@ type PerfilEmpresa = {
   color_principal: string;
   color_secundario: string;
 };
-
 const horariosSemanaIniciales: HorariosSemana = {
   lunes: {
     activo: true,
@@ -104,7 +105,6 @@ const horariosSemanaIniciales: HorariosSemana = {
     turnos: [],
   },
 };
-
 const diasSemana: {
   clave: DiaSemana;
   etiqueta: string;
@@ -117,7 +117,6 @@ const diasSemana: {
   { clave: "sabado", etiqueta: "Sábado" },
   { clave: "domingo", etiqueta: "Domingo" },
 ];
-
 const perfilInicial: PerfilEmpresa = {
   nombre: "",
   descripcion: "",
@@ -143,32 +142,27 @@ const perfilInicial: PerfilEmpresa = {
   color_principal: "#2563EB",
   color_secundario: "#F97316",
 };
-
 export default function PerfilEmpresaPage() {
   const router = useRouter();
-
   const [perfil, setPerfil] =
     useState<PerfilEmpresa>(perfilInicial);
-
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [subiendoLogo, setSubiendoLogo] =
     useState(false);
   const [subiendoPortada, setSubiendoPortada] =
     useState(false);
-
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [empresaId, setEmpresaId] =
     useState<number | null>(null);
-
   const [modoOscuro, setModoOscuro] = useState(false);
-
+  const [carritos, setCarritos] = useState<ConfiguracionCarritos>({});
+  const [listasCatalogo, setListasCatalogo] = useState<ListaCatalogoConfig[]>([]);
   useEffect(() => {
     const guardado = window.localStorage.getItem("comersys-modo-oscuro");
     setModoOscuro(guardado === "true");
   }, []);
-
   function cambiarModoOscuro() {
     setModoOscuro((actual) => {
       const nuevo = !actual;
@@ -184,50 +178,48 @@ export default function PerfilEmpresaPage() {
       return nuevo;
     });
   }
-
   useEffect(() => {
     cargarPerfil();
   }, []);
-
   async function cargarPerfil() {
     setCargando(true);
     setError("");
-
     try {
       const {
         data: { user },
         error: errorUsuario,
       } = await supabase.auth.getUser();
-
       if (errorUsuario) {
         throw errorUsuario;
       }
-
       if (!user) {
         throw new Error(
           "Tu sesión no está activa. Iniciá sesión nuevamente para editar el perfil."
         );
       }
-
       const { data, error: errorConsulta } =
         await supabase
           .from("empresas")
           .select("*")
           .eq("auth_user_id", user.id)
           .maybeSingle();
-
       if (errorConsulta) {
         throw errorConsulta;
       }
-
       if (!data) {
         throw new Error(
           "No encontramos una empresa asociada a tu cuenta."
         );
       }
-
+      const { data: listasDatos, error: errorListas } = await supabase
+        .from("listas_catalogos")
+        .select("id, nombre, activa")
+        .eq("empresa_id", data.id)
+        .order("created_at", { ascending: true });
+      if (errorListas) throw errorListas;
+      setListasCatalogo((listasDatos || []) as ListaCatalogoConfig[]);
       setEmpresaId(data.id);
-
+      setCarritos(normalizarCarritos(data.carritos_catalogo));
       setPerfil({
         nombre: data.nombre ?? "",
         descripcion: data.descripcion ?? "",
@@ -271,7 +263,6 @@ export default function PerfilEmpresaPage() {
         "Error al cargar la empresa:",
         errorDesconocido
       );
-
       setError(
         errorDesconocido instanceof Error
           ? errorDesconocido.message
@@ -281,7 +272,6 @@ export default function PerfilEmpresaPage() {
       setCargando(false);
     }
   }
-
   function actualizarCampo<
     Campo extends keyof PerfilEmpresa
   >(
@@ -293,33 +283,27 @@ export default function PerfilEmpresaPage() {
       [campo]: valor,
     }));
   }
-
   async function guardarPerfil(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
-
     if (!perfil.nombre.trim()) {
       setError(
         "Ingresá el nombre comercial de la empresa."
       );
       return;
     }
-
     setGuardando(true);
     setError("");
     setMensaje("");
-
     const latitud =
       perfil.latitud.trim() === ""
         ? null
         : Number(perfil.latitud);
-
     const longitud =
       perfil.longitud.trim() === ""
         ? null
         : Number(perfil.longitud);
-
     if (
       latitud !== null &&
       Number.isNaN(latitud)
@@ -328,7 +312,6 @@ export default function PerfilEmpresaPage() {
       setGuardando(false);
       return;
     }
-
     if (
       longitud !== null &&
       Number.isNaN(longitud)
@@ -337,14 +320,12 @@ export default function PerfilEmpresaPage() {
       setGuardando(false);
       return;
     }
-
     try {
       if (!empresaId) {
         throw new Error(
           "No encontramos la empresa asociada a tu cuenta."
         );
       }
-
       const { error: errorActualizacion } =
         await supabase
           .from("empresas")
@@ -385,18 +366,16 @@ export default function PerfilEmpresaPage() {
               perfil.color_principal,
             color_secundario:
               perfil.color_secundario,
+            carritos_catalogo: carritos,
             updated_at: new Date().toISOString(),
           })
           .eq("id", empresaId);
-
       if (errorActualizacion) {
         throw errorActualizacion;
       }
-
       setMensaje(
         "El perfil de la empresa se guardó correctamente."
       );
-
       setTimeout(() => {
         router.push("/admin");
         router.refresh();
@@ -406,7 +385,6 @@ export default function PerfilEmpresaPage() {
         "Error al guardar el perfil:",
         errorDesconocido
       );
-
       setError(
         errorDesconocido instanceof Error
           ? errorDesconocido.message
@@ -416,15 +394,12 @@ export default function PerfilEmpresaPage() {
       setGuardando(false);
     }
   }
-
   async function seleccionarImagen(
     event: ChangeEvent<HTMLInputElement>,
     tipo: "logo" | "portada"
   ) {
     const archivo = event.target.files?.[0];
-
     if (!archivo) return;
-
     if (!archivo.type.startsWith("image/")) {
       setError(
         "Seleccioná un archivo de imagen válido."
@@ -432,9 +407,7 @@ export default function PerfilEmpresaPage() {
       event.target.value = "";
       return;
     }
-
     const limiteBytes = 5 * 1024 * 1024;
-
     if (archivo.size > limiteBytes) {
       setError(
         "La imagen no puede superar los 5 MB."
@@ -442,30 +415,24 @@ export default function PerfilEmpresaPage() {
       event.target.value = "";
       return;
     }
-
     if (tipo === "logo") {
       setSubiendoLogo(true);
     } else {
       setSubiendoPortada(true);
     }
-
     setError("");
     setMensaje("");
-
     try {
       if (!empresaId) {
         throw new Error(
           "No encontramos la empresa asociada a tu cuenta."
         );
       }
-
       const extension =
         archivo.name.split(".").pop()?.toLowerCase() ||
         "jpg";
-
       const ruta =
         `empresa-${empresaId}/${tipo}-${Date.now()}.${extension}`;
-
       const { error: errorSubida } =
         await supabase.storage
           .from(BUCKET_EMPRESAS)
@@ -473,17 +440,13 @@ export default function PerfilEmpresaPage() {
             cacheControl: "3600",
             upsert: true,
           });
-
       if (errorSubida) {
         throw errorSubida;
       }
-
       const { data } = supabase.storage
         .from(BUCKET_EMPRESAS)
         .getPublicUrl(ruta);
-
       actualizarCampo(tipo, data.publicUrl);
-
       const { error: errorGuardado } =
         await supabase
           .from("empresas")
@@ -492,11 +455,9 @@ export default function PerfilEmpresaPage() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", empresaId);
-
       if (errorGuardado) {
         throw errorGuardado;
       }
-
       setMensaje(
         tipo === "logo"
           ? "El logo se actualizó correctamente."
@@ -507,7 +468,6 @@ export default function PerfilEmpresaPage() {
         "Error al subir la imagen:",
         errorDesconocido
       );
-
       setError(
         errorDesconocido instanceof Error
           ? errorDesconocido.message
@@ -519,7 +479,6 @@ export default function PerfilEmpresaPage() {
       event.target.value = "";
     }
   }
-
   const enlaceComoLlegar =
     perfil.latitud && perfil.longitud
       ? `https://www.google.com/maps?q=${encodeURIComponent(
@@ -537,13 +496,11 @@ export default function PerfilEmpresaPage() {
               .join(", ")
           )}`
         : "";
-
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC]">
         <div className="text-center">
           <div className="mx-auto h-11 w-11 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
-
           <p className="mt-4 font-semibold text-slate-500">
             Cargando perfil de empresa...
           </p>
@@ -551,7 +508,6 @@ export default function PerfilEmpresaPage() {
       </main>
     );
   }
-
   return (
     <main
       className={`perfil-comersys min-h-screen p-5 transition-colors sm:p-8 ${
@@ -595,14 +551,12 @@ export default function PerfilEmpresaPage() {
           }
         `}</style>
       )}
-
       <div className="mx-auto max-w-7xl">
         <header>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <p className="text-sm font-black uppercase tracking-[0.18em] text-[#2563EB]">
               Configuración
             </p>
-
             <button
               type="button"
               onClick={cambiarModoOscuro}
@@ -621,11 +575,9 @@ export default function PerfilEmpresaPage() {
               <span>{modoOscuro ? "Modo claro" : "Modo oscuro"}</span>
             </button>
           </div>
-
           <h1 className="mt-2 text-3xl font-black sm:text-4xl">
             Perfil de la empresa
           </h1>
-
           <p
             className={`mt-3 max-w-3xl ${
               modoOscuro ? "text-slate-400" : "text-slate-500"
@@ -636,7 +588,6 @@ export default function PerfilEmpresaPage() {
             ubicación que verán tus clientes.
           </p>
         </header>
-
         {error && (
           <div
             role="alert"
@@ -645,13 +596,11 @@ export default function PerfilEmpresaPage() {
             {error}
           </div>
         )}
-
         {mensaje && (
           <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-5 py-4 font-semibold text-green-700">
             ✓ {mensaje}
           </div>
         )}
-
         <div className="mt-8 grid gap-7 xl:grid-cols-[1fr_390px]">
           <form
             onSubmit={guardarPerfil}
@@ -673,7 +622,6 @@ export default function PerfilEmpresaPage() {
                   }
                   tipo="logo"
                 />
-
                 <SelectorImagen
                   titulo="Foto de portada"
                   descripcion="Recomendado: imagen horizontal."
@@ -689,7 +637,6 @@ export default function PerfilEmpresaPage() {
                 />
               </div>
             </SeccionFormulario>
-
             <SeccionFormulario
               modoOscuro={modoOscuro}
               titulo="Información principal"
@@ -705,7 +652,6 @@ export default function PerfilEmpresaPage() {
                   placeholder="Ej.: Mates Paz"
                   required
                 />
-
                 <Campo
                   label="Rubro"
                   value={perfil.rubro}
@@ -715,12 +661,10 @@ export default function PerfilEmpresaPage() {
                   placeholder="Ej.: Mates y accesorios"
                 />
               </div>
-
               <div className="mt-5">
                 <label className={clasesLabel}>
                   Descripción de la empresa
                 </label>
-
                 <textarea
                   rows={5}
                   value={perfil.descripcion}
@@ -735,7 +679,6 @@ export default function PerfilEmpresaPage() {
                 />
               </div>
             </SeccionFormulario>
-
             <SeccionFormulario
               modoOscuro={modoOscuro}
               titulo="Contacto"
@@ -753,7 +696,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="Ej.: 5491123456789"
                 />
-
                 <Campo
                   label="Email"
                   type="email"
@@ -763,7 +705,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="contacto@empresa.com"
                 />
-
                 <Campo
                   label="Sitio web"
                   value={perfil.sitio_web}
@@ -775,7 +716,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="https://..."
                 />
-
                 <div className="md:col-span-2">
                   <EditorHorarios
                     value={perfil.horarios_semana}
@@ -793,7 +733,6 @@ export default function PerfilEmpresaPage() {
                 </div>
               </div>
             </SeccionFormulario>
-
             <SeccionFormulario
               modoOscuro={modoOscuro}
               titulo="Ubicación"
@@ -813,7 +752,6 @@ export default function PerfilEmpresaPage() {
                     placeholder="Calle, número y localidad"
                   />
                 </div>
-
                 <Campo
                   label="Ciudad"
                   value={perfil.ciudad}
@@ -822,7 +760,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="Ciudad"
                 />
-
                 <Campo
                   label="Provincia"
                   value={perfil.provincia}
@@ -834,7 +771,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="Provincia"
                 />
-
                 <Campo
                   label="País"
                   value={perfil.pais}
@@ -843,9 +779,7 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="Argentina"
                 />
-
                 <div />
-
                 <Campo
                   label="Latitud"
                   type="number"
@@ -859,7 +793,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="-34.6037"
                 />
-
                 <Campo
                   label="Longitud"
                   type="number"
@@ -874,7 +807,6 @@ export default function PerfilEmpresaPage() {
                   placeholder="-58.3816"
                 />
               </div>
-
               {enlaceComoLlegar && (
                 <a
                   href={enlaceComoLlegar}
@@ -886,7 +818,6 @@ export default function PerfilEmpresaPage() {
                 </a>
               )}
             </SeccionFormulario>
-
             <SeccionFormulario
               modoOscuro={modoOscuro}
               titulo="Redes sociales"
@@ -904,7 +835,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="https://instagram.com/..."
                 />
-
                 <Campo
                   label="Facebook"
                   value={perfil.facebook}
@@ -916,7 +846,6 @@ export default function PerfilEmpresaPage() {
                   }
                   placeholder="https://facebook.com/..."
                 />
-
                 <Campo
                   label="TikTok"
                   value={perfil.tiktok}
@@ -927,7 +856,6 @@ export default function PerfilEmpresaPage() {
                 />
               </div>
             </SeccionFormulario>
-
             <SeccionFormulario
               modoOscuro={modoOscuro}
               titulo="Opciones comerciales"
@@ -937,7 +865,6 @@ export default function PerfilEmpresaPage() {
                 <label className={clasesLabel}>
                   Medios de pago aceptados
                 </label>
-
                 <textarea
                   rows={3}
                   value={perfil.medios_pago}
@@ -951,7 +878,6 @@ export default function PerfilEmpresaPage() {
                   className={clasesTextarea}
                 />
               </div>
-
               <label className="mt-5 flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <input
                   type="checkbox"
@@ -964,12 +890,43 @@ export default function PerfilEmpresaPage() {
                   }
                   className="h-5 w-5 accent-[#2563EB]"
                 />
-
                 <span className="font-bold">
                   La empresa realiza envíos
                 </span>
               </label>
             </SeccionFormulario>
+              <SeccionFormulario
+                modoOscuro={modoOscuro}
+                titulo="Carrito de compras por catálogo"
+                descripcion="Elegí en cuáles listas tus clientes pueden agregar productos al carrito."
+              >
+                <div className="space-y-3">
+                  {[
+                    { clave: "principal", nombre: "Catálogo principal" },
+                    ...listasCatalogo.map((lista) => ({ clave: `lista_${lista.id}`, nombre: lista.nombre })),
+                  ].map((lista) => (
+                    <label key={lista.clave} className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div>
+                        <p className="font-black text-slate-800">{lista.nombre}</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {carritos[lista.clave] !== false ? "Compras habilitadas" : "Solo consulta de productos y precios"}
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={carritos[lista.clave] !== false}
+                        onChange={(event) => setCarritos((actual) => ({ ...actual, [lista.clave]: event.target.checked }))}
+                        className="h-5 w-5 accent-[#2563EB]"
+                        aria-label={`Habilitar carrito en ${lista.nombre}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs text-slate-500">
+                  Los nombres se recuperan automáticamente de las listas creadas.
+                  Guardá los cambios para aplicarlos a los catálogos públicos.
+                </p>
+              </SeccionFormulario>
 
             <SeccionFormulario
               modoOscuro={modoOscuro}
@@ -987,7 +944,6 @@ export default function PerfilEmpresaPage() {
                     )
                   }
                 />
-
                 <SelectorColor
                   label="Color secundario"
                   value={perfil.color_secundario}
@@ -1000,7 +956,6 @@ export default function PerfilEmpresaPage() {
                 />
               </div>
             </SeccionFormulario>
-
             <button
               type="submit"
               disabled={guardando}
@@ -1011,7 +966,6 @@ export default function PerfilEmpresaPage() {
                 : "Guardar cambios"}
             </button>
           </form>
-
           <aside className="xl:sticky xl:top-6 xl:h-fit">
             <VistaPrevia
               perfil={perfil}
@@ -1024,7 +978,6 @@ export default function PerfilEmpresaPage() {
     </main>
   );
 }
-
 function SeccionFormulario({
   titulo,
   descripcion,
@@ -1047,7 +1000,6 @@ function SeccionFormulario({
       <h2 className="text-xl font-black">
         {titulo}
       </h2>
-
       <p
         className={`mt-2 text-sm leading-6 ${
           modoOscuro ? "text-slate-400" : "text-slate-500"
@@ -1055,12 +1007,10 @@ function SeccionFormulario({
       >
         {descripcion}
       </p>
-
       <div className="mt-6">{children}</div>
     </section>
   );
 }
-
 function Campo({
   label,
   value,
@@ -1083,7 +1033,6 @@ function Campo({
       <label className={clasesLabel}>
         {label}
       </label>
-
       <input
         type={type}
         step={step}
@@ -1098,7 +1047,6 @@ function Campo({
     </div>
   );
 }
-
 function EditorHorarios({
   value,
   onChange,
@@ -1118,7 +1066,6 @@ function EditorHorarios({
       },
     });
   }
-
   function actualizarTurno(
     dia: DiaSemana,
     indice: number,
@@ -1131,13 +1078,10 @@ function EditorHorarios({
           ? { ...turno, [campo]: valor }
           : turno
     );
-
     actualizarDia(dia, { turnos });
   }
-
   function agregarTurno(dia: DiaSemana) {
     if (value[dia].turnos.length >= 2) return;
-
     actualizarDia(dia, {
       activo: true,
       turnos: [
@@ -1146,7 +1090,6 @@ function EditorHorarios({
       ],
     });
   }
-
   function eliminarTurno(
     dia: DiaSemana,
     indice: number
@@ -1158,7 +1101,6 @@ function EditorHorarios({
       ),
     });
   }
-
   function cambiarActivo(
     dia: DiaSemana,
     activo: boolean
@@ -1171,24 +1113,20 @@ function EditorHorarios({
           : value[dia].turnos,
     });
   }
-
   return (
     <div>
       <div className="mb-4">
         <p className={clasesLabel}>
           Horarios de atención
         </p>
-
         <p className="text-sm leading-6 text-slate-500">
           Activá los días de atención y cargá hasta
           dos turnos por día.
         </p>
       </div>
-
       <div className="space-y-4">
         {diasSemana.map(({ clave, etiqueta }) => {
           const horarioDia = value[clave];
-
           return (
             <div
               key={clave}
@@ -1207,12 +1145,10 @@ function EditorHorarios({
                     }
                     className="h-5 w-5 accent-[#2563EB]"
                   />
-
                   <span className="font-black text-slate-800">
                     {etiqueta}
                   </span>
                 </label>
-
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-black ${
                     horarioDia.activo
@@ -1225,7 +1161,6 @@ function EditorHorarios({
                     : "Cerrado"}
                 </span>
               </div>
-
               {horarioDia.activo && (
                 <div className="mt-4 space-y-3">
                   {horarioDia.turnos.map(
@@ -1248,11 +1183,9 @@ function EditorHorarios({
                           className={clasesInput}
                           aria-label={`${etiqueta}, hora de apertura`}
                         />
-
                         <span className="text-center text-sm font-bold text-slate-500">
                           a
                         </span>
-
                         <input
                           type="time"
                           value={turno.hasta}
@@ -1267,7 +1200,6 @@ function EditorHorarios({
                           className={clasesInput}
                           aria-label={`${etiqueta}, hora de cierre`}
                         />
-
                         <button
                           type="button"
                           onClick={() =>
@@ -1284,7 +1216,6 @@ function EditorHorarios({
                       </div>
                     )
                   )}
-
                   {horarioDia.turnos.length < 2 && (
                     <button
                       type="button"
@@ -1305,7 +1236,6 @@ function EditorHorarios({
     </div>
   );
 }
-
 function normalizarHorariosSemana(
   valor: unknown
 ): HorariosSemana {
@@ -1316,16 +1246,12 @@ function normalizarHorariosSemana(
   ) {
     return structuredClone(horariosSemanaIniciales);
   }
-
   const horarios = valor as Partial<HorariosSemana>;
   const resultado =
     structuredClone(horariosSemanaIniciales);
-
   for (const { clave } of diasSemana) {
     const dia = horarios[clave];
-
     if (!dia || typeof dia !== "object") continue;
-
     resultado[clave] = {
       activo:
         typeof dia.activo === "boolean"
@@ -1345,29 +1271,23 @@ function normalizarHorariosSemana(
         : resultado[clave].turnos,
     };
   }
-
   return resultado;
 }
-
 function formatearHorarios(
   horarios: HorariosSemana
 ) {
   return diasSemana
     .map(({ clave, etiqueta }) => {
       const dia = horarios[clave];
-
       if (!dia.activo) {
         return `${etiqueta}: Cerrado`;
       }
-
       const turnosValidos = dia.turnos.filter(
         (turno) => turno.desde && turno.hasta
       );
-
       if (turnosValidos.length === 0) {
         return `${etiqueta}: Horario no informado`;
       }
-
       return `${etiqueta}: ${turnosValidos
         .map(
           (turno) =>
@@ -1377,7 +1297,6 @@ function formatearHorarios(
     })
     .join("\n");
 }
-
 function SelectorImagen({
   titulo,
   descripcion,
@@ -1398,7 +1317,6 @@ function SelectorImagen({
   return (
     <div>
       <p className={clasesLabel}>{titulo}</p>
-
       <div
         className={`relative mt-2 overflow-hidden border border-slate-200 bg-slate-100 ${
           tipo === "logo"
@@ -1420,16 +1338,13 @@ function SelectorImagen({
           </div>
         )}
       </div>
-
       <p className="mt-3 text-xs text-slate-500">
         {descripcion}
       </p>
-
       <label className="mt-4 inline-flex cursor-pointer rounded-xl border-2 border-[#2563EB] px-5 py-3 text-sm font-black text-[#2563EB] transition hover:bg-blue-50">
         {cargando
           ? "Subiendo imagen..."
           : "Seleccionar imagen"}
-
         <input
           type="file"
           accept="image/*"
@@ -1441,7 +1356,6 @@ function SelectorImagen({
     </div>
   );
 }
-
 function SelectorColor({
   label,
   value,
@@ -1456,7 +1370,6 @@ function SelectorColor({
       <label className={clasesLabel}>
         {label}
       </label>
-
       <div className="flex items-center gap-3">
         <input
           type="color"
@@ -1466,7 +1379,6 @@ function SelectorColor({
           }
           className="h-14 w-16 cursor-pointer rounded-xl border border-slate-300 bg-white p-1"
         />
-
         <input
           type="text"
           value={value}
@@ -1479,7 +1391,6 @@ function SelectorColor({
     </div>
   );
 }
-
 function VistaPrevia({
   perfil,
   enlaceComoLlegar,
@@ -1511,7 +1422,6 @@ function VistaPrevia({
             className="h-full w-full object-cover"
           />
         )}
-
         <div className="absolute -bottom-12 left-6 h-24 w-24 overflow-hidden rounded-3xl border-4 border-white bg-slate-100 shadow-lg">
           {perfil.logo ? (
             <img
@@ -1526,16 +1436,13 @@ function VistaPrevia({
           )}
         </div>
       </div>
-
       <div className="px-6 pb-7 pt-16">
         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
           Vista previa
         </p>
-
         <h2 className="mt-2 text-2xl font-black">
           {perfil.nombre || "Nombre del negocio"}
         </h2>
-
         <p
           className="mt-1 text-sm font-bold"
           style={{
@@ -1544,12 +1451,10 @@ function VistaPrevia({
         >
           {perfil.rubro || "Rubro comercial"}
         </p>
-
         <p className="mt-4 text-sm leading-6 text-slate-500">
           {perfil.descripcion ||
             "La descripción de la empresa aparecerá en este lugar."}
         </p>
-
         <div className="mt-6 grid gap-3">
           {perfil.whatsapp && (
             <a
@@ -1564,7 +1469,6 @@ function VistaPrevia({
               💬 WhatsApp
             </a>
           )}
-
           {enlaceComoLlegar && (
             <a
               href={enlaceComoLlegar}
@@ -1580,7 +1484,6 @@ function VistaPrevia({
             </a>
           )}
         </div>
-
         <div className="mt-6 space-y-2 text-sm text-slate-500">
           {formatearHorarios(perfil.horarios_semana) && (
             <p className="whitespace-pre-line">
@@ -1590,11 +1493,9 @@ function VistaPrevia({
               )}
             </p>
           )}
-
           {perfil.direccion && (
             <p>📍 {perfil.direccion}</p>
           )}
-
           {perfil.realiza_envios && (
             <p>🚚 Realiza envíos</p>
           )}
@@ -1603,12 +1504,9 @@ function VistaPrevia({
     </section>
   );
 }
-
 const clasesLabel =
   "mb-2 block text-sm font-black text-slate-700";
-
 const clasesInput =
   "w-full rounded-2xl border-2 border-slate-300 bg-white px-5 py-4 outline-none transition placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-100";
-
 const clasesTextarea =
   "w-full resize-none rounded-2xl border-2 border-slate-300 bg-white px-5 py-4 outline-none transition placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-100";

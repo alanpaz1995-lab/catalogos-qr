@@ -14,12 +14,8 @@ type TarjetaProductoProps = {
     producto: ProductoListado,
     campo: CampoBooleanoProducto
   ) => void;
-  onCambiarEstado: (
-    producto: ProductoListado
-  ) => void;
-  onEliminar: (
-    producto: ProductoListado
-  ) => void;
+  onCambiarEstado: (producto: ProductoListado) => void;
+  onEliminar: (producto: ProductoListado) => void;
 };
 
 export default function TarjetaProducto({
@@ -47,32 +43,19 @@ export default function TarjetaProducto({
             className="flex h-full w-full flex-col items-center justify-center text-slate-500 transition hover:bg-blue-50"
           >
             <span className="text-5xl">📷</span>
-            <span className="mt-3 font-semibold">
-              Agregar imagen
-            </span>
+            <span className="mt-3 font-semibold">Agregar imagen</span>
           </Link>
         )}
 
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           {producto.nuevo_ingreso && (
-            <Etiqueta
-              texto="Nuevo"
-              clases="bg-blue-600 text-white"
-            />
+            <Etiqueta texto="Nuevo" clases="bg-blue-600 text-white" />
           )}
-
           {producto.oferta && (
-            <Etiqueta
-              texto="Oferta"
-              clases="bg-red-600 text-white"
-            />
+            <Etiqueta texto="Oferta" clases="bg-red-600 text-white" />
           )}
-
           {producto.destacado && (
-            <Etiqueta
-              texto="Destacado"
-              clases="bg-violet-600 text-white"
-            />
+            <Etiqueta texto="Destacado" clases="bg-violet-600 text-white" />
           )}
         </div>
 
@@ -86,40 +69,26 @@ export default function TarjetaProducto({
       <div className="flex flex-1 flex-col p-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
-            {producto.categoria ||
-              "Sin categoría"}
+            {producto.categoria || "Sin categoría"}
           </p>
-
           <h3 className="mt-2 line-clamp-2 text-xl font-bold text-slate-900">
             {producto.nombre}
           </h3>
-
           <p className="mt-3 line-clamp-2 min-h-12 text-sm leading-6 text-slate-500">
-            {producto.descripcion ||
-              "Sin descripción cargada."}
+            {producto.descripcion || "Sin descripción cargada."}
           </p>
         </div>
 
         <div className="mt-5">
           <p className="text-3xl font-bold text-slate-900">
-            {formatearPrecio(
-              Number(producto.precio)
-            )}
+            {formatearPrecio(Number(producto.precio))}
           </p>
-
           <div className="mt-4 flex flex-wrap gap-2">
+            <Etiqueta texto={stock.texto} clases={stock.clases} />
             <Etiqueta
-              texto={stock.texto}
-              clases={stock.clases}
-            />
-
-            <Etiqueta
-              texto={`Stock: ${Number(
-                producto.stock || 0
-              )}`}
+              texto={`Stock: ${Number(producto.stock || 0)}`}
               clases="bg-slate-100 text-slate-600"
             />
-
             <Etiqueta
               texto={producto.estado}
               clases={
@@ -136,54 +105,25 @@ export default function TarjetaProducto({
             activo={producto.nuevo_ingreso}
             texto="🆕 Nuevo"
             disabled={actualizando}
-            onClick={() =>
-              onActualizarCampo(
-                producto,
-                "nuevo_ingreso"
-              )
-            }
+            onClick={() => onActualizarCampo(producto, "nuevo_ingreso")}
           />
-
           <BotonEstado
             activo={producto.oferta}
             texto="🔥 Oferta"
             disabled={actualizando}
-            onClick={() =>
-              onActualizarCampo(
-                producto,
-                "oferta"
-              )
-            }
+            onClick={() => onActualizarCampo(producto, "oferta")}
           />
-
           <BotonEstado
             activo={producto.destacado}
             texto="⭐ Destacado"
             disabled={actualizando}
-            onClick={() =>
-              onActualizarCampo(
-                producto,
-                "destacado"
-              )
-            }
+            onClick={() => onActualizarCampo(producto, "destacado")}
           />
-
           <BotonEstado
-            activo={
-              producto.visible_catalogo
-            }
-            texto={
-              producto.visible_catalogo
-                ? "👁 Visible"
-                : "🚫 Oculto"
-            }
+            activo={producto.visible_catalogo}
+            texto={producto.visible_catalogo ? "👁 Visible" : "🚫 Oculto"}
             disabled={actualizando}
-            onClick={() =>
-              onActualizarCampo(
-                producto,
-                "visible_catalogo"
-              )
-            }
+            onClick={() => onActualizarCampo(producto, "visible_catalogo")}
           />
         </div>
 
@@ -194,52 +134,33 @@ export default function TarjetaProducto({
           >
             Editar
           </Link>
-
           <Link
             href={`/admin/productos/${producto.id}/multimedia`}
             className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-semibold"
           >
             Multimedia
           </Link>
-
-          <Link
-            href={`/admin/productos/${producto.id}/ia`}
-            className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-center text-sm font-semibold text-violet-700"
-          >
-            IA
-          </Link>
-
           <Link
             href={`/admin/productos/${producto.id}/marketing`}
             className="rounded-xl border border-pink-200 bg-pink-50 px-4 py-3 text-center text-sm font-semibold text-pink-700"
           >
             Marketing
           </Link>
-
           <button
             type="button"
             disabled={actualizando}
-            onClick={() =>
-              onCambiarEstado(producto)
-            }
+            onClick={() => onCambiarEstado(producto)}
             className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold disabled:opacity-50"
           >
-            {producto.estado === "Activo"
-              ? "Desactivar"
-              : "Activar"}
+            {producto.estado === "Activo" ? "Desactivar" : "Activar"}
           </button>
-
           <button
             type="button"
             disabled={eliminando}
-            onClick={() =>
-              onEliminar(producto)
-            }
+            onClick={() => onEliminar(producto)}
             className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 disabled:opacity-50"
           >
-            {eliminando
-              ? "Eliminando..."
-              : "Eliminar"}
+            {eliminando ? "Eliminando..." : "Eliminar"}
           </button>
         </div>
       </div>
@@ -247,17 +168,9 @@ export default function TarjetaProducto({
   );
 }
 
-function Etiqueta({
-  texto,
-  clases,
-}: {
-  texto: string;
-  clases: string;
-}) {
+function Etiqueta({ texto, clases }: { texto: string; clases: string }) {
   return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${clases}`}
-    >
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${clases}`}>
       {texto}
     </span>
   );
@@ -290,40 +203,20 @@ function BotonEstado({
   );
 }
 
-function obtenerEstadoStock(
-  producto: ProductoListado
-) {
+function obtenerEstadoStock(producto: ProductoListado) {
   const stock = Number(producto.stock);
-  const minimo = Number(
-    producto.stock_minimo
-  );
+  const minimo = Number(producto.stock_minimo);
 
   if (stock <= 0) {
-    return {
-      texto: "Sin stock",
-      clases:
-        "bg-red-100 text-red-700",
-    };
+    return { texto: "Sin stock", clases: "bg-red-100 text-red-700" };
   }
-
   if (stock <= minimo) {
-    return {
-      texto: "Stock bajo",
-      clases:
-        "bg-amber-100 text-amber-700",
-    };
+    return { texto: "Stock bajo", clases: "bg-amber-100 text-amber-700" };
   }
-
-  return {
-    texto: "Stock correcto",
-    clases:
-      "bg-green-100 text-green-700",
-  };
+  return { texto: "Stock correcto", clases: "bg-green-100 text-green-700" };
 }
 
-function formatearPrecio(
-  precio: number
-) {
+function formatearPrecio(precio: number) {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",

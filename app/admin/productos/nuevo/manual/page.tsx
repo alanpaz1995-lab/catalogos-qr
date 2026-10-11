@@ -405,28 +405,22 @@ export default function NuevoProductoManualPage() {
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Link
-              href="/admin/productos/nuevo"
+              href="/admin/productos"
               className="font-semibold text-[#2563EB]"
             >
-              â† Volver
+              ← Volver
             </Link>
             <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-[#2563EB]">
               Productos PRO
             </p>
             <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
-              Crear producto manualmente
+              Crear producto
             </h1>
             <p className="mt-2 max-w-2xl text-slate-500">
               Completá la información comercial, el stock y la imagen principal
               del producto.
             </p>
           </div>
-          <Link
-            href="/admin/productos/nuevo/ia"
-            className="rounded-xl border border-orange-200 bg-orange-50 px-5 py-3 text-center font-semibold text-orange-700"
-          >
-            📷 Crear con IA
-          </Link>
         </header>
         <form onSubmit={guardarProducto} className="mt-8">
           <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
@@ -627,7 +621,7 @@ export default function NuevoProductoManualPage() {
                     onClick={() => inputImagenRef.current?.click()}
                     className="mt-5 flex h-72 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-[#2563EB] hover:bg-blue-50 disabled:opacity-50"
                   >
-                    <span className="text-5xl">ðŸ–¼ï¸</span>
+                    <span className="text-5xl">🖼️</span>
                     <span className="mt-4 font-semibold">
                       Seleccionar imagen
                     </span>
@@ -636,6 +630,26 @@ export default function NuevoProductoManualPage() {
                     </span>
                   </button>
                 )}
+                <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                  <p className="font-semibold text-slate-800">✨ Mejorar foto con ChatGPT</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Es opcional. Abrí ChatGPT, adjuntá tu foto y pedile que mejore
+                    la iluminación y el fondo sin cambiar el producto. Después
+                    descargá la imagen mejorada y seleccionala acá.
+                  </p>
+                  <a
+                    href="https://chatgpt.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-center font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    Abrir ChatGPT para mejorar foto ↗
+                  </a>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Se abre en otra pestaña. La foto no se envía automáticamente.
+                    Podés usar tu propia cuenta gratuita o de pago.
+                  </p>
+                </div>
               </section>
               <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-xl font-bold">Publicación y etiquetas</h2>
