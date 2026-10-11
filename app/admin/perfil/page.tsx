@@ -159,6 +159,12 @@ export default function PerfilEmpresaPage() {
   const [modoOscuro, setModoOscuro] = useState(false);
   const [carritos, setCarritos] = useState<ConfiguracionCarritos>({});
   const [listasCatalogo, setListasCatalogo] = useState<ListaCatalogoConfig[]>([]);
+  const [nuevaContrasena, setNuevaContrasena] = useState("");
+  const [confirmarContrasena, setConfirmarContrasena] = useState("");
+  const [cambiandoContrasena, setCambiandoContrasena] = useState(false);
+  const [errorContrasena, setErrorContrasena] = useState("");
+  const [mensajeContrasena, setMensajeContrasena] = useState("");
+  const [mostrarContrasena, setMostrarContrasena] = useState(false);
   useEffect(() => {
     const guardado = window.localStorage.getItem("comersys-modo-oscuro");
     setModoOscuro(guardado === "true");
@@ -394,6 +400,44 @@ export default function PerfilEmpresaPage() {
       setGuardando(false);
     }
   }
+  async function cambiarContrasena(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (cambiandoContrasena) return;
+    setErrorContrasena("");
+    setMensajeContrasena("");
+
+    if (nuevaContrasena.length < 8) {
+      setErrorContrasena("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (nuevaContrasena !== confirmarContrasena) {
+      setErrorContrasena("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setCambiandoContrasena(true);
+    try {
+      const { data: { user }, error: errorUsuario } = await supabase.auth.getUser();
+      if (errorUsuario) throw errorUsuario;
+      if (!user) throw new Error("Tu sesión venció. Iniciá sesión nuevamente.");
+
+      const { error: errorCambio } = await supabase.auth.updateUser({
+        password: nuevaContrasena,
+      });
+      if (errorCambio) throw errorCambio;
+
+      setNuevaContrasena("");
+      setConfirmarContrasena("");
+      setMensajeContrasena("Tu contraseña se cambió correctamente.");
+    } catch (errorDesconocido) {
+      setErrorContrasena(errorDesconocido instanceof Error
+        ? errorDesconocido.message
+        : "No se pudo cambiar la contraseña.");
+    } finally {
+      setCambiandoContrasena(false);
+    }
+  }
+
   async function seleccionarImagen(
     event: ChangeEvent<HTMLInputElement>,
     tipo: "logo" | "portada"
@@ -602,6 +646,7 @@ export default function PerfilEmpresaPage() {
           </div>
         )}
         <div className="mt-8 grid gap-7 xl:grid-cols-[1fr_390px]">
+          <div className="space-y-7">
           <form
             onSubmit={guardarPerfil}
             className="space-y-7"
@@ -966,6 +1011,63 @@ export default function PerfilEmpresaPage() {
                 : "Guardar cambios"}
             </button>
           </form>
+          <SeccionFormulario
+            modoOscuro={modoOscuro}
+            titulo="Cambiar contraseña"
+            descripcion="Actualizá la contraseña que usás para ingresar a ComerSys. Este cambio es independiente de Guardar cambios del perfil."
+          >
+            <form onSubmit={cambiarContrasena} className="space-y-4">
+              <label className="block">
+                <span className={clasesLabel}>Nueva contraseña</span>
+                <input
+                  type={mostrarContrasena ? "text" : "password"}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  value={nuevaContrasena}
+                  onChange={(event) => setNuevaContrasena(event.target.value)}
+                  className={clasesInput}
+                  placeholder="Mínimo 8 caracteres"
+                />
+              </label>
+              <label className="block">
+                <span className={clasesLabel}>Confirmar nueva contraseña</span>
+                <input
+                  type={mostrarContrasena ? "text" : "password"}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  value={confirmarContrasena}
+                  onChange={(event) => setConfirmarContrasena(event.target.value)}
+                  className={clasesInput}
+                  placeholder="Repetí la contraseña"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={mostrarContrasena}
+                  onChange={(event) => setMostrarContrasena(event.target.checked)}
+                  className="h-4 w-4 accent-[#2563EB]"
+                />
+                Mostrar contraseñas
+              </label>
+              {errorContrasena && (
+                <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{errorContrasena}</p>
+              )}
+              {mensajeContrasena && (
+                <p role="status" className="rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-700">{mensajeContrasena}</p>
+              )}
+              <button
+                type="submit"
+                disabled={cambiandoContrasena}
+                className="rounded-2xl bg-[#2563EB] px-6 py-3 font-black text-white transition hover:bg-blue-700 disabled:opacity-60"
+              >
+                {cambiandoContrasena ? "Cambiando contraseña..." : "Actualizar contraseña"}
+              </button>
+            </form>
+          </SeccionFormulario>
+          </div>
           <aside className="xl:sticky xl:top-6 xl:h-fit">
             <VistaPrevia
               perfil={perfil}
@@ -1114,17 +1216,25 @@ function EditorHorarios({
     });
   }
   return (
-    <div>
-      <div className="mb-4">
-        <p className={clasesLabel}>
-          Horarios de atención
+    <details className="group rounded-2xl border border-slate-200 bg-slate-50/70 open:bg-transparent">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl p-4 marker:hidden hover:bg-slate-100/70 [&::-webkit-details-marker]:hidden sm:p-5">
+        <span className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-xl" aria-hidden="true">🕒</span>
+          <span>
+            <span className="block font-black text-slate-800">Horarios de atención</span>
+            <span className="mt-1 block text-xs text-slate-500 sm:text-sm">Presioná para configurar los días y turnos</span>
+          </span>
+        </span>
+        <span className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-[#2563EB]">
+          <span className="group-open:hidden">Configurar ▾</span>
+          <span className="hidden group-open:inline">Cerrar ▴</span>
+        </span>
+      </summary>
+      <div className="border-t border-slate-200 px-3 pb-4 pt-4 sm:px-5">
+        <p className="mb-4 text-sm leading-6 text-slate-500">
+          Activá los días de atención y cargá hasta dos turnos por día.
         </p>
-        <p className="text-sm leading-6 text-slate-500">
-          Activá los días de atención y cargá hasta
-          dos turnos por día.
-        </p>
-      </div>
-      <div className="space-y-4">
+        <div className="space-y-4">
         {diasSemana.map(({ clave, etiqueta }) => {
           const horarioDia = value[clave];
           return (
@@ -1232,8 +1342,9 @@ function EditorHorarios({
             </div>
           );
         })}
+        </div>
       </div>
-    </div>
+    </details>
   );
 }
 function normalizarHorariosSemana(
