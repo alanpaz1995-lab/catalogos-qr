@@ -1,10 +1,8 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
-
 type ClienteResumen = {
   id: number;
   empresa_id: number;
@@ -22,15 +20,12 @@ type ClienteResumen = {
   saldo_pendiente: number;
   ultima_compra?: string | null;
 };
-
-
 export default function ClientesPage() {
   const {
     empresa,
     cargandoEmpresa,
     errorEmpresa,
   } = useEmpresa();
-
   const [clientes, setClientes] = useState<ClienteResumen[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState<
@@ -39,20 +34,33 @@ export default function ClientesPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [eliminandoId, setEliminandoId] = useState<number | null>(null);
-
   useEffect(() => {
     if (!empresa?.id) return;
-
-    cargarClientes();
+    // Carga inicial y actualización periódica sin interrumpir la pantalla.
+    void cargarClientes();
+    const intervalo = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void cargarClientes(true);
+      }
+    }, 20000);
+    // Al regresar a esta pestaña, mostrar los registros recientes.
+    const actualizarAlVolver = () => {
+      if (document.visibilityState === "visible") {
+        void cargarClientes(true);
+      }
+    };
+    document.addEventListener("visibilitychange", actualizarAlVolver);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", actualizarAlVolver);
+    };
   }, [empresa?.id]);
-
-  async function cargarClientes() {
+  async function cargarClientes(silencioso = false) {
     if (!empresa?.id) {
       setCargando(false);
       return;
     }
-
-    setCargando(true);
+    if (!silencioso) setCargando(true);
     setError("");
 
     const { data, error: errorConsulta } = await supabase
@@ -60,7 +68,6 @@ export default function ClientesPage() {
       .select("*")
       .eq("empresa_id", empresa.id)
       .order("nombre", { ascending: true });
-
     if (errorConsulta) {
       console.error("Error al cargar clientes:", errorConsulta);
       setError(
@@ -69,36 +76,28 @@ export default function ClientesPage() {
       setCargando(false);
       return;
     }
-
     setClientes((data as ClienteResumen[]) || []);
     setCargando(false);
   }
-
   const clientesFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
-
     return clientes.filter((cliente) => {
       const coincideBusqueda =
         cliente.nombre.toLowerCase().includes(texto) ||
         cliente.telefono.toLowerCase().includes(texto) ||
         (cliente.email || "").toLowerCase().includes(texto) ||
         (cliente.direccion || "").toLowerCase().includes(texto);
-
       const saldo = Number(cliente.saldo_pendiente || 0);
-
       const coincideFiltro =
         (filtro === "Todos" && cliente.activo) ||
         (filtro === "Con deuda" && cliente.activo && saldo > 0) ||
         (filtro === "Sin deuda" && cliente.activo && saldo <= 0) ||
         (filtro === "Inactivos" && !cliente.activo);
-
       return coincideBusqueda && coincideFiltro;
     });
   }, [clientes, busqueda, filtro]);
-
   const resumen = useMemo(() => {
     const clientesActivos = clientes.filter((cliente) => cliente.activo);
-
     return {
       totalClientes: clientesActivos.length,
       conDeuda: clientesActivos.filter(
@@ -116,18 +115,14 @@ export default function ClientesPage() {
       ),
     };
   }, [clientes]);
-
   async function eliminarCliente(cliente: ClienteResumen) {
     if (!empresa?.id || eliminandoId !== null) return;
-
     const confirmar = window.confirm(
       `¿Seguro que querés eliminar a "${cliente.nombre}" de la lista de clientes?\n\nSus pedidos y el historial de ventas se conservarán.`
     );
     if (!confirmar) return;
-
     setEliminandoId(cliente.id);
     setError("");
-
     try {
       const { error: errorActualizacion } = await supabase
         .from("clientes")
@@ -137,9 +132,7 @@ export default function ClientesPage() {
         })
         .eq("id", cliente.id)
         .eq("empresa_id", empresa.id);
-
       if (errorActualizacion) throw errorActualizacion;
-
       setClientes((actuales) =>
         actuales.filter((actual) => actual.id !== cliente.id)
       );
@@ -153,7 +146,6 @@ export default function ClientesPage() {
       setEliminandoId(null);
     }
   }
-
   function formatearPrecio(precio: number) {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
@@ -162,16 +154,13 @@ export default function ClientesPage() {
       maximumFractionDigits: 2,
     }).format(precio);
   }
-
   function formatearFecha(fecha?: string | null) {
     if (!fecha) return "Sin compras";
-
     return new Intl.DateTimeFormat("es-AR", {
       dateStyle: "short",
       timeStyle: "short",
     }).format(new Date(fecha));
   }
-
   function estadoCuenta(cliente: ClienteResumen) {
     if (!cliente.activo) {
       return {
@@ -179,27 +168,23 @@ export default function ClientesPage() {
         clases: "bg-slate-100 text-slate-600",
       };
     }
-
     if (Number(cliente.saldo_pendiente || 0) > 0) {
       return {
         texto: "Con saldo pendiente",
         clases: "bg-red-100 text-red-700",
       };
     }
-
     if (Number(cliente.cantidad_pedidos || 0) === 0) {
       return {
         texto: "Sin pedidos",
         clases: "bg-amber-100 text-amber-700",
       };
     }
-
     return {
       texto: "Cuenta al día",
       clases: "bg-green-100 text-green-700",
     };
   }
-
   if (cargandoEmpresa) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
@@ -212,7 +197,6 @@ export default function ClientesPage() {
       </main>
     );
   }
-
   if (errorEmpresa || !empresa?.id) {
     return (
       <main className="min-h-screen bg-[#F8FAFC] p-8 text-[#1E293B]">
@@ -234,7 +218,6 @@ export default function ClientesPage() {
       </main>
     );
   }
-
   return (
     <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
       <div className="mx-auto max-w-7xl">
@@ -242,29 +225,25 @@ export default function ClientesPage() {
           <p className="text-sm font-semibold uppercase tracking-wide text-[#2563EB]">
             Administración
           </p>
-
           <div className="mt-2 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-3xl font-bold sm:text-4xl">
                 Clientes PRO
               </h1>
-
               <p className="mt-2 max-w-2xl text-slate-500">
                 Buscá un cliente y accedé a sus compras, pagos y
                 estado de cuenta desde un solo lugar.
               </p>
             </div>
-
             <button
               type="button"
-              onClick={cargarClientes}
+              onClick={() => void cargarClientes()}
               className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               Actualizar
             </button>
           </div>
         </header>
-
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">
@@ -274,7 +253,6 @@ export default function ClientesPage() {
               {resumen.totalClientes}
             </p>
           </div>
-
           <div className="rounded-3xl border border-red-200 bg-red-50 p-5">
             <p className="text-sm text-red-700">
               Clientes con deuda
@@ -283,7 +261,6 @@ export default function ClientesPage() {
               {resumen.conDeuda}
             </p>
           </div>
-
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
             <p className="text-sm text-amber-700">
               Saldo total pendiente
@@ -292,7 +269,6 @@ export default function ClientesPage() {
               {formatearPrecio(resumen.saldoTotal)}
             </p>
           </div>
-
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">
               Total histórico comprado
@@ -302,7 +278,6 @@ export default function ClientesPage() {
             </p>
           </div>
         </section>
-
         <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
             <div>
@@ -312,7 +287,6 @@ export default function ClientesPage() {
               >
                 Buscar cliente
               </label>
-
               <input
                 id="buscar-cliente"
                 type="search"
@@ -324,7 +298,6 @@ export default function ClientesPage() {
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
               />
             </div>
-
             <div>
               <label
                 htmlFor="filtro-clientes"
@@ -332,7 +305,6 @@ export default function ClientesPage() {
               >
                 Estado de cuenta
               </label>
-
               <select
                 id="filtro-clientes"
                 value={filtro}
@@ -355,26 +327,22 @@ export default function ClientesPage() {
             </div>
           </div>
         </section>
-
         {error && (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
             {error}
           </div>
         )}
-
         <section className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-bold">
                 Lista de clientes
               </h2>
-
               <p className="mt-1 text-sm text-slate-500">
                 {clientesFiltrados.length} cliente(s) encontrados
               </p>
             </div>
           </div>
-
           {cargando ? (
             <div className="p-12 text-center">
               <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
@@ -387,7 +355,6 @@ export default function ClientesPage() {
               <p className="font-semibold text-slate-700">
                 No encontramos clientes
               </p>
-
               <p className="mt-2 text-sm text-slate-500">
                 Probá con otra búsqueda o cambiá el filtro.
               </p>
@@ -396,7 +363,6 @@ export default function ClientesPage() {
             <div className="divide-y divide-slate-100">
               {clientesFiltrados.map((cliente) => {
                 const estado = estadoCuenta(cliente);
-
                 return (
                   <article
                     key={cliente.id}
@@ -410,12 +376,10 @@ export default function ClientesPage() {
                               .charAt(0)
                               .toUpperCase()}
                           </div>
-
                           <div>
                             <h3 className="text-xl font-bold">
                               {cliente.nombre}
                             </h3>
-
                             <span
                               className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-semibold ${estado.clases}`}
                             >
@@ -423,7 +387,6 @@ export default function ClientesPage() {
                             </span>
                           </div>
                         </div>
-
                         <div className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -433,7 +396,6 @@ export default function ClientesPage() {
                               {cliente.telefono}
                             </p>
                           </div>
-
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                               Dirección
@@ -443,7 +405,6 @@ export default function ClientesPage() {
                                 "No informada"}
                             </p>
                           </div>
-
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                               Pedidos
@@ -454,7 +415,6 @@ export default function ClientesPage() {
                               )}
                             </p>
                           </div>
-
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                               Última compra
@@ -467,7 +427,6 @@ export default function ClientesPage() {
                           </div>
                         </div>
                       </div>
-
                       <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
                         <div className="rounded-2xl bg-slate-50 p-4">
                           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -481,7 +440,6 @@ export default function ClientesPage() {
                             )}
                           </p>
                         </div>
-
                         <div className="rounded-2xl bg-green-50 p-4">
                           <p className="text-xs font-semibold uppercase tracking-wide text-green-600">
                             Pagado
@@ -494,7 +452,6 @@ export default function ClientesPage() {
                             )}
                           </p>
                         </div>
-
                         <div className="rounded-2xl bg-amber-50 p-4">
                           <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">
                             Pendiente
@@ -507,14 +464,12 @@ export default function ClientesPage() {
                             )}
                           </p>
                         </div>
-
                         <Link
                           href={`/admin/clientes/${cliente.id}`}
                           className="rounded-xl bg-[#2563EB] px-5 py-3 text-center font-semibold text-white transition hover:bg-blue-700 sm:col-span-2"
                         >
                           Ver ficha completa
                         </Link>
-
                         <button
                           type="button"
                           onClick={() => eliminarCliente(cliente)}

@@ -7,6 +7,14 @@ import { Empresa } from "@/types/empresa";
 import { Producto } from "@/types/producto";
 import { ItemPedido } from "@/types/pedido";
 import CheckoutModal from "../components/CheckoutModal";
+type ClienteCatalogo = {
+  cliente_id: number;
+  nombre: string;
+  telefono: string;
+  email?: string;
+  direccion?: string;
+};
+
 type PrecioLista = {
   lista_id: number;
   lista_nombre: string;
@@ -44,6 +52,85 @@ export default function CatalogoListaPage() {
   const [checkoutAbierto, setCheckoutAbierto] = useState(false);
   const [carritoAbierto, setCarritoAbierto] = useState(false);
   const [mensajeCarrito, setMensajeCarrito] = useState("");
+
+  const [clienteRegistrado, setClienteRegistrado] = useState<ClienteCatalogo | null>(null);
+  const [registroAbierto, setRegistroAbierto] = useState(false);
+  const [nombreRegistro, setNombreRegistro] = useState("");
+  const [telefonoRegistro, setTelefonoRegistro] = useState("");
+  const [emailRegistro, setEmailRegistro] = useState("");
+  const [direccionRegistro, setDireccionRegistro] = useState("");
+  const [registrando, setRegistrando] = useState(false);
+  const [errorRegistro, setErrorRegistro] = useState("");
+
+  // El catálogo principal y todas las listas comparten la identidad por empresa.
+  useEffect(() => {
+    if (!empresa?.id) return;
+    const clave = `comersys_cliente_${empresa.id}`;
+    try {
+      const guardado = localStorage.getItem(clave);
+      const cliente = guardado ? JSON.parse(guardado) as ClienteCatalogo : null;
+      if (cliente && Number(cliente.cliente_id) > 0 && cliente.nombre && cliente.telefono) {
+        setClienteRegistrado(cliente);
+        setRegistroAbierto(false);
+      } else {
+        setClienteRegistrado(null);
+        setRegistroAbierto(true);
+      }
+    } catch {
+      setClienteRegistrado(null);
+      setRegistroAbierto(true);
+    }
+  }, [empresa?.id]);
+
+  async function registrarCliente(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!empresa?.id || registrando) return;
+    setErrorRegistro("");
+    setRegistrando(true);
+    try {
+      const { data, error: errorRpc } = await supabase.rpc("registrar_cliente_catalogo", {
+        p_empresa_id: empresa.id,
+        p_nombre: nombreRegistro.trim(),
+        p_telefono: telefonoRegistro.trim(),
+        p_email: emailRegistro.trim(),
+        p_direccion: direccionRegistro.trim(),
+        p_observaciones: null,
+      });
+      if (errorRpc) throw errorRpc;
+      const fila = Array.isArray(data) ? data[0] : data;
+      if (!fila || !Number(fila.cliente_id)) {
+        throw new Error("No se pudo confirmar el registro del cliente.");
+      }
+      const cliente: ClienteCatalogo = {
+        cliente_id: Number(fila.cliente_id),
+        nombre: String(fila.cliente_nombre || nombreRegistro.trim()),
+        telefono: String(fila.cliente_telefono || telefonoRegistro.trim()),
+        email: emailRegistro.trim(),
+        direccion: direccionRegistro.trim(),
+      };
+      localStorage.setItem(`comersys_cliente_${empresa.id}`, JSON.stringify(cliente));
+      setClienteRegistrado(cliente);
+      setRegistroAbierto(false);
+    } catch (e) {
+      setErrorRegistro(e instanceof Error ? e.message : "No se pudo registrar el cliente.");
+    } finally {
+      setRegistrando(false);
+    }
+  }
+
+  function cambiarCliente() {
+    if (!empresa?.id) return;
+    localStorage.removeItem(`comersys_cliente_${empresa.id}`);
+    setClienteRegistrado(null);
+    setNombreRegistro("");
+    setTelefonoRegistro("");
+    setEmailRegistro("");
+    setDireccionRegistro("");
+    setErrorRegistro("");
+    setRegistroAbierto(true);
+    setCheckoutAbierto(false);
+  }
+
   useEffect(() => {
     let vigente = true;
     async function cargar() {
@@ -194,6 +281,7 @@ export default function CatalogoListaPage() {
     });
   }
 
+
   function cambiarCantidad(productoId: number, cambio: number) {
     setMensajeCarrito("");
     setCarrito((actual) => actual.flatMap((item) => {
@@ -209,6 +297,7 @@ export default function CatalogoListaPage() {
     }));
   }
 
+
   function precioUnitario(item: ItemPedido) {
     const producto = item.producto;
     const minimo = Math.max(1, Number(producto.cantidad_minima_mayorista || 10));
@@ -218,11 +307,13 @@ export default function CatalogoListaPage() {
       : Number(producto.precio);
   }
 
+
   const cantidadCarrito = carrito.reduce((suma, item) => suma + item.cantidad, 0);
   const totalCarrito = carrito.reduce(
     (suma, item) => suma + precioUnitario(item) * item.cantidad,
     0
   );
+
 
   const categoriasPresentes = new Set(
     productos.map((p) => p.categoria).filter((c): c is string => Boolean(c))
@@ -269,6 +360,34 @@ export default function CatalogoListaPage() {
   return (
     <main className="min-h-screen bg-[#F8FAFC] text-[#1E293B]">
       <HeroCatalogo empresa={empresa} />
+      <div className="fixed left-6 top-6 z-50">
+        {clienteRegistrado ? (
+          <div className="rounded-2xl border border-green-200 bg-white px-4 py-3 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-green-600">
+              ✓ Cliente registrado
+            </p>
+            <p className="mt-1 font-bold text-slate-800">
+              {clienteRegistrado.nombre}
+            </p>
+            <button
+              type="button"
+              onClick={cambiarCliente}
+              className="mt-1 text-xs font-semibold text-[#2563EB]"
+            >
+              No soy esta persona
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRegistroAbierto(true)}
+            className="rounded-full bg-white px-5 py-3 font-semibold text-[#2563EB] shadow-xl transition hover:scale-105"
+          >
+            👤 Nuevo cliente
+          </button>
+        )}
+      </div>
+
       <section className="mx-auto max-w-7xl px-6 py-10">
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-wide" style={{ color }}>
@@ -330,8 +449,8 @@ export default function CatalogoListaPage() {
                 `Hola, quiero consultar por ${producto.nombre} de la lista ${nombreLista}.`
               );
               const enlace = whatsapp
-                ? `https://wa.me/${whatsapp}?text=${texto}`
-                : `https://wa.me/?text=${texto}`;
+                ? `https\://wa.me/${whatsapp}?text=${texto}`
+                : `https\://wa.me/?text=${texto}`;
               return (
                 <article
                   key={producto.id}
@@ -450,7 +569,7 @@ export default function CatalogoListaPage() {
                 <p className="text-xs text-slate-500">Los precios y la disponibilidad se verifican nuevamente al confirmar el pedido.</p>
                 <button
                   type="button"
-                  onClick={() => { setCarritoAbierto(false); setCheckoutAbierto(true); }}
+                  onClick={() => { setCarritoAbierto(false); if (clienteRegistrado) setCheckoutAbierto(true); else setRegistroAbierto(true); }}
                   className="w-full rounded-xl px-5 py-4 font-semibold text-white"
                   style={{ backgroundColor: color }}
                 >
@@ -462,10 +581,39 @@ export default function CatalogoListaPage() {
         </div>
       )}
 
+
+      {registroAbierto && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div role="dialog" aria-modal="true" aria-label="Registro de cliente" className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 className="text-2xl font-bold">Bienvenido a {empresa.nombre}</h2>
+            <p className="mt-2 text-sm text-slate-600">Registrate una sola vez para consultar las listas y hacer pedidos. No necesitás comprar ahora.</p>
+            <form onSubmit={registrarCliente} className="mt-5 space-y-4">
+              <label className="block text-sm font-semibold">Nombre y apellido
+                <input required value={nombreRegistro} onChange={(e) => setNombreRegistro(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" autoComplete="name" />
+              </label>
+              <label className="block text-sm font-semibold">Teléfono
+                <input required type="tel" value={telefonoRegistro} onChange={(e) => setTelefonoRegistro(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" autoComplete="tel" />
+              </label>
+              <label className="block text-sm font-semibold">Email (opcional)
+                <input type="email" value={emailRegistro} onChange={(e) => setEmailRegistro(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" autoComplete="email" />
+              </label>
+              <label className="block text-sm font-semibold">Dirección (opcional)
+                <input value={direccionRegistro} onChange={(e) => setDireccionRegistro(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" autoComplete="street-address" />
+              </label>
+              {errorRegistro && <p role="alert" className="text-sm text-red-700">{errorRegistro}</p>}
+              <button type="submit" disabled={registrando} className="w-full rounded-xl bg-blue-600 p-4 font-semibold text-white disabled:opacity-60">
+                {registrando ? "Registrando..." : "Registrarme y ver la lista"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <CheckoutModal
         abierto={checkoutAbierto}
         empresa={empresa}
         listaSlug={listaSlug}
+        clienteRegistrado={clienteRegistrado}
         items={carrito}
         total={totalCarrito}
         formatearPrecio={dinero}
@@ -475,6 +623,7 @@ export default function CatalogoListaPage() {
           setCarritoAbierto(false);
         }}
       />
+
 
       {imagenAmpliada && (
         <div
@@ -508,6 +657,7 @@ export default function CatalogoListaPage() {
           Carrito ({cantidadCarrito}) · {dinero(totalCarrito)}
         </button>
       )}
+
 
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">
         Catálogo creado con ComerSys
