@@ -1,8 +1,9 @@
+
 import Link from "next/link";
 
 const EMAIL_COMERSYS = "alanpazcomercios@gmail.com";
-const WHATSAPP_COMERSYS_VISIBLE = "+54 3444 445816";
-const WHATSAPP_COMERSYS = "543444445816";
+const WHATSAPP_COMERSYS_VISIBLE = "+54 9 3444 524201";
+const WHATSAPP_COMERSYS = "5493444524201";
 
 const MENSAJE_SISTEMA_PERSONALIZADO =
   "Hola, me contacto desde ComerSys. Quisiera consultar por un sistema personalizado.";
