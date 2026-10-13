@@ -1,7 +1,114 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+type EventoInstalacion = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+};
+
 export default function HeroPublico() {
+  const [eventoInstalacion, setEventoInstalacion] =
+    useState<EventoInstalacion | null>(null);
+
+  const [instalada, setInstalada] = useState(false);
+  const [mostrarInstrucciones, setMostrarInstrucciones] =
+    useState(false);
+  const [esIOS, setEsIOS] = useState(false);
+
+  useEffect(() => {
+    const comprobarInstalacion = () => {
+      const modoAplicacion = window.matchMedia(
+        "(display-mode: standalone)"
+      ).matches;
+
+      const safariInstalado =
+        "standalone" in window.navigator &&
+        Boolean(
+          (window.navigator as Navigator & {
+            standalone?: boolean;
+          }).standalone
+        );
+
+      setInstalada(modoAplicacion || safariInstalado);
+    };
+
+    const dispositivoIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" &&
+        navigator.maxTouchPoints > 1);
+
+    setEsIOS(dispositivoIOS);
+    comprobarInstalacion();
+
+    const guardarEvento = (evento: Event) => {
+      evento.preventDefault();
+      setEventoInstalacion(evento as EventoInstalacion);
+    };
+
+    const confirmarInstalacion = () => {
+      setInstalada(true);
+      setEventoInstalacion(null);
+      setMostrarInstrucciones(false);
+    };
+
+    window.addEventListener(
+      "beforeinstallprompt",
+      guardarEvento
+    );
+
+    window.addEventListener(
+      "appinstalled",
+      confirmarInstalacion
+    );
+
+    const mediaQuery = window.matchMedia(
+      "(display-mode: standalone)"
+    );
+
+    mediaQuery.addEventListener(
+      "change",
+      comprobarInstalacion
+    );
+
+    return () => {
+      window.removeEventListener(
+        "beforeinstallprompt",
+        guardarEvento
+      );
+
+      window.removeEventListener(
+        "appinstalled",
+        confirmarInstalacion
+      );
+
+      mediaQuery.removeEventListener(
+        "change",
+        comprobarInstalacion
+      );
+    };
+  }, []);
+
+  const instalarComerSys = async () => {
+    if (eventoInstalacion) {
+      try {
+        await eventoInstalacion.prompt();
+        await eventoInstalacion.userChoice;
+        setEventoInstalacion(null);
+      } catch {
+        setMostrarInstrucciones(true);
+      }
+      return;
+    }
+
+    setMostrarInstrucciones((actual) => !actual);
+  };
+
   return (
     <section className="bg-[#F8FAFC] px-4 pb-8 pt-5 sm:px-6">
       <div className="relative mx-auto max-w-[1500px] overflow-hidden rounded-[28px] border border-slate-800 bg-[#020817] shadow-[0_24px_70px_rgba(15,23,42,0.20)]">
@@ -27,6 +134,7 @@ export default function HeroPublico() {
               catálogo digital mediante un código QR desde una sola plataforma.
             </p>
 
+            {/* BOTONES PRINCIPALES */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 href="/registro"
@@ -44,6 +152,88 @@ export default function HeroPublico() {
               </Link>
             </div>
 
+            {/* INSTALACION DE COMERSYS */}
+            {!instalada && (
+              <div className="mt-5">
+                <button
+                  type="button"
+                  onClick={instalarComerSys}
+                  aria-expanded={mostrarInstrucciones}
+                  className="inline-flex items-center gap-3 rounded-2xl border border-sky-400/40 bg-sky-400/10 px-6 py-4 text-sm font-black text-sky-200 transition hover:border-sky-300 hover:bg-sky-400/20 sm:text-base"
+                >
+                  <span aria-hidden="true">⬇</span>
+                  Instalar ComerSys
+                </button>
+
+                <p className="mt-2 text-xs text-slate-400">
+                  Disponible para celular, tablet y computadora.
+                </p>
+
+                {mostrarInstrucciones && (
+                  <div
+                    role="status"
+                    className="mt-4 max-w-[500px] rounded-2xl border border-sky-400/25 bg-slate-900/90 p-5 text-sm leading-6 text-slate-200"
+                  >
+                    <div className="mb-2 font-black text-white">
+                      Cómo instalar ComerSys
+                    </div>
+
+                    {esIOS ? (
+                      <>
+                        <p>
+                          Abrí esta página en Safari y tocá
+                          el botón Compartir
+                          (cuadrado con una flecha hacia arriba).
+                        </p>
+
+                        <p className="mt-2">
+                          Después seleccioná
+                          {" "}
+                          <strong>
+                            Agregar a pantalla de inicio
+                          </strong>
+                          {" "}
+                          y confirmá con Agregar.
+                        </p>
+
+                        <p className="mt-2 text-sky-300">
+                          Si aparece la opción
+                          "Abrir como app", dejala activada.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p>
+                          En Chrome o Edge, abrí el menú
+                          de los tres puntos.
+                        </p>
+
+                        <p className="mt-2">
+                          Buscá la opción
+                          {" "}
+                          <strong>
+                            Instalar ComerSys
+                          </strong>
+                          {" "}
+                          o
+                          {" "}
+                          <strong>
+                            Agregar a pantalla de inicio
+                          </strong>.
+                        </p>
+
+                        <p className="mt-2 text-sky-300">
+                          La ubicación de esa opción puede
+                          variar según el navegador.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* BENEFICIOS RAPIDOS */}
             <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 text-xs font-semibold text-slate-300 sm:text-sm">
               <span className="inline-flex items-center gap-2">
                 <span className="text-emerald-400">✓</span>
@@ -78,7 +268,7 @@ export default function HeroPublico() {
                   <div className="overflow-hidden rounded-[23px] bg-[#07111F] p-[9px]">
                     <Image
                       src="/brand/dashboard-comersys.png"
-                      alt="Panel real de administración de ComerSyS"
+                      alt="Panel real de administración de ComerSys"
                       width={1536}
                       height={901}
                       priority
