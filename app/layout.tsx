@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
@@ -18,6 +19,28 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ComerSys",
   description: "Sistema de gestión ComerSys",
+  applicationName: "ComerSys",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "ComerSys",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [
+      {
+        url: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        url: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+    ],
+    apple: "/icon-192.png",
+  },
 };
 
 export default function RootLayout({
