@@ -6,7 +6,7 @@ const WHATSAPP_COMERSYS_VISIBLE = "+54 9 3444 524201";
 const WHATSAPP_COMERSYS = "5493444524201";
 
 const MENSAJE_SISTEMA_PERSONALIZADO =
-  "Hola, me contacto desde ComerSys. Quisiera consultar por un sistema personalizado.";
+  "Hola, ¿cómo estás? Estoy interesado en conocer más sobre ComerSys y quisiera realizar una consulta. ¡Muchas gracias!";
 
 const WHATSAPP_SISTEMAS_URL =
   `https://wa.me/${WHATSAPP_COMERSYS}?text=${encodeURIComponent(
