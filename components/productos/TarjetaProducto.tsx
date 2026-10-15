@@ -125,14 +125,27 @@ export default function TarjetaProducto({
                   {precio.nombre}
                 </p>
                 <div className="mt-2 space-y-2">
-                  <div>
-                    <p className="text-[11px] text-slate-500">Minorista</p>
-                    <p className="text-sm font-bold text-slate-900">{dinero(precio.minorista)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-500">Mayorista</p>
-                    <p className="text-sm font-bold text-slate-900">{dinero(precio.mayorista)}</p>
-                  </div>
+                  {tienePrecio(precio.minorista) && tienePrecio(precio.mayorista) ? (
+                    <>
+                      <div>
+                        <p className="text-[11px] text-slate-500">Minorista</p>
+                        <p className="text-sm font-bold text-slate-900">{dinero(precio.minorista)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-slate-500">Mayorista</p>
+                        <p className="text-sm font-bold text-slate-900">{dinero(precio.mayorista)}</p>
+                      </div>
+                    </>
+                  ) : tienePrecio(precio.minorista) || tienePrecio(precio.mayorista) ? (
+                    <div>
+                      <p className="text-[11px] text-slate-500">Precio</p>
+                      <p className="text-sm font-bold text-slate-900">
+                        {dinero(tienePrecio(precio.minorista) ? precio.minorista : precio.mayorista)}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-semibold text-slate-500">Sin precio</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -207,4 +220,8 @@ function dinero(precio: number | null | undefined) {
         currency: "ARS",
         maximumFractionDigits: 2,
       }).format(Number(precio));
+}
+
+function tienePrecio(precio: number | null | undefined): boolean {
+  return precio != null && Number.isFinite(Number(precio));
 }

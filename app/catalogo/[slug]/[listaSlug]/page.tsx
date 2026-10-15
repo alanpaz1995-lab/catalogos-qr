@@ -1897,7 +1897,7 @@ export default function CatalogoListaPage() {
 
 
 
-                            Precio minorista
+                            {producto.precio_mayorista != null ? "Precio minorista" : "Precio"}
 
 
 

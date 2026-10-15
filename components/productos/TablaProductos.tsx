@@ -135,8 +135,7 @@ function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, elim
             {precios.map((precio) => (
               <div key={precio.id} className="min-w-[145px] flex-1 border-l border-slate-200 px-3 sm:min-w-[160px]">
                 <p className="truncate text-sm font-bold text-slate-900" title={precio.nombre}>{precio.nombre}</p>
-                <p className="mt-2 flex justify-between gap-2 text-xs"><span className="text-slate-500">Minorista</span><strong className="text-slate-900">{dinero(precio.minorista)}</strong></p>
-                <p className="mt-2 flex justify-between gap-2 text-xs"><span className="text-slate-500">Mayorista</span><strong className="text-slate-900">{dinero(precio.mayorista)}</strong></p>
+                <DetallePrecios minorista={precio.minorista} mayorista={precio.mayorista} />
               </div>
             ))}
           </div>
@@ -168,6 +167,41 @@ function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, elim
         </div>
       )}
     </article>
+  );
+}
+
+
+function DetallePrecios({ minorista, mayorista }: {
+  minorista: number | null | undefined;
+  mayorista: number | null | undefined;
+}) {
+  const tieneMinorista = minorista != null && Number.isFinite(Number(minorista));
+  const tieneMayorista = mayorista != null && Number.isFinite(Number(mayorista));
+
+  if (!tieneMinorista && !tieneMayorista) {
+    return <p className="mt-2 text-xs text-slate-500">Sin precio</p>;
+  }
+
+  if (!tieneMinorista || !tieneMayorista) {
+    return (
+      <p className="mt-2 flex justify-between gap-2 text-xs">
+        <span className="text-slate-500">Precio</span>
+        <strong className="text-slate-900">{dinero(tieneMinorista ? minorista : mayorista)}</strong>
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <p className="mt-2 flex justify-between gap-2 text-xs">
+        <span className="text-slate-500">Minorista</span>
+        <strong className="text-slate-900">{dinero(minorista)}</strong>
+      </p>
+      <p className="mt-2 flex justify-between gap-2 text-xs">
+        <span className="text-slate-500">Mayorista</span>
+        <strong className="text-slate-900">{dinero(mayorista)}</strong>
+      </p>
+    </>
   );
 }
 

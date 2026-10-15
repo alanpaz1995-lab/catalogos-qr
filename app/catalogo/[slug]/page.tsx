@@ -4719,7 +4719,7 @@ export default function CatalogoEmpresaPage() {
 
 
 
-                                Precio minorista
+                                {tienePrecioMayorista(producto) ? "Precio minorista" : "Precio"}
 
 
 
