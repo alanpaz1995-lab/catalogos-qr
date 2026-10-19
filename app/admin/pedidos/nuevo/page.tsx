@@ -1073,158 +1073,136 @@ export default function NuevoPedidoPage() {
                       key={item.id}
                       className="rounded-2xl border border-slate-200 p-4"
                     >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="font-black text-slate-800">
-                            {item.producto.nombre}
-                          </h3>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {formatearPrecio(
-                              precioAplicado(item)
-                            )}{" "}
-                            por unidad
-                          </p>
-                          {usaPrecioMayorista(item) ? (
-                            <p className="mt-2 text-xs font-black text-emerald-600">
-                              ✓ Precio mayorista aplicado
+                      <div className="space-y-5">
+                        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-lg font-black text-slate-800">
+                              {item.producto.nombre}
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {formatearPrecio(precioAplicado(item))} por unidad
                             </p>
-                          ) : item.producto.precio_mayorista != null &&
-                            Number(item.producto.precio_mayorista) > 0 ? (
-                            <p className="mt-2 text-xs font-semibold text-slate-400">
-                              Mayorista desde{" "}
-                              {Math.max(
-                                1,
-                                Number(
-                                  item.producto
-                                    .cantidad_minima_mayorista ?? 10
-                                )
-                              )}{" "}
-                              unidades
-                            </p>
-                          ) : null}
-                          {!controlaStock(item.producto) ? (
-                            <p className="mt-2 text-xs font-bold text-blue-600">
-                              ∞ Sin límite de venta por stock
-                            </p>
-                          ) : typeof item.producto.stock ===
-                            "number" ? (
-                            <p
-                              className={`mt-2 text-xs font-bold ${
-                                item.producto.stock <= 5
-                                  ? "text-amber-600"
-                                  : "text-slate-400"
-                              }`}
-                            >
-                              Stock disponible:{" "}
-                              {item.producto.stock}
-                            </p>
-                          ) : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                            {usaPrecioMayorista(item) ? (
+                              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">
+                                ✓ Precio mayorista aplicado
+                              </span>
+                            ) : item.producto.precio_mayorista != null &&
+                              Number(item.producto.precio_mayorista) > 0 ? (
+                              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-600">
+                                Mayorista desde {Math.max(1, Number(item.producto.cantidad_minima_mayorista ?? 10))} unidades
+                              </span>
+                            ) : null}
+                            {!controlaStock(item.producto) ? (
+                              <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-700">
+                                ∞ Sin límite de venta por stock
+                              </span>
+                            ) : typeof item.producto.stock === "number" ? (
+                              <span className={`rounded-full px-3 py-1.5 ${item.producto.stock <= 5 ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+                                Stock disponible: {item.producto.stock}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                          <div className="flex items-center justify-between gap-4 flex-wrap">
-                            <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-                              Lista
-                              <select
-                                aria-label={`Lista de precios de ${item.producto.nombre}`}
-                                value={item.lista_precio_id ?? "principal"}
-                                onChange={(event) => cambiarLista(item.id, event.target.value)}
-                                disabled={guardando}
-                                className="max-w-40 bg-transparent text-sm outline-none"
-                              >
-                                <option value="principal">Catálogo principal</option>
-                                {listas.map((lista) => {
-                                  const precio = preciosListas.find((p) => p.lista_id === lista.id && p.producto_id === item.producto.id && p.visible);
-                                  return (
-                                    <option key={lista.id} value={lista.id} disabled={!precio || precio.precio_minorista == null}>
-                                      {lista.nombre}{!precio || precio.precio_minorista == null ? " (sin precio)" : ""}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </label>
-                          {desdePDF && <label className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">
-                            <select aria-label={`Modalidad de precio de ${item.producto.nombre}`}
-                              value={usaPrecioMayorista(item) ? "mayorista" : "minorista"} disabled={guardando}
-                              onChange={e => setItems(actuales => actuales.map(i => i.id === item.id ? {
-                                ...i, tipo_precio_presupuesto: e.target.value as "minorista" | "mayorista",
-                                precio_presupuesto: undefined
-                              } : i))} className="rounded-lg border border-blue-200 bg-white p-2 text-sm">
-                              <option value="minorista">Minorista</option><option value="mayorista">Mayorista</option>
+
+                        <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+                          <label className="flex min-w-[190px] flex-col gap-1.5 text-xs font-bold text-slate-600">
+                            Lista de precios
+                            <select
+                              aria-label={`Lista de precios de ${item.producto.nombre}`}
+                              value={item.lista_precio_id ?? "principal"}
+                              onChange={(event) => cambiarLista(item.id, event.target.value)}
+                              disabled={guardando}
+                              className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none"
+                            >
+                              <option value="principal">Catálogo principal</option>
+                              {listas.map((lista) => {
+                                const precio = preciosListas.find((p) => p.lista_id === lista.id && p.producto_id === item.producto.id && p.visible);
+                                return (
+                                  <option key={lista.id} value={lista.id} disabled={!precio || precio.precio_minorista == null}>
+                                    {lista.nombre}{!precio || precio.precio_minorista == null ? " (sin precio)" : ""}
+                                  </option>
+                                );
+                              })}
                             </select>
-                            Precio acordado ($)
-                            <input type="number" step="0.01" min="0.01" inputMode="decimal"
-                              aria-label={`Precio acordado de ${item.producto.nombre}`}
-                              value={precioAplicado(item)} disabled={guardando}
-                              onChange={e => {
-                                const valor = Number(e.target.value);
-                                setItems(actuales => actuales.map(i => i.id === item.id ? {
-                                  ...i, precio_presupuesto: Number.isFinite(valor) ? valor : 0,
-                                  tipo_precio_presupuesto: i.tipo_precio_presupuesto || (usaPrecioMayorista(i) ? "mayorista" : "minorista")
-                                } : i));
-                              }}
-                              className="w-28 rounded-lg border border-blue-200 bg-white p-2 text-sm" />
-                          </label>}
-                          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                cambiarCantidad(
-                                  item.id,
-                                  item.cantidad - 1
-                                )
-                              }
-                              className="p-3 text-slate-600 transition hover:bg-white"
-                            >
-                              <Minus className="h-4 w-4" />
-                            </button>
-                            <input
-                              type="number"
-                              min="1"
-                              max={
-                                controlaStock(item.producto) &&
-                                typeof item.producto.stock ===
-                                  "number"
-                                  ? item.producto.stock
-                                  : undefined
-                              }
-                              value={item.cantidad}
-                              onChange={(event) =>
-                                cambiarCantidad(
-                                  item.id,
-                                  Number(event.target.value)
-                                )
-                              }
-                              className="w-14 bg-transparent text-center font-black outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                cambiarCantidad(
-                                  item.id,
-                                  item.cantidad + 1
-                                )
-                              }
-                              className="p-3 text-slate-600 transition hover:bg-white"
-                            >
-                              <Plus className="h-4 w-4" />
+                          </label>
+
+                          {desdePDF && (
+                            <>
+                              <label className="flex flex-col gap-1.5 text-xs font-bold text-blue-800">
+                                Tipo de precio
+                                <select
+                                  aria-label={`Modalidad de precio de ${item.producto.nombre}`}
+                                  value={usaPrecioMayorista(item) ? "mayorista" : "minorista"}
+                                  disabled={guardando}
+                                  onChange={(e) => setItems((actuales) => actuales.map((i) => i.id === item.id ? {
+                                    ...i,
+                                    tipo_precio_presupuesto: e.target.value as "minorista" | "mayorista",
+                                    precio_presupuesto: undefined,
+                                  } : i))}
+                                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-800"
+                                >
+                                  <option value="minorista">Minorista</option>
+                                  <option value="mayorista">Mayorista</option>
+                                </select>
+                              </label>
+                              <label className="flex flex-col gap-1.5 text-xs font-bold text-blue-800">
+                                Precio acordado ($)
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  inputMode="decimal"
+                                  aria-label={`Precio acordado de ${item.producto.nombre}`}
+                                  value={precioAplicado(item)}
+                                  disabled={guardando}
+                                  onChange={(e) => {
+                                    const valor = Number(e.target.value);
+                                    setItems((actuales) => actuales.map((i) => i.id === item.id ? {
+                                      ...i,
+                                      precio_presupuesto: Number.isFinite(valor) ? valor : 0,
+                                      tipo_precio_presupuesto: i.tipo_precio_presupuesto || (usaPrecioMayorista(i) ? "mayorista" : "minorista"),
+                                    } : i));
+                                  }}
+                                  className="w-36 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-800"
+                                />
+                              </label>
+                            </>
+                          )}
+
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-xs font-bold text-slate-600">Cantidad</span>
+                            <div className="flex h-[42px] items-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                              <button type="button" onClick={() => cambiarCantidad(item.id, item.cantidad - 1)}
+                                className="px-3 py-2 text-slate-600 transition hover:bg-white" aria-label="Restar unidad">
+                                <Minus className="h-4 w-4" />
+                              </button>
+                              <input type="number" min="1"
+                                max={controlaStock(item.producto) && typeof item.producto.stock === "number" ? item.producto.stock : undefined}
+                                value={item.cantidad}
+                                onChange={(event) => cambiarCantidad(item.id, Number(event.target.value))}
+                                className="w-14 bg-transparent text-center font-black outline-none" />
+                              <button type="button" onClick={() => cambiarCantidad(item.id, item.cantidad + 1)}
+                                className="px-3 py-2 text-slate-600 transition hover:bg-white" aria-label="Sumar unidad">
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="ml-auto flex items-end gap-3">
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-slate-500">Subtotal</p>
+                              <p className="mt-1 text-lg font-black text-slate-900">
+                                {formatearPrecio(precioAplicado(item) * item.cantidad)}
+                              </p>
+                            </div>
+                            <button type="button" onClick={() => eliminarProducto(item.id)}
+                              className="rounded-xl border border-red-200 p-3 text-red-500 transition hover:bg-red-50"
+                              aria-label={`Eliminar ${item.producto.nombre}`}>
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
-                          <p className="min-w-28 text-right font-black text-slate-900">
-                            {formatearPrecio(
-                              precioAplicado(item) * item.cantidad
-                            )}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              eliminarProducto(
-                                  item.id
-                              )
-                            }
-                            className="rounded-xl border border-red-200 p-3 text-red-500 transition hover:bg-red-50"
-                            aria-label={`Eliminar ${item.producto.nombre}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
                         </div>
                       </div>
                     </article>
