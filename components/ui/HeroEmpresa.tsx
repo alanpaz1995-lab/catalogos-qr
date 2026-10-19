@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import {
   CalendarDays,
   Clock3,
+  LogOut,
   MapPin,
   RefreshCw,
   Store,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 type TurnoHorario = {
   desde: string;
@@ -53,14 +56,28 @@ export default function HeroEmpresa({
   cargando = false,
   onActualizar,
 }: HeroEmpresaProps) {
-  const estadoNegocio =
-    calcularEstadoNegocio(horariosSemana);
+  const [cerrandoSesion, setCerrandoSesion] = useState(false);
+  const [errorCierre, setErrorCierre] = useState("");
 
-  const ubicacion = [
-    direccion,
-    ciudad,
-    provincia,
-  ]
+  async function cerrarSesion() {
+    if (cerrandoSesion) return;
+    setCerrandoSesion(true);
+    setErrorCierre("");
+
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      window.location.replace("/login");
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+      setErrorCierre("No se pudo cerrar la sesión. Intentá nuevamente.");
+      setCerrandoSesion(false);
+    }
+  }
+
+  const estadoNegocio = calcularEstadoNegocio(horariosSemana);
+
+  const ubicacion = [direccion, ciudad, provincia]
     .filter(Boolean)
     .join(" · ");
 
@@ -89,23 +106,36 @@ export default function HeroEmpresa({
               ComerSys PRO
             </div>
 
-            <button
-              type="button"
-              disabled={cargando}
-              onClick={onActualizar}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${
-                  cargando ? "animate-spin" : ""
-                }`}
-              />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={cerrandoSesion}
+                onClick={() => void cerrarSesion()}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <LogOut className="h-4 w-4" />
+                {cerrandoSesion ? "Cerrando sesión..." : "Cerrar sesión"}
+              </button>
 
-              {cargando
-                ? "Actualizando..."
-                : "Actualizar"}
-            </button>
+              <button
+                type="button"
+                disabled={cargando || cerrandoSesion}
+                onClick={onActualizar}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${cargando ? "animate-spin" : ""}`}
+                />
+                {cargando ? "Actualizando..." : "Actualizar"}
+              </button>
+            </div>
           </div>
+
+          {errorCierre && (
+            <div role="alert" className="self-end rounded-xl border border-red-200 bg-red-950/80 px-4 py-2 text-sm font-semibold text-white">
+              {errorCierre}
+            </div>
+          )}
 
           <div>
             <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
@@ -119,9 +149,7 @@ export default function HeroEmpresa({
                 ) : (
                   <div
                     className="flex h-full w-full items-center justify-center text-5xl font-black text-white"
-                    style={{
-                      backgroundColor: colorPrincipal,
-                    }}
+                    style={{ backgroundColor: colorPrincipal }}
                   >
                     {nombre?.charAt(0).toUpperCase() || (
                       <Store className="h-14 w-14" />
@@ -200,7 +228,6 @@ function EstadoNegocio({
       {detalle && (
         <>
           <span className="hidden h-4 w-px bg-white/20 sm:block" />
-
           <span className="inline-flex items-center gap-2 text-sm font-semibold text-white/75">
             <Clock3 className="h-4 w-4" />
             {detalle}
@@ -226,117 +253,41 @@ function DatoHero({
   );
 }
 
-function calcularEstadoNegocio(
-  valor: unknown
-) {
-  if (
-    !valor ||
-    typeof valor !== "object" ||
-    Array.isArray(valor)
-  ) {
-    return {
-      abierto: false,
-      detalle: "Horario no informado",
-    };
+function calcularEstadoNegocio(valor: unknown) {
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) {
+    return { abierto: false, detalle: "Horario no informado" };
   }
 
   const horarios = valor as HorariosSemana;
-
-  const dias = [
-    "domingo",
-    "lunes",
-    "martes",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sabado",
-  ];
-
+  const dias = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
   const ahora = new Date();
-  const horarioDia =
-    horarios[dias[ahora.getDay()]];
+  const horarioDia = horarios[dias[ahora.getDay()]];
 
   if (!horarioDia?.activo) {
-    return {
-      abierto: false,
-      detalle: buscarProximaApertura(
-        horarios,
-        ahora
-      ),
-    };
+    return { abierto: false, detalle: buscarProximaApertura(horarios, ahora) };
   }
 
-  const minutosAhora =
-    ahora.getHours() * 60 +
-    ahora.getMinutes();
-
+  const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
   for (const turno of horarioDia.turnos || []) {
-    const desde =
-      convertirHoraAMinutos(turno.desde);
-    const hasta =
-      convertirHoraAMinutos(turno.hasta);
-
-    if (
-      minutosAhora >= desde &&
-      minutosAhora < hasta
-    ) {
-      return {
-        abierto: true,
-        detalle: `Cierra a las ${turno.hasta}`,
-      };
+    const desde = convertirHoraAMinutos(turno.desde);
+    const hasta = convertirHoraAMinutos(turno.hasta);
+    if (minutosAhora >= desde && minutosAhora < hasta) {
+      return { abierto: true, detalle: `Cierra a las ${turno.hasta}` };
     }
   }
 
-  return {
-    abierto: false,
-    detalle: buscarProximaApertura(
-      horarios,
-      ahora
-    ),
-  };
+  return { abierto: false, detalle: buscarProximaApertura(horarios, ahora) };
 }
 
-function buscarProximaApertura(
-  horarios: HorariosSemana,
-  fechaActual: Date
-) {
-  const dias = [
-    "domingo",
-    "lunes",
-    "martes",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sabado",
-  ];
+function buscarProximaApertura(horarios: HorariosSemana, fechaActual: Date) {
+  const dias = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+  const etiquetas = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
-  const etiquetas = [
-    "domingo",
-    "lunes",
-    "martes",
-    "miércoles",
-    "jueves",
-    "viernes",
-    "sábado",
-  ];
-
-  for (
-    let desplazamiento = 1;
-    desplazamiento <= 7;
-    desplazamiento++
-  ) {
-    const indice =
-      (fechaActual.getDay() +
-        desplazamiento) %
-      7;
-
+  for (let desplazamiento = 1; desplazamiento <= 7; desplazamiento++) {
+    const indice = (fechaActual.getDay() + desplazamiento) % 7;
     const dia = horarios[dias[indice]];
     const primerTurno = dia?.turnos?.[0];
-
-    if (
-      dia?.activo &&
-      primerTurno?.desde
-    ) {
+    if (dia?.activo && primerTurno?.desde) {
       return `Abre ${etiquetas[indice]} a las ${primerTurno.desde}`;
     }
   }
@@ -344,12 +295,7 @@ function buscarProximaApertura(
   return "Horario no informado";
 }
 
-function convertirHoraAMinutos(
-  hora: string
-) {
-  const [horas, minutos] = hora
-    .split(":")
-    .map(Number);
-
+function convertirHoraAMinutos(hora: string) {
+  const [horas, minutos] = hora.split(":").map(Number);
   return horas * 60 + minutos;
 }
