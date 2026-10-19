@@ -12,15 +12,116 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* La preferencia del sistema operativo no debe reemplazar la elección del usuario. */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/*
+ * Tema oscuro del panel administrativo.
+ * Se limita al contenedor de app/admin/layout.tsx.
+ * Los catálogos públicos, el login y el registro no se modifican.
+ */
+.comersys-admin-dark {
+  color-scheme: dark;
+  background-color: #000000;
+  color: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* Fondo base: negro puro, no azul marino. */
+.comersys-admin-dark main,
+.comersys-admin-dark .bg-\[\#F8FAFC\],
+.comersys-admin-dark .bg-slate-950,
+.comersys-admin-dark .bg-slate-900 {
+  background-color: #000000 !important;
+}
+
+/* Superficies neutrales: contraste suave como en ChatGPT. */
+.comersys-admin-dark :is(section, article, aside, header, div, form, label, details, summary).bg-white,
+.comersys-admin-dark :is(section, article, aside, header, div, form, label, details, summary).bg-slate-50,
+.comersys-admin-dark :is(section, article, aside, header, div, form, label, details, summary).bg-slate-100,
+.comersys-admin-dark :is(section, article, aside, header, div, form, label, details, summary).bg-slate-800 {
+  background-color: #171717 !important;
+}
+
+/* Textos de los módulos creados originalmente para fondo blanco. */
+.comersys-admin-dark :is(h1, h2, h3, h4, h5, h6),
+.comersys-admin-dark :is(.text-slate-900, .text-slate-800, .text-slate-700, .text-\[\#1E293B\]) {
+  color: #f5f5f5 !important;
+}
+
+.comersys-admin-dark :is(.text-slate-600, .text-slate-500, .text-slate-400) {
+  color: #b4b4b4 !important;
+}
+
+/* Bordes de tarjetas y separadores. */
+.comersys-admin-dark :is(.border-slate-100, .border-slate-200, .border-slate-300, .border-slate-600, .border-slate-700, .divide-slate-100) {
+  border-color: #333333 !important;
+}
+
+.comersys-admin-dark .divide-slate-100 > :not(:first-child) {
+  border-color: #333333 !important;
+}
+
+/* Campos editables, incluidas búsquedas y menús desplegables. */
+.comersys-admin-dark :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), textarea, select) {
+  background-color: #262626 !important;
+  border-color: #404040 !important;
+  color: #f5f5f5 !important;
+}
+
+.comersys-admin-dark :is(input, textarea)::placeholder {
+  color: #a3a3a3 !important;
+  opacity: 1;
+}
+
+.comersys-admin-dark :is(input, textarea, select):focus-visible {
+  outline-color: #60a5fa;
+}
+
+/* Los elementos interactivos neutros no quedan blancos sobre las tarjetas. */
+.comersys-admin-dark :is(button, a).bg-white,
+.comersys-admin-dark :is(button, a).bg-slate-50,
+.comersys-admin-dark :is(button, a).bg-slate-100 {
+  background-color: #262626 !important;
+  color: #f5f5f5 !important;
+  border-color: #404040 !important;
+}
+
+/* Las alertas y los botones de acción mantienen sus colores semánticos. */
+.comersys-admin-dark :is(.bg-red-50, .bg-amber-50, .bg-green-50, .bg-blue-50, .bg-emerald-50, .bg-violet-50, .bg-indigo-50, .bg-cyan-50) {
+  color-scheme: light;
+}
+
+/* Adaptar el fondo específico del Perfil, que antes era azul marino. */
+.comersys-admin-dark .perfil-comersys {
+  background-color: #000000 !important;
+}
+
+.comersys-admin-dark .perfil-comersys :is(section.bg-slate-900, section.bg-white) {
+  background-color: #171717 !important;
+}
+
+/*
+ * CORRECCIÓN HOVER: las filas y tarjetas no se vuelven blancas al pasar el mouse.
+ * Solo se aplica a contenedores; no cambia botones, enlaces ni alertas.
+ */
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-white:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-slate-50:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-slate-100:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-gray-50:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-gray-100:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-blue-50:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-\[\#F8FAFC\]:hover {
+  background-color: #262626 !important;
+}
+
+/* Variante con opacidad que se usa a veces en filas de listas. */
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-slate-50\/50:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-slate-50\/70:hover,
+.comersys-admin-dark :is(div, li, tr, article, section).hover\:bg-white\/50:hover {
+  background-color: #262626 !important;
 }

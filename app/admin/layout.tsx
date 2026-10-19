@@ -1,11 +1,8 @@
 "use client";
-
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-
 import { EmpresaProvider } from "@/lib/empresa/EmpresaProvider";
 import { supabase } from "@/lib/supabase";
-
 type EmpresaAcceso = {
   id: number;
   nombre: string;
@@ -14,7 +11,6 @@ type EmpresaAcceso = {
   prueba_fin?: string | null;
   suscripcion_activa: boolean;
 };
-
 export default function AdminLayout({
   children,
 }: {
@@ -26,51 +22,41 @@ export default function AdminLayout({
   const [activandoPlan, setActivandoPlan] = useState(false);
   const [errorSuscripcion, setErrorSuscripcion] = useState("");
   const [modoOscuro, setModoOscuro] = useState(false);
-
   const [mostrarCorreoMercadoPago, setMostrarCorreoMercadoPago] =
     useState(false);
-
   const [correoMercadoPago, setCorreoMercadoPago] = useState("");
-
   useEffect(() => {
     const aplicarTema = () => {
       const oscuro =
         window.localStorage.getItem("comersys-modo-oscuro") === "true";
-
       setModoOscuro(oscuro);
     };
-
     aplicarTema();
-
     window.addEventListener("storage", aplicarTema);
     window.addEventListener("focus", aplicarTema);
-
+    window.addEventListener("comersys-modo-oscuro-cambio", aplicarTema);
     return () => {
       window.removeEventListener("storage", aplicarTema);
       window.removeEventListener("focus", aplicarTema);
+      window.removeEventListener("comersys-modo-oscuro-cambio", aplicarTema);
     };
   }, []);
-
   useEffect(() => {
     async function verificarAcceso() {
       setCargando(true);
       setError("");
-
       const {
         data: { user },
         error: errorUsuario,
       } = await supabase.auth.getUser();
-
       if (errorUsuario || !user) {
         setError(
           errorUsuario?.message ||
             "Tu sesión no está activa. Iniciá sesión nuevamente."
         );
-
         setCargando(false);
         return;
       }
-
       const { data: empresaData, error: empresaError } = await supabase
         .from("empresas")
         .select(
@@ -78,24 +64,19 @@ export default function AdminLayout({
         )
         .eq("auth_user_id", user.id)
         .maybeSingle();
-
       if (empresaError || !empresaData) {
         setError(
           empresaError?.message ||
             "No encontramos una empresa asociada a tu cuenta."
         );
-
         setCargando(false);
         return;
       }
-
       setEmpresa(empresaData as EmpresaAcceso);
       setCargando(false);
     }
-
     verificarAcceso();
   }, []);
-
   const pruebaVigente = (() => {
     if (
       !empresa ||
@@ -105,27 +86,21 @@ export default function AdminLayout({
     ) {
       return false;
     }
-
     return new Date(empresa.prueba_fin).getTime() > Date.now();
   })();
-
   const accesoPermitido =
     Boolean(empresa?.suscripcion_activa) || pruebaVigente;
-
   const abrirFormularioMercadoPago = () => {
     setErrorSuscripcion("");
     setCorreoMercadoPago("");
     setMostrarCorreoMercadoPago(true);
   };
-
   const cerrarFormularioMercadoPago = () => {
     if (activandoPlan) return;
-
     setMostrarCorreoMercadoPago(false);
     setCorreoMercadoPago("");
     setErrorSuscripcion("");
   };
-
   const activarPlanProfesional = async () => {
     if (!empresa) {
       setErrorSuscripcion(
@@ -133,42 +108,34 @@ export default function AdminLayout({
       );
       return;
     }
-
     const emailMercadoPago = correoMercadoPago.trim().toLowerCase();
-
     if (!emailMercadoPago) {
       setErrorSuscripcion(
         "Ingresá el correo que utilizás en Mercado Pago."
       );
       return;
     }
-
     const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
       emailMercadoPago
     );
-
     if (!emailValido) {
       setErrorSuscripcion(
         "El correo de Mercado Pago no parece válido."
       );
       return;
     }
-
     setActivandoPlan(true);
     setErrorSuscripcion("");
-
     try {
       const {
         data: { session },
         error: errorSesion,
       } = await supabase.auth.getSession();
-
       if (errorSesion || !session?.access_token) {
         throw new Error(
           "Tu sesión no está activa. Iniciá sesión nuevamente."
         );
       }
-
       const respuesta = await fetch(
         "/api/mercadopago/crear-suscripcion",
         {
@@ -183,9 +150,7 @@ export default function AdminLayout({
           }),
         }
       );
-
       const data = await respuesta.json();
-
       if (!respuesta.ok) {
         throw new Error(
           data?.detalle?.message ||
@@ -193,15 +158,12 @@ export default function AdminLayout({
             "No se pudo iniciar la suscripción."
         );
       }
-
       if (!data?.initPoint) {
         throw new Error(
           "Mercado Pago no devolvió el enlace de pago."
         );
       }
-
       setMostrarCorreoMercadoPago(false);
-
       window.location.href = data.initPoint;
     } catch (error) {
       setErrorSuscripcion(
@@ -209,16 +171,13 @@ export default function AdminLayout({
           ? error.message
           : "No se pudo iniciar la suscripción."
       );
-
       setActivandoPlan(false);
     }
   };
-
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
     window.location.href = "/login";
   };
-
   if (cargando) {
     return (
       <main
@@ -230,7 +189,6 @@ export default function AdminLayout({
       >
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
-
           <p
             className={
               modoOscuro
@@ -244,7 +202,6 @@ export default function AdminLayout({
       </main>
     );
   }
-
   if (error) {
     return (
       <main
@@ -262,7 +219,6 @@ export default function AdminLayout({
           }
         >
           <div className="text-4xl">⚠️</div>
-
           <h1
             className={
               modoOscuro
@@ -272,11 +228,9 @@ export default function AdminLayout({
           >
             No pudimos verificar tu acceso
           </h1>
-
           <p className="mt-3 text-sm leading-6 text-red-600">
             {error}
           </p>
-
           <button
             type="button"
             onClick={cerrarSesion}
@@ -288,7 +242,6 @@ export default function AdminLayout({
       </main>
     );
   }
-
   if (!accesoPermitido) {
     return (
       <>
@@ -315,11 +268,9 @@ export default function AdminLayout({
             >
               🔒
             </div>
-
             <p className="mt-6 text-xs font-black uppercase tracking-[0.2em] text-red-600">
               Suscripción requerida
             </p>
-
             <h1
               className={
                 modoOscuro
@@ -329,7 +280,6 @@ export default function AdminLayout({
             >
               Tu acceso a ComerSyS está bloqueado
             </h1>
-
             <p
               className={
                 modoOscuro
@@ -341,7 +291,6 @@ export default function AdminLayout({
               Para continuar usando el panel de administración, activá el
               Plan Profesional.
             </p>
-
             {empresa?.prueba_fin && empresa.plan === "prueba" && (
               <p
                 className={
@@ -359,7 +308,6 @@ export default function AdminLayout({
                 .
               </p>
             )}
-
             <div
               className={
                 modoOscuro
@@ -376,7 +324,6 @@ export default function AdminLayout({
               >
                 Plan Profesional
               </p>
-
               <p
                 className={
                   modoOscuro
@@ -387,7 +334,6 @@ export default function AdminLayout({
                 $17.500 por mes
               </p>
             </div>
-
             <button
               type="button"
               onClick={abrirFormularioMercadoPago}
@@ -396,13 +342,11 @@ export default function AdminLayout({
             >
               Activar Plan Profesional
             </button>
-
             {errorSuscripcion && (
               <p className="mx-auto mt-4 max-w-lg text-sm font-semibold text-red-600">
                 {errorSuscripcion}
               </p>
             )}
-
             <div className="mt-6">
               <button
                 type="button"
@@ -416,7 +360,6 @@ export default function AdminLayout({
                 Cerrar sesión
               </button>
             </div>
-
             <p
               className={
                 modoOscuro
@@ -429,7 +372,6 @@ export default function AdminLayout({
             </p>
           </section>
         </main>
-
         {mostrarCorreoMercadoPago && (
           <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
@@ -449,11 +391,9 @@ export default function AdminLayout({
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
                 💳
               </div>
-
               <h2 className="mt-5 text-center text-2xl font-black">
                 Correo de Mercado Pago
               </h2>
-
               <p
                 className={
                   modoOscuro
@@ -465,7 +405,6 @@ export default function AdminLayout({
                 <strong>Mercado Pago</strong> que va a realizar el pago de la
                 suscripción.
               </p>
-
               <div className="mt-6">
                 <label
                   htmlFor="correoMercadoPago"
@@ -477,7 +416,6 @@ export default function AdminLayout({
                 >
                   Correo de Mercado Pago
                 </label>
-
                 <input
                   id="correoMercadoPago"
                   type="email"
@@ -491,7 +429,7 @@ export default function AdminLayout({
                       activarPlanProfesional();
                     }
                   }}
-                  placeholder="ejemplo@gmail.com"
+                  placeholder="ejemplo\@gmail.com"
                   autoComplete="email"
                   autoFocus
                   disabled={activandoPlan}
@@ -502,7 +440,6 @@ export default function AdminLayout({
                   }
                 />
               </div>
-
               <div
                 className={
                   modoOscuro
@@ -514,13 +451,11 @@ export default function AdminLayout({
                 Mercado Pago. No cambia el correo con el que iniciás sesión
                 en ComerSys.
               </div>
-
               {errorSuscripcion && (
                 <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold leading-6 text-red-600">
                   {errorSuscripcion}
                 </div>
               )}
-
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
                 <button
                   type="button"
@@ -534,7 +469,6 @@ export default function AdminLayout({
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="button"
                   onClick={activarPlanProfesional}
@@ -552,7 +486,6 @@ export default function AdminLayout({
       </>
     );
   }
-
   return (
     <EmpresaProvider>
       <div
