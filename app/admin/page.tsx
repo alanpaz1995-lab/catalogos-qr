@@ -1492,6 +1492,14 @@ const cargarDashboard = useCallback(async () => {
 
         {
 
+          texto: "📄 Presupuesto para cliente",
+
+          href: "/admin/clientes/presupuesto",
+
+        },
+
+        {
+
           texto: "💳 Cuentas corrientes",
 
           href: "/admin/clientes",
