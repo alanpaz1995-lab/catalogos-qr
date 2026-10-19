@@ -254,21 +254,22 @@ export default function NuevoProductoManualPage() {
         precioMayorista.trim()
           ? convertirPrecio(precioMayorista)
           : null;
-      const cantidadMinimaMayoristaNumero =
-        convertirEntero(
-          cantidadMinimaMayorista,
-          "La cantidad mínima mayorista"
-        );
-      const stockNumero = convertirEntero(
-        stock,
-        "El stock"
-      );
-      const stockMinimoNumero = convertirEntero(
-        stockMinimo,
-        "El stock mínimo"
-      );
-      validarStock(stockNumero);
-      validarStock(stockMinimoNumero);
+      // Si el producto no controla stock, no exigimos campos de inventario
+      // ni cantidad mínima mayorista. Conservamos el umbral habitual de 10
+      // unidades para mayorista y guardamos stock en cero.
+      const cantidadMinimaMayoristaNumero = controlarStock
+        ? convertirEntero(cantidadMinimaMayorista, "La cantidad mínima mayorista")
+        : 10;
+      const stockNumero = controlarStock
+        ? convertirEntero(stock, "El stock")
+        : 0;
+      const stockMinimoNumero = controlarStock
+        ? convertirEntero(stockMinimo, "El stock mínimo")
+        : 0;
+      if (controlarStock) {
+        validarStock(stockNumero);
+        validarStock(stockMinimoNumero);
+      }
       if (costoNumero < 0) {
         throw new Error("El costo del producto no puede ser negativo.");
       }
@@ -510,40 +511,46 @@ export default function NuevoProductoManualPage() {
                   placeholder="Opcional. Ejemplo: 22000"
                   inputMode="decimal"
                 />
-                <CampoTexto
-                  id="cantidad-minima-mayorista"
-                  label="Mayorista desde"
-                  value={cantidadMinimaMayorista}
-                  onChange={setCantidadMinimaMayorista}
-                  placeholder="Ejemplo: 10"
-                  inputMode="numeric"
-                  required
-                />
+                {controlarStock && (
+                  <CampoTexto
+                    id="cantidad-minima-mayorista"
+                    label="Mayorista desde"
+                    value={cantidadMinimaMayorista}
+                    onChange={setCantidadMinimaMayorista}
+                    placeholder="Ejemplo: 10"
+                    inputMode="numeric"
+                    required
+                  />
+                )}
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-700">
                   Si dejás vacío el precio mayorista,
                   el producto utilizará siempre el precio
-                  minorista. El beneficio se aplica por
-                  producto cuando alcanza la cantidad
-                  mínima configurada.
+                  minorista. {controlarStock
+                    ? "El beneficio se aplica por producto cuando alcanza la cantidad mínima configurada."
+                    : "Podés configurar precios sin llevar control de inventario."}
                 </div>
-                <CampoTexto
-                  id="stock"
-                  label="Stock actual"
-                  value={stock}
-                  onChange={setStock}
-                  placeholder="Ejemplo: 10"
-                  inputMode="numeric"
-                  required
-                />
-                <CampoTexto
-                  id="stock-minimo"
-                  label="Stock mínimo"
-                  value={stockMinimo}
-                  onChange={setStockMinimo}
-                  placeholder="Ejemplo: 2"
-                  inputMode="numeric"
-                  required
-                />
+                {controlarStock && (
+                  <>
+                    <CampoTexto
+                      id="stock"
+                      label="Stock actual"
+                      value={stock}
+                      onChange={setStock}
+                      placeholder="Ejemplo: 10"
+                      inputMode="numeric"
+                      required
+                    />
+                    <CampoTexto
+                      id="stock-minimo"
+                      label="Stock mínimo"
+                      value={stockMinimo}
+                      onChange={setStockMinimo}
+                      placeholder="Ejemplo: 2"
+                      inputMode="numeric"
+                      required
+                    />
+                  </>
+                )}
                 <div>
                   <label htmlFor="estado" className="mb-2 block font-semibold">
                     Estado
@@ -692,8 +699,10 @@ export default function NuevoProductoManualPage() {
             <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
               <h2 className="text-xl font-bold">Precios por lista de catálogo</h2>
               <p className="mt-2 text-sm text-slate-500">
-                Un solo producto y un solo stock para todas las listas. Marcá
-                dónde querés mostrarlo y asigná los precios de cada lista.
+                {controlarStock
+                  ? "Un solo producto y un solo stock para todas las listas. "
+                  : "Un solo producto para todas las listas, sin control de stock. "}
+                Marcá dónde querés mostrarlo y asigná los precios de cada lista.
                 Si no cargás mayorista, se utilizará el minorista.
               </p>
               <div className="mt-6 space-y-4">
