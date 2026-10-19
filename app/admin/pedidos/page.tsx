@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { FileUp, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
@@ -280,6 +280,14 @@ export default function PedidosPage() {
                 />
                 Actualizar
               </button>
+
+              <Link
+                href="/admin/pedidos/importar-pdf"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 py-3 font-semibold text-blue-700 transition hover:bg-blue-100"
+              >
+                <FileUp className="h-5 w-5" />
+                Cargar pedido desde PDF
+              </Link>
 
               <Link
                 href="/admin/pedidos/nuevo"
