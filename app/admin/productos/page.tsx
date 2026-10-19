@@ -28,11 +28,7 @@ import ResumenProductos, {
 
 } from "@/components/productos/ResumenProductos";
 
-import FiltrosProductos, {
 
-  type FiltroProducto,
-
-} from "@/components/productos/FiltrosProductos";
 
 import TablaProductos, {
 
@@ -83,9 +79,22 @@ export default function ProductosPage() {
 
     useState("");
 
-  const [filtro, setFiltro] =
+  const [filtro, setFiltro] = useState("__todas__");
+  const [categorias, setCategorias] = useState<string[]>([]);
 
-    useState<FiltroProducto>("Todos");
+  // La selección se guarda por empresa y sobrevive a la navegación de edición.
+  useEffect(() => {
+    if (!empresa?.id) return;
+    const clave = `comersys-productos-categoria-${empresa.id}`;
+    setFiltro(window.localStorage.getItem(clave) || "__todas__");
+  }, [empresa?.id]);
+
+  function cambiarFiltro(categoria: string) {
+    setFiltro(categoria);
+    if (empresa?.id) {
+      window.localStorage.setItem(`comersys-productos-categoria-${empresa.id}`, categoria);
+    }
+  }
 
   const [vista, setVista] =
 
@@ -198,6 +207,10 @@ export default function ProductosPage() {
           (categoria, indice) => [categoria.nombre, Number(categoria.orden ?? indice + 1)]
         )
       );
+      const nombresCategoria = ((resultadoCategorias.data || []) as Array<{ nombre: string }>).map((c) => c.nombre);
+      const categoriasUsadas = productosCargados.map((p) => p.categoria || "");
+      setCategorias(Array.from(new Set([...nombresCategoria, ...categoriasUsadas].map((c) => c.trim()).filter(Boolean)))
+        .sort((a, b) => (ordenCategorias.get(a) ?? Number.MAX_SAFE_INTEGER) - (ordenCategorias.get(b) ?? Number.MAX_SAFE_INTEGER) || a.localeCompare(b, "es")));
       setProductos([...productosCargados].sort((a, b) => {
         const ordenA = ordenCategorias.get(a.categoria || "") ?? Number.MAX_SAFE_INTEGER;
         const ordenB = ordenCategorias.get(b.categoria || "") ?? Number.MAX_SAFE_INTEGER;
@@ -413,71 +426,7 @@ export default function ProductosPage() {
 
 
 
-          const stockBajo =
-
-            Number(producto.stock) <=
-
-            Number(
-
-              producto.stock_minimo
-
-            );
-
-
-
-          const coincideFiltro =
-
-            filtro === "Todos" ||
-
-            (filtro === "Stock bajo" &&
-
-              producto.estado ===
-
-                "Activo" &&
-
-              stockBajo) ||
-
-            (filtro === "Nuevos" &&
-
-              producto.estado ===
-
-                "Activo" &&
-
-              producto.nuevo_ingreso) ||
-
-            (filtro === "Ofertas" &&
-
-              producto.estado ===
-
-                "Activo" &&
-
-              producto.oferta) ||
-
-            (filtro ===
-
-              "Destacados" &&
-
-              producto.estado ===
-
-                "Activo" &&
-
-              producto.destacado) ||
-
-            (filtro === "Ocultos" &&
-
-              producto.estado ===
-
-                "Activo" &&
-
-              !producto.visible_catalogo) ||
-
-            (filtro === "Inactivos" &&
-
-              producto.estado !==
-
-                "Activo");
-
-
+          const coincideFiltro = filtro === "__todas__" || (producto.categoria || "").trim() === filtro;
 
           return (
 
@@ -917,29 +866,52 @@ export default function ProductosPage() {
 
 
 
-        <FiltrosProductos
-
-          busqueda={busqueda}
-
-          filtro={filtro}
-
-          cargando={cargandoEmpresa || cargando}
-
-          vista={vista}
-
-          onBusqueda={setBusqueda}
-
-          onFiltro={setFiltro}
-
-          onVista={cambiarVista}
-
-          onActualizar={
-
-            cargarProductos
-
-          }
-
-        />
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,290px)_auto] md:items-end">
+            <label className="block text-sm font-semibold text-slate-800">
+              Buscar producto
+              <input
+                type="search"
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Buscar por nombre, categoría o descripción"
+                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+            <label className="block text-sm font-semibold text-slate-800">
+              Categoría
+              <select
+                value={filtro}
+                onChange={(event) => cambiarFiltro(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="__todas__">Todas las categorías</option>
+                {categorias.map((categoria) => (
+                  <option key={categoria} value={categoria}>{categoria}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={cargarProductos}
+              disabled={cargandoEmpresa || cargando}
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              ↻ Actualizar
+            </button>
+          </div>
+          <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4">
+            <span className="mr-2 text-sm font-semibold text-slate-600">Vista</span>
+            <button type="button" onClick={() => cambiarVista("lista")}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold ${vista === "lista" ? "bg-blue-600 text-white" : "border border-slate-300 bg-white text-slate-800"}`}>
+              ☰ Lista
+            </button>
+            <button type="button" onClick={() => cambiarVista("tarjetas")}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold ${vista === "tarjetas" ? "bg-blue-600 text-white" : "border border-slate-300 bg-white text-slate-800"}`}>
+              ▣ Tarjetas
+            </button>
+          </div>
+        </section>
 
 
 
