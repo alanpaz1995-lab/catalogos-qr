@@ -25,6 +25,17 @@ type ModuleGridProps = {
   modulos: ModuloDashboard[];
 };
 
+// Referencias visuales de los atajos oficiales de ComerSys.
+// La escucha de las teclas se implementará por separado.
+const ATAJOS_MODULOS: Record<string, string> = {
+  Productos: "F6",
+  Clientes: "F7",
+  Pedidos: "F8",
+  Caja: "F9",
+  Ganancias: "F11",
+  "Actualización de precios": "F12",
+};
+
 export default function ModuleGrid({
   modulos,
 }: ModuleGridProps) {
@@ -113,10 +124,22 @@ function TarjetaModulo({
     },
   }[color];
 
+  const atajo = ATAJOS_MODULOS[titulo];
+
   return (
     <article
-      className={`overflow-hidden rounded-3xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${estilos.borde} ${estilos.fondo}`}
+      className={`relative overflow-hidden rounded-3xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${estilos.borde} ${estilos.fondo}`}
     >
+      {atajo && (
+        <span
+          className="pointer-events-none absolute right-4 top-3 select-none text-lg font-extrabold leading-none text-slate-400/80"
+          aria-label={`Atajo de teclado ${atajo}`}
+          title={`Atajo ${atajo}`}
+        >
+          {atajo}
+        </span>
+      )}
+
       <div className="p-6">
         <div className="flex items-start gap-4">
           <div
@@ -125,7 +148,7 @@ function TarjetaModulo({
             {icono}
           </div>
 
-          <div>
+          <div className="min-w-0 pr-7">
             <h3
               className={`text-xl font-bold ${estilos.titulo}`}
             >

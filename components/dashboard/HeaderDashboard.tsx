@@ -111,6 +111,28 @@ export default function HeaderDashboard({
     setAccion(tipo);
   }
 
+  // Atajos únicamente en el dashboard, usando los mismos selectores de los botones.
+  useEffect(() => {
+    function manejarAtajos(event: KeyboardEvent) {
+      if (event.key !== "F3" && event.key !== "F4") return;
+      if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+      if (!slugEmpresa || accion || procesando) return;
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+
+      const objetivo = event.target;
+      if (objetivo instanceof HTMLElement && (
+        objetivo.isContentEditable ||
+        Boolean(objetivo.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'))
+      )) return;
+
+      event.preventDefault();
+      setAccion(event.key === "F3" ? "ver" : "copiar");
+    }
+
+    window.addEventListener("keydown", manejarAtajos);
+    return () => window.removeEventListener("keydown", manejarAtajos);
+  }, [slugEmpresa, accion, procesando]);
+
   const catalogos: Catalogo[] = slugEmpresa
     ? [
         {
