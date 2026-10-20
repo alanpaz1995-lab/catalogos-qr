@@ -88,6 +88,8 @@ type Producto = {
 
   stock?: number | null;
 
+  controlar_stock?: boolean | null;
+
   estado: string;
 
   created_at: string;
@@ -492,7 +494,7 @@ const cargarDashboard = useCallback(async () => {
 
         .select(
 
-          "id, nombre, stock, estado, created_at"
+          "id, nombre, stock, controlar_stock, estado, created_at"
 
         )
 
@@ -859,6 +861,8 @@ const cargarDashboard = useCallback(async () => {
       productos.filter(
 
         (producto) =>
+
+          producto.controlar_stock !== false &&
 
           typeof producto.stock ===
 
@@ -1332,7 +1336,9 @@ const cargarDashboard = useCallback(async () => {
 
       valor: String(productos.length),
 
-      detalle: `${productosStockBajo.length} con stock bajo`,
+      detalle: productos.some((producto) => producto.controlar_stock !== false)
+        ? `${productosStockBajo.length} con stock bajo`
+        : "Control de stock deshabilitado",
 
       icono: "📦",
 
