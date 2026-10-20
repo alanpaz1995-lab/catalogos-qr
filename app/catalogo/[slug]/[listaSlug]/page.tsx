@@ -163,6 +163,48 @@ export default function CatalogoListaPage() {
 
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  // Solo el dueño autenticado puede habilitar el tema oscuro de su vista de catálogo.
+  const [vistaAdminAutorizada, setVistaAdminAutorizada] = useState(false);
+  const [modoOscuroAdmin, setModoOscuroAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    if (new URLSearchParams(window.location.search).get("vista") !== "administrador") {
+      setVistaAdminAutorizada(false);
+      return;
+    }
+    let vigente = true;
+    async function comprobarAdministrador() {
+      setVistaAdminAutorizada(false);
+      const { data: { user }, error: errorSesion } = await supabase.auth.getUser();
+      if (errorSesion || !user) return;
+      const { data: empresaPropia, error: errorEmpresa } = await supabase
+        .from("empresas")
+        .select("id")
+        .eq("id", empresa!.id)
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      if (!vigente || errorEmpresa || !empresaPropia) return;
+      const preferencia = window.localStorage.getItem("comersys-catalogo-modo-oscuro");
+      setModoOscuroAdmin(preferencia === null
+        ? window.localStorage.getItem("comersys-modo-oscuro") === "true"
+        : preferencia === "true");
+      setVistaAdminAutorizada(true);
+    }
+    void comprobarAdministrador();
+    return () => { vigente = false; };
+  }, [empresa?.id]);
+
+  const catalogoOscuro = vistaAdminAutorizada && modoOscuroAdmin;
+
+  function alternarModoCatalogo() {
+    if (!vistaAdminAutorizada) return;
+    const siguiente = !modoOscuroAdmin;
+    setModoOscuroAdmin(siguiente);
+    window.localStorage.setItem("comersys-catalogo-modo-oscuro", String(siguiente));
+  }
+
+
 
 
 
@@ -1445,11 +1487,44 @@ export default function CatalogoListaPage() {
 
 
 
-    <main className="min-h-screen bg-[#F8FAFC] text-[#1E293B]">
+    <main className={catalogoOscuro
+      ? "comersys-catalogo-admin-oscuro min-h-screen bg-black text-neutral-100"
+      : "min-h-screen bg-[#F8FAFC] text-[#1E293B]"}>
+      {vistaAdminAutorizada && (
+        <div className="fixed right-4 top-4 z-[75] flex items-center gap-2 rounded-2xl border border-neutral-600 bg-[#171717] p-2 text-white shadow-2xl">
+          <span className="hidden px-2 text-xs font-bold sm:inline">Vista del administrador</span>
+          <button type="button" onClick={alternarModoCatalogo}
+            aria-label={modoOscuroAdmin ? "Activar modo claro del catálogo" : "Activar modo oscuro del catálogo"}
+            className="rounded-xl bg-[#2563EB] px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">
+            {modoOscuroAdmin ? "☀️ Modo claro" : "🌙 Modo oscuro"}
+          </button>
+        </div>
+      )}
+      <style>{`
+        .comersys-catalogo-admin-oscuro .bg-white { background-color: #171717 !important; }
+        .comersys-catalogo-admin-oscuro .bg-slate-50,
+        .comersys-catalogo-admin-oscuro .bg-slate-100,
+        .comersys-catalogo-admin-oscuro .bg-slate-200 { background-color: #262626 !important; }
+        .comersys-catalogo-admin-oscuro .border-slate-200,
+        .comersys-catalogo-admin-oscuro .border-slate-300 { border-color: #404040 !important; }
+        .comersys-catalogo-admin-oscuro .text-slate-400,
+        .comersys-catalogo-admin-oscuro .text-slate-500,
+        .comersys-catalogo-admin-oscuro .text-slate-600 { color: #bdbdbd !important; }
+        .comersys-catalogo-admin-oscuro .text-slate-700,
+        .comersys-catalogo-admin-oscuro .text-slate-800 { color: #ececec !important; }
+        .comersys-catalogo-admin-oscuro input,
+        .comersys-catalogo-admin-oscuro textarea,
+        .comersys-catalogo-admin-oscuro select { background-color: #262626; color: #f5f5f5; border-color: #525252; }
+        .comersys-catalogo-admin-oscuro input::placeholder { color: #a3a3a3; }
+        .comersys-catalogo-admin-oscuro .bg-emerald-50 { background-color: #103c2a !important; }
+        .comersys-catalogo-admin-oscuro .text-emerald-700 { color: #8ce9b3 !important; }
+        .comersys-catalogo-admin-oscuro .bg-green-100 { background-color: #14532d !important; }
+        .comersys-catalogo-admin-oscuro .text-green-700 { color: #bbf7d0 !important; }
+      `}</style>
 
 
 
-      <HeroCatalogo empresa={empresa} />
+      <HeroCatalogo empresa={empresa} modoOscuro={catalogoOscuro} />
 
 
 

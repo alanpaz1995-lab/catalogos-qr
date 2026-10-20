@@ -16,8 +16,10 @@ type HorariosSemana = Record<string, HorarioDia>;
 
 export default function HeroCatalogo({
   empresa,
+  modoOscuro = false,
 }: {
   empresa: Empresa;
+  modoOscuro?: boolean;
 }) {
   const colorPrincipal =
     empresa.color_principal || "#2563EB";
@@ -53,10 +55,13 @@ export default function HeroCatalogo({
   );
 
   async function compartirCatalogo() {
+    // El enlace compartido siempre apunta al catálogo público, sin parámetros
+    // de vista administrativa ni preferencias visuales del administrador.
+    const enlacePublico = `${window.location.origin}${window.location.pathname}`;
     const datos = {
       title: empresa.nombre,
       text: `Conocé el catálogo de ${empresa.nombre}`,
-      url: window.location.href,
+      url: enlacePublico,
     };
 
     if (navigator.share) {
@@ -64,9 +69,7 @@ export default function HeroCatalogo({
       return;
     }
 
-    await navigator.clipboard.writeText(
-      window.location.href
-    );
+    await navigator.clipboard.writeText(enlacePublico);
 
     window.alert(
       "El enlace del catálogo fue copiado."
@@ -74,7 +77,7 @@ export default function HeroCatalogo({
   }
 
   return (
-    <header className="bg-white">
+    <header className={modoOscuro ? "bg-black" : "bg-white"}>
       <div
         className="relative min-h-[520px] overflow-hidden"
         style={{

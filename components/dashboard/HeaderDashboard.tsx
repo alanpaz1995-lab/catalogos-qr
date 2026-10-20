@@ -153,7 +153,10 @@ export default function HeaderDashboard({
     const tipo = accion;
     // Abrir desde el clic del usuario para evitar bloqueos de ventanas emergentes.
     if (tipo === "ver") {
-      window.open(catalogo.ruta, "_blank", "noopener,noreferrer");
+      // La vista administrativa requiere una sesión válida del dueño.
+      // Los catálogos verifican esa autorización antes de aplicar el tema oscuro.
+      const separador = catalogo.ruta.includes("?") ? "&" : "?";
+      window.open(`${catalogo.ruta}${separador}vista=administrador`, "_blank", "noopener,noreferrer");
       setAccion(null);
       return;
     }
