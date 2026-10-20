@@ -24,6 +24,7 @@ type TurnoHorario = {
 };
 type HorarioDia = {
   activo: boolean;
+  abierto24Horas: boolean;
   turnos: TurnoHorario[];
 };
 type DiaSemana =
@@ -63,6 +64,7 @@ type PerfilEmpresa = {
 const horariosSemanaIniciales: HorariosSemana = {
   lunes: {
     activo: true,
+    abierto24Horas: false,
     turnos: [
       { desde: "09:00", hasta: "13:00" },
       { desde: "16:00", hasta: "20:00" },
@@ -70,6 +72,7 @@ const horariosSemanaIniciales: HorariosSemana = {
   },
   martes: {
     activo: true,
+    abierto24Horas: false,
     turnos: [
       { desde: "09:00", hasta: "13:00" },
       { desde: "16:00", hasta: "20:00" },
@@ -77,6 +80,7 @@ const horariosSemanaIniciales: HorariosSemana = {
   },
   miercoles: {
     activo: true,
+    abierto24Horas: false,
     turnos: [
       { desde: "09:00", hasta: "13:00" },
       { desde: "16:00", hasta: "20:00" },
@@ -84,6 +88,7 @@ const horariosSemanaIniciales: HorariosSemana = {
   },
   jueves: {
     activo: true,
+    abierto24Horas: false,
     turnos: [
       { desde: "09:00", hasta: "13:00" },
       { desde: "16:00", hasta: "20:00" },
@@ -91,6 +96,7 @@ const horariosSemanaIniciales: HorariosSemana = {
   },
   viernes: {
     activo: true,
+    abierto24Horas: false,
     turnos: [
       { desde: "09:00", hasta: "13:00" },
       { desde: "16:00", hasta: "20:00" },
@@ -98,10 +104,12 @@ const horariosSemanaIniciales: HorariosSemana = {
   },
   sabado: {
     activo: true,
+    abierto24Horas: false,
     turnos: [{ desde: "09:00", hasta: "13:00" }],
   },
   domingo: {
     activo: false,
+    abierto24Horas: false,
     turnos: [],
   },
 };
@@ -1209,6 +1217,7 @@ function EditorHorarios({
   ) {
     actualizarDia(dia, {
       activo,
+      abierto24Horas: activo ? value[dia].abierto24Horas : false,
       turnos:
         activo && value[dia].turnos.length === 0
           ? [{ desde: "09:00", hasta: "13:00" }]
@@ -1232,7 +1241,7 @@ function EditorHorarios({
       </summary>
       <div className="border-t border-slate-200 px-3 pb-4 pt-4 sm:px-5">
         <p className="mb-4 text-sm leading-6 text-slate-500">
-          Activá los días de atención y cargá hasta dos turnos por día.
+          Activá los días de atención y cargá hasta dos turnos, o marcá Abierto 24 horas para cada día que corresponda.
         </p>
         <div className="space-y-4">
         {diasSemana.map(({ clave, etiqueta }) => {
@@ -1259,6 +1268,20 @@ function EditorHorarios({
                     {etiqueta}
                   </span>
                 </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={horarioDia.activo && horarioDia.abierto24Horas}
+                    onChange={(event) =>
+                      actualizarDia(clave, {
+                        activo: event.target.checked ? true : horarioDia.activo,
+                        abierto24Horas: event.target.checked,
+                      })
+                    }
+                    className="h-5 w-5 accent-[#2563EB]"
+                  />
+                  Abierto 24 horas
+                </label>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-black ${
                     horarioDia.activo
@@ -1267,11 +1290,11 @@ function EditorHorarios({
                   }`}
                 >
                   {horarioDia.activo
-                    ? "Abierto"
+                    ? horarioDia.abierto24Horas ? "Abierto 24 horas" : "Abierto"
                     : "Cerrado"}
                 </span>
               </div>
-              {horarioDia.activo && (
+              {horarioDia.activo && !horarioDia.abierto24Horas && (
                 <div className="mt-4 space-y-3">
                   {horarioDia.turnos.map(
                     (turno, indice) => (
@@ -1368,6 +1391,7 @@ function normalizarHorariosSemana(
         typeof dia.activo === "boolean"
           ? dia.activo
           : resultado[clave].activo,
+      abierto24Horas: dia.activo !== false && dia.abierto24Horas === true,
       turnos: Array.isArray(dia.turnos)
         ? dia.turnos
             .filter(
@@ -1392,6 +1416,9 @@ function formatearHorarios(
       const dia = horarios[clave];
       if (!dia.activo) {
         return `${etiqueta}: Cerrado`;
+      }
+      if (dia.abierto24Horas) {
+        return `${etiqueta}: Abierto 24 horas`;
       }
       const turnosValidos = dia.turnos.filter(
         (turno) => turno.desde && turno.hasta
