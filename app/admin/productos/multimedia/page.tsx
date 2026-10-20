@@ -1,12 +1,13 @@
+
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 import HeaderBibliotecaMultimedia from "@/components/productos/HeaderBibliotecaMultimedia";
 import ResumenBibliotecaMultimedia from "@/components/productos/ResumenBibliotecaMultimedia";
@@ -15,16 +16,25 @@ import GridBibliotecaMultimedia, {
   type MultimediaBiblioteca,
 } from "@/components/productos/GridBibliotecaMultimedia";
 
-const EMPRESA_ID = 1;
-
 type ProductoResumen = {
   id: number;
   nombre: string;
 };
 
 export default function BibliotecaMultimediaPage() {
+  const {
+    empresa,
+    cargandoEmpresa,
+    errorEmpresa,
+  } = useEmpresa();
+
+  const empresaId = empresa?.id;
+
   const [multimedia, setMultimedia] =
     useState<MultimediaBiblioteca[]>([]);
+
+  const [bibliotecaEmpresaId, setBibliotecaEmpresaId] =
+    useState<number | null>(null);
 
   const [busqueda, setBusqueda] =
     useState("");
@@ -35,10 +45,22 @@ export default function BibliotecaMultimediaPage() {
   const [error, setError] =
     useState("");
 
-  const cargarBiblioteca =
-    useCallback(async () => {
+  useEffect(() => {
+    let activo = true;
+
+    async function cargarBiblioteca() {
+      if (!empresaId) {
+        setMultimedia([]);
+        setBibliotecaEmpresaId(null);
+        setCargando(false);
+        return;
+      }
+
       setCargando(true);
       setError("");
+      setMultimedia([]);
+      setBibliotecaEmpresaId(null);
+      setBusqueda("");
 
       try {
         const {
@@ -47,7 +69,7 @@ export default function BibliotecaMultimediaPage() {
         } = await supabase
           .from("producto_multimedia")
           .select("*")
-          .eq("empresa_id", EMPRESA_ID)
+          .eq("empresa_id", empresaId)
           .eq("activo", true)
           .order("created_at", {
             ascending: false,
@@ -59,6 +81,8 @@ export default function BibliotecaMultimediaPage() {
           );
         }
 
+        if (!activo) return;
+
         const registros =
           (multimediaData || []) as Omit<
             MultimediaBiblioteca,
@@ -68,14 +92,12 @@ export default function BibliotecaMultimediaPage() {
         const productosIds = Array.from(
           new Set(
             registros.map(
-              (item) =>
-                item.producto_id
+              (item) => item.producto_id
             )
           )
         );
 
-        let productos: ProductoResumen[] =
-          [];
+        let productos: ProductoResumen[] = [];
 
         if (productosIds.length > 0) {
           const {
@@ -84,10 +106,7 @@ export default function BibliotecaMultimediaPage() {
           } = await supabase
             .from("productos")
             .select("id, nombre")
-            .eq(
-              "empresa_id",
-              EMPRESA_ID
-            )
+            .eq("empresa_id", empresaId)
             .in("id", productosIds);
 
           if (productosError) {
@@ -96,123 +115,156 @@ export default function BibliotecaMultimediaPage() {
             );
           }
 
+          if (!activo) return;
+
           productos =
-            (productosData ||
-              []) as ProductoResumen[];
+            (productosData || []) as ProductoResumen[];
         }
 
-        const nombresProductos =
-          new Map(
-            productos.map(
-              (producto) => [
-                producto.id,
-                producto.nombre,
-              ]
-            )
-          );
+        const nombresProductos = new Map(
+          productos.map((producto) => [
+            producto.id,
+            producto.nombre,
+          ])
+        );
 
         const registrosCompletos =
-          registros.map(
-            (item) => ({
-              ...item,
-              producto_nombre:
-                nombresProductos.get(
-                  item.producto_id
-                ) ||
-                "Producto no encontrado",
-            })
-          );
+          registros.map((item) => ({
+            ...item,
+            producto_nombre:
+              nombresProductos.get(
+                item.producto_id
+              ) || "Producto no encontrado",
+          }));
 
-        setMultimedia(
-          registrosCompletos
-        );
-      } catch (
-        errorDesconocido
-      ) {
+        if (!activo) return;
+
+        setMultimedia(registrosCompletos);
+        setBibliotecaEmpresaId(empresaId);
+      } catch (errorDesconocido) {
+        if (!activo) return;
+
         console.error(
           "Error al cargar la biblioteca multimedia:",
           errorDesconocido
         );
 
+        setMultimedia([]);
+        setBibliotecaEmpresaId(null);
+
         setError(
-          errorDesconocido instanceof
-            Error
+          errorDesconocido instanceof Error
             ? errorDesconocido.message
             : "No se pudo cargar la biblioteca multimedia."
         );
       } finally {
-        setCargando(false);
+        if (activo) {
+          setCargando(false);
+        }
       }
-    }, []);
-
-  useEffect(() => {
-    cargarBiblioteca();
-  }, [cargarBiblioteca]);
-
-  const resultados = useMemo(() => {
-    const texto =
-      busqueda
-        .trim()
-        .toLowerCase();
-
-    if (!texto) {
-      return multimedia;
     }
 
-    return multimedia.filter(
-      (item) => {
-        const nombreArchivo =
-          item.nombre_archivo
-            ?.toLowerCase() || "";
+    if (!cargandoEmpresa) {
+      cargarBiblioteca();
+    }
 
-        const producto =
-          item.producto_nombre.toLowerCase();
+    return () => {
+      activo = false;
+    };
+  }, [empresaId, cargandoEmpresa]);
 
-        const descripcion =
-          item.descripcion
-            ?.toLowerCase() || "";
+  const multimediaEmpresa = useMemo(() => {
+    if (
+      !empresaId ||
+      bibliotecaEmpresaId !== empresaId
+    ) {
+      return [];
+    }
 
-        return (
-          nombreArchivo.includes(
-            texto
-          ) ||
-          producto.includes(texto) ||
-          descripcion.includes(texto)
-        );
-      }
-    );
-  }, [busqueda, multimedia]);
+    return multimedia;
+  }, [
+    multimedia,
+    bibliotecaEmpresaId,
+    empresaId,
+  ]);
 
-  const imagenesPrincipales =
-    useMemo(
-      () =>
-        multimedia.filter(
-          (item) =>
-            item.es_principal
-        ).length,
-      [multimedia]
-    );
+  const resultados = useMemo(() => {
+    const texto = busqueda
+      .trim()
+      .toLowerCase();
 
-  const productosConImagenes =
-    useMemo(
-      () =>
-        new Set(
-          multimedia.map(
-            (item) =>
-              item.producto_id
-          )
-        ).size,
-      [multimedia]
+    if (!texto) {
+      return multimediaEmpresa;
+    }
+
+    return multimediaEmpresa.filter((item) => {
+      const nombreArchivo =
+        item.nombre_archivo?.toLowerCase() || "";
+
+      const producto =
+        item.producto_nombre.toLowerCase();
+
+      const descripcion =
+        item.descripcion?.toLowerCase() || "";
+
+      return (
+        nombreArchivo.includes(texto) ||
+        producto.includes(texto) ||
+        descripcion.includes(texto)
+      );
+    });
+  }, [busqueda, multimediaEmpresa]);
+
+  const imagenesPrincipales = useMemo(
+    () =>
+      multimediaEmpresa.filter(
+        (item) => item.es_principal
+      ).length,
+    [multimediaEmpresa]
+  );
+
+  const productosConImagenes = useMemo(
+    () =>
+      new Set(
+        multimediaEmpresa.map(
+          (item) => item.producto_id
+        )
+      ).size,
+    [multimediaEmpresa]
+  );
+
+  const cargandoBiblioteca =
+    cargandoEmpresa ||
+    cargando ||
+    Boolean(
+      empresaId &&
+      bibliotecaEmpresaId !== empresaId &&
+      !error &&
+      !errorEmpresa
     );
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <HeaderBibliotecaMultimedia
-          totalImagenes={
-            multimedia.length
-          }
+          totalImagenes={multimediaEmpresa.length}
         />
+
+        {errorEmpresa && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
+            No se pudo cargar la empresa: {errorEmpresa}
+          </div>
+        )}
+
+        {!cargandoEmpresa &&
+          !errorEmpresa &&
+          !empresaId && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+              No encontramos una empresa activa.
+              Seleccioná un comercio para consultar
+              su biblioteca multimedia.
+            </div>
+          )}
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
@@ -221,18 +273,10 @@ export default function BibliotecaMultimediaPage() {
         )}
 
         <ResumenBibliotecaMultimedia
-          totalImagenes={
-            multimedia.length
-          }
-          imagenesPrincipales={
-            imagenesPrincipales
-          }
-          productosConImagenes={
-            productosConImagenes
-          }
-          resultadosVisibles={
-            resultados.length
-          }
+          totalImagenes={multimediaEmpresa.length}
+          imagenesPrincipales={imagenesPrincipales}
+          productosConImagenes={productosConImagenes}
+          resultadosVisibles={resultados.length}
         />
 
         <BuscadorBibliotecaMultimedia
@@ -242,7 +286,7 @@ export default function BibliotecaMultimediaPage() {
 
         <GridBibliotecaMultimedia
           items={resultados}
-          cargando={cargando}
+          cargando={cargandoBiblioteca}
           tieneBusqueda={
             busqueda.trim().length > 0
           }
