@@ -298,6 +298,7 @@ export default function CatalogoListaPage() {
 
 
   // El catálogo principal y todas las listas comparten la identidad por empresa.
+  // El registro solo se abre por una acción del visitante, no al entrar a la lista.
 
 
 
@@ -345,7 +346,7 @@ export default function CatalogoListaPage() {
 
 
 
-        setRegistroAbierto(true);
+        setRegistroAbierto(false);
 
 
 
@@ -361,7 +362,7 @@ export default function CatalogoListaPage() {
 
 
 
-      setRegistroAbierto(true);
+      setRegistroAbierto(false);
 
 
 
