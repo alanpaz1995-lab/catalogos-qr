@@ -3,15 +3,15 @@
 import Link from "next/link";
 import type { MultimediaProducto } from "./GaleriaMultimedia";
 
-type TarjetaBibliotecaMultimediaProps = {
+type Props = {
   item: MultimediaProducto & {
     producto_nombre: string;
   };
 };
 
-export default function TarjetaBibliotecaMultimedia({
+export default function ({
   item,
-}: TarjetaBibliotecaMultimediaProps) {
+}: Props) {
   return (
     <article className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
       <div className="relative bg-slate-100">

@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type HeaderProductosProps = {
   totalProductos: number;
@@ -13,6 +15,34 @@ export default function HeaderProductos({
   cargando = false,
   onActualizar,
 }: HeaderProductosProps) {
+  const router = useRouter();
+
+  useEffect(() => {
+    function manejarAtajos(event: KeyboardEvent) {
+      if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
+
+      const tecla = event.key.toLowerCase();
+      if (tecla !== "n" && tecla !== "e" && tecla !== "l") return;
+
+      const objetivo = event.target;
+      if (
+        objetivo instanceof HTMLElement &&
+        (objetivo.isContentEditable ||
+          Boolean(objetivo.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')))
+      ) return;
+
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+
+      event.preventDefault();
+      if (tecla === "n") router.push("/admin/productos/nuevo");
+      if (tecla === "e") router.push("/admin/categorias");
+      if (tecla === "l") router.push("/admin/listas-catalogos");
+    }
+
+    window.addEventListener("keydown", manejarAtajos);
+    return () => window.removeEventListener("keydown", manejarAtajos);
+  }, [router]);
+
   return (
     <header className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-violet-700 px-6 py-8 text-white sm:px-8">
@@ -35,33 +65,36 @@ export default function HeaderProductos({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[420px]">
+          <div className="grid grid-cols-2 gap-3 lg:min-w-[420px]">
             <Link
               href="/admin/productos/nuevo"
-              className="rounded-xl bg-[#F97316] px-5 py-3 text-center font-semibold text-white transition hover:bg-orange-600"
+              className="flex min-h-[76px] items-center justify-between gap-2 rounded-2xl bg-[#F97316] px-4 py-4 font-semibold text-white shadow-sm transition hover:bg-orange-600 sm:px-5"
             >
-              ➕ Crear producto
+              <span>➕ Crear producto</span>
+              <span className="shrink-0 text-xs font-medium text-white/85">Ctrl + N</span>
             </Link>
 
             <Link
               href="/admin/categorias"
-              className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-center font-semibold text-white backdrop-blur transition hover:bg-white/20"
+              className="flex min-h-[76px] items-center justify-between gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-4 font-semibold text-white backdrop-blur transition hover:bg-white/20 sm:px-5"
             >
-              🏷️ Categorías
+              <span>🏷️ Categorías</span>
+              <span className="shrink-0 text-xs font-medium text-white/80">Ctrl + E</span>
             </Link>
 
             <Link
               href="/admin/listas-catalogos"
-              className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-center font-semibold text-white backdrop-blur transition hover:bg-white/20"
+              className="flex min-h-[76px] items-center justify-between gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-4 font-semibold text-white backdrop-blur transition hover:bg-white/20 sm:px-5"
             >
-              📋 Listas de catálogos
+              <span>📋 Listas de catálogos</span>
+              <span className="shrink-0 text-xs font-medium text-white/80">Ctrl + L</span>
             </Link>
 
             <button
               type="button"
               disabled={cargando}
               onClick={onActualizar}
-              className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex min-h-[76px] items-center justify-center rounded-2xl border border-white/30 bg-white/10 px-4 py-4 font-semibold text-white backdrop-blur transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60 sm:px-5"
             >
               {cargando ? "Actualizando..." : "↻ Actualizar"}
             </button>
