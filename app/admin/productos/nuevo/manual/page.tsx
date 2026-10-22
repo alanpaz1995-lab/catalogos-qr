@@ -166,6 +166,57 @@ export default function NuevoProductoManualPage() {
     setVistaPrevia(urlTemporal);
     return () => URL.revokeObjectURL(urlTemporal);
   }, [archivo]);
+  // Escape vuelve al Centro de Productos incluso si hay un campo del formulario enfocado.
+  // Los diálogos y el guardado activo tienen prioridad para evitar perder información.
+  useEffect(() => {
+    function manejarEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.repeat) return;
+      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
+      if (guardando || productoGuardado) return;
+
+      const hayCambios =
+        nombre.trim() !== "" ||
+        categoria !== "" ||
+        descripcion.trim() !== "" ||
+        precio.trim() !== "" ||
+        costo.trim() !== "" ||
+        precioMayorista.trim() !== "" ||
+        cantidadMinimaMayorista !== "10" ||
+        stock.trim() !== "" ||
+        stockMinimo !== "0" ||
+        estado !== "Activo" ||
+        !visibleCatalogo ||
+        !nuevoIngreso ||
+        oferta ||
+        destacado ||
+        !controlarStock ||
+        archivo !== null ||
+        imagenSubida !== null ||
+        Object.values(preciosPorLista).some(
+          (valor) => valor.visible || valor.minorista.trim() !== "" || valor.mayorista.trim() !== ""
+        );
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (hayCambios && !window.confirm("Tenés cambios sin guardar. ¿Querés salir y volver al Centro de Productos?")) {
+        return;
+      }
+
+      router.push("/admin/productos");
+    }
+
+    // La captura permite manejar Esc aun cuando el foco está en inputs o selects.
+    window.addEventListener("keydown", manejarEscape, true);
+    return () => window.removeEventListener("keydown", manejarEscape, true);
+  }, [
+    router, guardando, productoGuardado, nombre, categoria, descripcion, precio, costo,
+    precioMayorista, cantidadMinimaMayorista, stock, stockMinimo, estado,
+    visibleCatalogo, nuevoIngreso, oferta, destacado, controlarStock, archivo,
+    imagenSubida, preciosPorLista,
+  ]);
+
   function actualizarPrecioLista(
     listaId: number,
     campo: keyof PrecioPorLista,
