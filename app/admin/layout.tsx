@@ -2,9 +2,9 @@
 
 import type { ReactNode } from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { EmpresaProvider } from "@/lib/empresa/EmpresaProvider";
 
@@ -37,6 +37,9 @@ export default function AdminLayout({
 }) {
 
   const router = useRouter();
+  const pathname = usePathname();
+  const rutaAnteriorRef = useRef<string | null>(null);
+  const formularioModificadoRef = useRef(false);
 
   const [cargando, setCargando] = useState(true);
 
@@ -186,6 +189,36 @@ export default function AdminLayout({
 
     Boolean(empresa?.suscripcion_activa) || pruebaVigente;
 
+  // Seguimiento de la navegación administrativa en esta pestaña.
+  // Nunca se utiliza window.history.back(), que podría salir de ComerSys.
+  useEffect(() => {
+    const actual = window.sessionStorage.getItem("comersys-ruta-actual");
+    if (actual && actual !== pathname && (actual === "/admin" || actual.startsWith("/admin/"))) {
+      rutaAnteriorRef.current = actual;
+    } else if (!actual || actual !== pathname) {
+      rutaAnteriorRef.current = null;
+    }
+    window.sessionStorage.setItem("comersys-ruta-actual", pathname);
+    formularioModificadoRef.current = false;
+  }, [pathname]);
+
+  // Marca cambios realizados por el usuario en formularios, sin tocar guardados ni datos.
+  useEffect(() => {
+    const detectarEdicion = (event: Event) => {
+      const objetivo = event.target;
+      if (!(objetivo instanceof HTMLElement)) return;
+      if (objetivo.closest("form") && objetivo.matches("input:not([type='search']):not([type='hidden']), textarea, select")) {
+        formularioModificadoRef.current = true;
+      }
+    };
+    document.addEventListener("input", detectarEdicion, true);
+    document.addEventListener("change", detectarEdicion, true);
+    return () => {
+      document.removeEventListener("input", detectarEdicion, true);
+      document.removeEventListener("change", detectarEdicion, true);
+    };
+  }, []);
+
   // Atajos oficiales del panel. No se ejecutan mientras se escribe ni con diálogos abiertos.
 
   useEffect(() => {
@@ -193,11 +226,37 @@ export default function AdminLayout({
     if (cargando || error || !accesoPermitido) return;
 
     function manejarAtajos(event: KeyboardEvent) {
+      if (event.key === "Escape" && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+        // Un modal o diálogo debe gestionar Escape por sí mismo.
+        if (mostrarCorreoMercadoPago || document.querySelector('[role="dialog"], [aria-modal="true"], dialog[open]')) return;
+        if (pathname === "/admin") return;
+
+        const volverPorDefecto = (() => {
+          if (pathname.startsWith("/admin/productos/")) return "/admin/productos";
+          if (pathname.startsWith("/admin/clientes/")) return "/admin/clientes";
+          if (pathname.startsWith("/admin/pedidos/")) return "/admin/pedidos";
+          if (pathname === "/admin/categorias" || pathname === "/admin/listas-catalogos") return "/admin/productos";
+          return "/admin";
+        })();
+        const anterior = rutaAnteriorRef.current;
+        const destino = anterior && anterior !== pathname && (anterior === "/admin" || anterior.startsWith("/admin/"))
+          ? anterior
+          : volverPorDefecto;
+
+        if (formularioModificadoRef.current && !window.confirm("Hay cambios que podrían no estar guardados. ¿Querés salir de esta página?")) return;
+        event.preventDefault();
+        router.push(destino);
+        return;
+      }
 
       // Ctrl + Enter vuelve al inicio, sin interceptar otras combinaciones.
+
       const volverAlInicio =
+
         event.key === "Enter" && event.ctrlKey &&
+
         !event.altKey && !event.metaKey && !event.shiftKey;
+
       if (!volverAlInicio && (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)) return;
 
       const destino = event.target;
@@ -211,9 +270,13 @@ export default function AdminLayout({
       if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
 
       if (volverAlInicio) {
+
         event.preventDefault();
+
         if (window.location.pathname !== "/admin") router.push("/admin");
+
         return;
+
       }
 
       const rutas: Record<string, string> = {
@@ -262,7 +325,7 @@ export default function AdminLayout({
 
     return () => window.removeEventListener("keydown", manejarAtajos);
 
-  }, [cargando, error, accesoPermitido, router]);
+  }, [cargando, error, accesoPermitido, router, pathname, mostrarCorreoMercadoPago]);
 
   const abrirFormularioMercadoPago = () => {
 
