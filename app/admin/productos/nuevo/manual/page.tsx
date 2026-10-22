@@ -59,6 +59,7 @@ export default function NuevoProductoManualPage() {
   const [cargandoCategorias, setCargandoCategorias] =
     useState(true);
   const [nombre, setNombre] = useState("");
+  const [codigo, setCodigo] = useState("");
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [precio, setPrecio] = useState("");
@@ -177,6 +178,7 @@ export default function NuevoProductoManualPage() {
 
       const hayCambios =
         nombre.trim() !== "" ||
+        codigo.trim() !== "" ||
         categoria !== "" ||
         descripcion.trim() !== "" ||
         precio.trim() !== "" ||
@@ -211,7 +213,7 @@ export default function NuevoProductoManualPage() {
     window.addEventListener("keydown", manejarEscape, true);
     return () => window.removeEventListener("keydown", manejarEscape, true);
   }, [
-    router, guardando, productoGuardado, nombre, categoria, descripcion, precio, costo,
+    router, guardando, productoGuardado, nombre, codigo, categoria, descripcion, precio, costo,
     precioMayorista, cantidadMinimaMayorista, stock, stockMinimo, estado,
     visibleCatalogo, nuevoIngreso, oferta, destacado, controlarStock, archivo,
     imagenSubida, preciosPorLista,
@@ -292,6 +294,10 @@ export default function NuevoProductoManualPage() {
         );
       }
       const nombreLimpio = nombre.trim();
+      const codigoLimpio = codigo.trim();
+      if (codigoLimpio.length > 80) {
+        throw new Error("El código del producto no puede superar los 80 caracteres.");
+      }
       const categoriaLimpia = categoria.trim();
       const descripcionLimpia = descripcion.trim();
       validarTexto(nombreLimpio, "El nombre", 2, 120);
@@ -377,6 +383,7 @@ export default function NuevoProductoManualPage() {
         .insert({
           empresa_id: empresaId,
           nombre: nombreLimpio,
+          codigo: codigoLimpio || null,
           categoria: categoriaLimpia,
           descripcion: descripcionLimpia || null,
           precio: precioNumero,
@@ -488,6 +495,18 @@ export default function NuevoProductoManualPage() {
                     placeholder="Ejemplo: Mate imperial premium"
                     required
                   />
+                </div>
+                <div className="md:col-span-2">
+                  <CampoTexto
+                    id="codigo"
+                    label="Código del producto (opcional)"
+                    value={codigo}
+                    onChange={setCodigo}
+                    placeholder="Ejemplo: 000125 o MAT-001"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Escribí el código tal como lo usa el negocio. No se genera ni modifica automáticamente.
+                  </p>
                 </div>
                 <div>
                   <label

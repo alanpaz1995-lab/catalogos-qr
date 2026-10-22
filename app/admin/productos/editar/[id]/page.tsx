@@ -27,6 +27,7 @@ type Producto = {
   empresa_id: number;
 
   nombre: string;
+  codigo: string | null;
 
   categoria: string | null;
 
@@ -109,6 +110,7 @@ export default function EditarProductoPage() {
     useState<Producto | null>(null);
 
   const [nombre, setNombre] = useState("");
+  const [codigo, setCodigo] = useState("");
 
   const [categoria, setCategoria] = useState("");
 
@@ -201,6 +203,7 @@ export default function EditarProductoPage() {
           empresa_id,
 
           nombre,
+            codigo,
 
           categoria,
 
@@ -289,6 +292,7 @@ export default function EditarProductoPage() {
       setProductoOriginal(producto);
 
       setNombre(producto.nombre || "");
+        setCodigo(producto.codigo || "");
 
       setCategoria(producto.categoria || "");
 
@@ -543,6 +547,13 @@ export default function EditarProductoPage() {
     setTipoMensaje("");
 
     const nombreLimpio = nombre.trim();
+    const codigoLimpio = codigo.trim();
+    if (codigoLimpio.length > 80) {
+      setMensaje("El código del producto no puede superar los 80 caracteres.");
+      setTipoMensaje("error");
+      setGuardando(false);
+      return;
+    }
 
     const categoriaLimpia = categoria.trim();
 
@@ -653,6 +664,7 @@ export default function EditarProductoPage() {
     }
 
     if (controlarStock) {
+
     if (
 
       !Number.isInteger(cantidadMinimaMayoristaNumero) ||
@@ -790,6 +802,7 @@ export default function EditarProductoPage() {
       .update({
 
         nombre: nombreLimpio,
+        codigo: codigoLimpio || null,
 
         categoria: categoriaLimpia,
 
@@ -888,6 +901,7 @@ export default function EditarProductoPage() {
             ...productoActual,
 
             nombre: nombreLimpio,
+            codigo: codigoLimpio || null,
 
             categoria: categoriaLimpia,
 
@@ -1168,6 +1182,18 @@ export default function EditarProductoPage() {
                   />
 
                 </div>
+                <div className="md:col-span-2">
+                  <CampoTexto
+                    id="codigo"
+                    label="Código del producto (opcional)"
+                    value={codigo}
+                    onChange={setCodigo}
+                    placeholder="Ejemplo: 000125 o MAT-001"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Se conserva el código original, incluidos los ceros iniciales.
+                  </p>
+                </div>
 
                 <CampoTexto
 
@@ -1232,7 +1258,9 @@ export default function EditarProductoPage() {
                 />
 
                 {controlarStock && (
+
                   <>
+
                 <CampoTexto
 
                   id="cantidad-minima-mayorista"
@@ -1294,6 +1322,7 @@ export default function EditarProductoPage() {
                 />
 
                   </>
+
                 )}
 
                 <div className="md:col-span-2">
@@ -1409,6 +1438,7 @@ export default function EditarProductoPage() {
                 )}
 
                 {controlarStock && (
+
                 <div
 
                   className={`mt-5 rounded-2xl border p-4 ${

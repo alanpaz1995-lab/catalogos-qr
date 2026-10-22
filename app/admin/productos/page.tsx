@@ -422,6 +422,16 @@ export default function ProductosPage() {
 
               .toLowerCase()
 
+              .includes(texto) ||
+
+            (
+
+              (producto as ProductoListado & { codigo?: string | null }).codigo || ""
+
+            )
+
+              .toLowerCase()
+
               .includes(texto);
 
 
@@ -874,7 +884,7 @@ export default function ProductosPage() {
                 type="search"
                 value={busqueda}
                 onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar por nombre, categoría o descripción"
+                placeholder="Buscar por nombre, código, categoría o descripción"
                 className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </label>

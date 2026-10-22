@@ -95,6 +95,7 @@ type PrecioLista = {
 
 
 type ProductoLista = Producto & {
+  codigo?: string | null;
 
 
 
@@ -1377,6 +1378,7 @@ export default function CatalogoListaPage() {
 
 
       producto.descripcion,
+      producto.codigo,
 
 
 
@@ -1955,7 +1957,11 @@ export default function CatalogoListaPage() {
 
                     )}
 
-
+                    {producto.codigo?.trim() && (
+                      <p className="mt-2 break-words text-sm font-medium text-slate-600">
+                        Código: <span className="font-semibold">{producto.codigo}</span>
+                      </p>
+                    )}
 
                     <div className="mt-auto pt-5">
 

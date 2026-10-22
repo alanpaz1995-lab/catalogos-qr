@@ -7,6 +7,7 @@ export type ProductoListado = {
   id: number;
   empresa_id: number;
   nombre: string;
+  codigo?: string | null;
   categoria?: string | null;
   precio: number;
   precio_mayorista?: number | null;
@@ -122,6 +123,11 @@ function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, elim
               {!producto.visible_catalogo && <Etiqueta texto="Oculto" clases="bg-slate-200 text-slate-600" />}
             </div>
             <p className="mt-1 text-xs font-semibold text-[#2563EB]">{producto.categoria || "Sin categoría"}</p>
+            {producto.codigo?.trim() && (
+              <p className="mt-1 break-all text-xs font-semibold text-slate-600">
+                Código: <span className="text-slate-900">{producto.codigo}</span>
+              </p>
+            )}
             {producto.descripcion && <p className="mt-1 line-clamp-1 text-xs text-slate-500">{producto.descripcion}</p>}
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Etiqueta texto={stockTexto} clases={stockEstilo} />

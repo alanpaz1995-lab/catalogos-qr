@@ -102,6 +102,12 @@ export default function TarjetaProducto({
           </p>
         )}
 
+        {producto.codigo?.trim() && (
+          <p className="mt-2 break-words text-xs font-medium text-slate-600">
+            Código: <span className="font-semibold text-slate-800">{producto.codigo}</span>
+          </p>
+        )}
+
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <Etiqueta texto={stockTexto} clases={stockEstilo} />
           <Etiqueta texto={`Stock: ${stock}`} clases="bg-slate-100 text-slate-600" />
