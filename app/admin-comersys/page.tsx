@@ -31,6 +31,7 @@ type PagoSuscripcion = {
 export default function SuperAdminComerSysPage() {
   const [cargando, setCargando] = useState(true);
   const [autorizado, setAutorizado] = useState(false);
+  const [puedeAdministrarCatalogosExternos, setPuedeAdministrarCatalogosExternos] = useState(false);
   const [error, setError] = useState("");
   const [empresas, setEmpresas] = useState<EmpresaSuscripcion[]>([]);
   const [pagos, setPagos] = useState<PagoSuscripcion[]>([]);
@@ -44,6 +45,7 @@ export default function SuperAdminComerSysPage() {
   async function cargarSuperAdmin() {
     setCargando(true);
     setError("");
+    setPuedeAdministrarCatalogosExternos(false);
 
     const {
       data: { user },
@@ -76,6 +78,17 @@ export default function SuperAdminComerSysPage() {
     }
 
     setAutorizado(true);
+
+    // Solo el SuperAdmin que es titular de la empresa ID 1 ve este acceso.
+    // Las políticas RLS de Supabase protegen los datos aunque se conozca la URL.
+    const { data: empresaPropietaria, error: errorPropietaria } = await supabase
+      .from("empresas")
+      .select("id")
+      .eq("id", 1)
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    setPuedeAdministrarCatalogosExternos(!errorPropietaria && !!empresaPropietaria);
 
     const { data: empresasData, error: errorEmpresas } = await supabase
       .from("empresas")
@@ -419,6 +432,30 @@ export default function SuperAdminComerSysPage() {
             </button>
           </div>
         </header>
+
+        {puedeAdministrarCatalogosExternos && (
+          <section className="rounded-3xl border border-blue-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-blue-600">
+                  Módulo exclusivo · Empresa ID 1
+                </p>
+                <h2 className="mt-2 text-xl font-black">Catálogos Externos</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Creá catálogos independientes para otros emprendimientos.
+                  Administrá sus productos y categorías y compartí únicamente
+                  el enlace público, sin carrito ni Mercado Pago.
+                </p>
+              </div>
+              <Link
+                href="/admin-comersys/catalogos-externos"
+                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-600 px-5 py-3 font-black text-white hover:bg-blue-700"
+              >
+                Administrar catálogos externos →
+              </Link>
+            </div>
+          </section>
+        )}
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
