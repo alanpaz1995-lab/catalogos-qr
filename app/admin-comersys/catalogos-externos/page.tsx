@@ -81,6 +81,7 @@ export default function CatalogosExternosAdminPage() {
   const [subiendo, setSubiendo] = useState<string | null>(null);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [modoOscuro, setModoOscuro] = useState(false);
+  const [cambiandoEstadoId, setCambiandoEstadoId] = useState<number | null>(null);
 
   useEffect(() => {
     const aplicarTema = () => {
@@ -234,6 +235,48 @@ export default function CatalogosExternosAdminPage() {
     }
   }
 
+  async function copiarEnlace(catalogo: CatalogoExterno) {
+    setError("");
+    setMensaje("");
+    const enlace = `${window.location.origin}/catalogo-externo/${encodeURIComponent(catalogo.slug)}`;
+    try {
+      await navigator.clipboard.writeText(enlace);
+      setMensaje(`Enlace de «${catalogo.nombre}» copiado. Ya podés enviárselo al dueño del emprendimiento.`);
+    } catch {
+      setError("No se pudo copiar automáticamente el enlace. Comprobá los permisos del navegador.");
+    }
+  }
+
+  async function cambiarEstadoCatalogo(catalogo: CatalogoExterno) {
+    if (!autorizado || cambiandoEstadoId !== null || guardando) return;
+    const siguienteEstado = !catalogo.activo;
+    if (!siguienteEstado && !window.confirm(
+      `¿Pausar el catálogo «${catalogo.nombre}»?\n\nEl enlace público dejará de mostrar el catálogo, pero los productos, categorías, precios e imágenes seguirán guardados. Podrás reactivarlo cuando quieras.`
+    )) return;
+
+    setError("");
+    setMensaje("");
+    setCambiandoEstadoId(catalogo.id);
+    try {
+      const { error: errorCambio } = await supabase
+        .from("catalogos_externos")
+        .update({ activo: siguienteEstado, actualizado_en: new Date().toISOString() })
+        .eq("id", catalogo.id);
+      if (errorCambio) throw errorCambio;
+      await actualizarLista();
+      if (editandoId === catalogo.id) {
+        setFormulario((actual) => ({ ...actual, activo: siguienteEstado }));
+      }
+      setMensaje(siguienteEstado
+        ? `Catálogo «${catalogo.nombre}» reactivado correctamente.`
+        : `Catálogo «${catalogo.nombre}» pausado. Sus datos siguen guardados.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cambiar el estado del catálogo.");
+    } finally {
+      setCambiandoEstadoId(null);
+    }
+  }
+
   if (cargando) return (
     <main className={`min-h-screen p-8 ${modoOscuro ? "bg-slate-950 text-slate-300" : "bg-slate-50 text-slate-600"}`}>
       Cargando Catálogos Externos...
@@ -362,9 +405,9 @@ export default function CatalogosExternosAdminPage() {
             </div>
             <label className="flex items-center gap-3 font-semibold">
               <input type="checkbox" checked={formulario.activo} onChange={(e) => cambiar("activo", e.target.checked)} className="h-5 w-5" />
-              Catálogo activo (visible al público una vez que construyamos la página pública)
+              Catálogo activo (visible al público)
             </label>
-            <p className="text-sm text-slate-500">Por ahora se guarda la identidad del negocio. La administración de categorías, productos y la página pública se incorporarán en los siguientes pasos.</p>
+            <p className="text-sm text-slate-500">Los productos y categorías se administran desde los accesos de cada emprendimiento, en la lista de abajo.</p>
             <button disabled={guardando || subiendo !== null} type="submit" className="rounded-xl bg-blue-600 px-6 py-3 font-bold text-white disabled:opacity-50">
               {guardando ? "Guardando..." : "Guardar emprendimiento"}
             </button>
@@ -378,7 +421,7 @@ export default function CatalogosExternosAdminPage() {
           ) : (
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               {catalogos.map((catalogo) => (
-                <article key={catalogo.id} className="flex gap-4 rounded-2xl border border-slate-200 p-4">
+                <article key={catalogo.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row">
                   {catalogo.foto_perfil_url || catalogo.logo_url ? (
                     <img src={catalogo.foto_perfil_url || catalogo.logo_url || ""} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
                   ) : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-2xl">🏪</div>}
@@ -388,7 +431,31 @@ export default function CatalogosExternosAdminPage() {
                     <p className={`mt-2 text-xs font-bold ${catalogo.activo ? "text-green-700" : "text-amber-700"}`}>
                       {catalogo.activo ? "Activo" : "Desactivado"}
                     </p>
-                    <button type="button" onClick={() => editar(catalogo)} className="mt-3 rounded-lg border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50">Editar datos</button>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => editar(catalogo)} className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50">Editar datos</button>
+                      <Link href={`/admin-comersys/catalogos-externos/${catalogo.id}/productos`} className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">
+                        Administrar productos
+                      </Link>
+                      <Link href={`/admin-comersys/catalogos-externos/${catalogo.id}/categorias`} className="inline-flex items-center rounded-lg border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50">
+                        Categorías
+                      </Link>
+                      {catalogo.activo && (
+                        <a href={`/catalogo-externo/${encodeURIComponent(catalogo.slug)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold hover:bg-slate-50">
+                          Ver catálogo público ↗
+                        </a>
+                      )}
+                      <button type="button" onClick={() => void copiarEnlace(catalogo)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold hover:bg-slate-50">
+                        Copiar enlace
+                      </button>
+                      <button
+                        type="button"
+                        disabled={cambiandoEstadoId !== null || guardando}
+                        onClick={() => void cambiarEstadoCatalogo(catalogo)}
+                        className={`rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50 ${catalogo.activo ? "border-amber-400 text-amber-700" : "border-green-400 text-green-700"}`}
+                      >
+                        {cambiandoEstadoId === catalogo.id ? "Procesando..." : catalogo.activo ? "Pausar catálogo" : "Reactivar catálogo"}
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}

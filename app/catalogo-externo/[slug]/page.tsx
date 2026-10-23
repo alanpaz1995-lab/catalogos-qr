@@ -200,27 +200,72 @@ export default function CatalogoExternoPublicoPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
-      <header className="bg-white shadow-sm">
-        {catalogo.portada_url ? (
-          <div className="relative h-48 overflow-hidden bg-slate-100 sm:h-72">
-            <img src={catalogo.portada_url} alt={`Portada de ${catalogo.nombre}`} className="h-full w-full object-cover" />
-          </div>
-        ) : (
-          <div className="h-24 sm:h-32" style={{ backgroundColor: principal }} />
-        )}
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-6 sm:flex-row sm:items-center sm:gap-6 sm:px-8">
-          {fotoPerfil && (
-            <img src={fotoPerfil} alt={`Perfil de ${catalogo.nombre}`} className="h-24 w-24 rounded-2xl border-4 border-white object-cover shadow-md" />
+      {/* Portada integrada, con el estilo visual del panel ComerSys. */}
+      <header className="px-4 pt-5 sm:px-8 sm:pt-8">
+        <div
+          className="relative mx-auto flex min-h-[340px] max-w-7xl items-end overflow-hidden rounded-[28px] border border-white/15 bg-slate-950 shadow-2xl sm:min-h-[420px] sm:rounded-[36px]"
+          style={{ backgroundColor: principal }}
+        >
+          {catalogo.portada_url && (
+            <img
+              src={catalogo.portada_url}
+              alt={`Portada de ${catalogo.nombre}`}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           )}
-          <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-extrabold sm:text-4xl">{catalogo.nombre}</h1>
-            {catalogo.descripcion && <p className="mt-2 whitespace-pre-line text-slate-600">{catalogo.descripcion}</p>}
+          {/* El degradado permite leer el nombre incluso sobre fotografías claras. */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/65 to-slate-950/25" />
+          <div
+            className="absolute bottom-0 left-0 right-0 h-1.5"
+            style={{ background: `linear-gradient(90deg, ${principal}, ${secundario})` }}
+          />
+
+          <div className="relative z-10 w-full p-6 sm:p-9 lg:p-11">
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/30 bg-black/30 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-white backdrop-blur-sm">
+              Catálogo oficial
+            </div>
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:gap-7">
+              {fotoPerfil ? (
+                <img
+                  src={fotoPerfil}
+                  alt={`Logo de ${catalogo.nombre}`}
+                  className="h-24 w-24 shrink-0 rounded-3xl border-4 border-white object-cover shadow-xl sm:h-36 sm:w-36"
+                />
+              ) : (
+                <div
+                  className="flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl border-4 border-white/80 text-4xl font-black text-white shadow-xl sm:h-36 sm:w-36 sm:text-6xl"
+                  style={{ backgroundColor: principal }}
+                  aria-hidden="true"
+                >
+                  {catalogo.nombre.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-white/75">
+                  Bienvenidos a nuestro catálogo
+                </p>
+                <h1 className="break-words text-4xl font-black leading-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
+                  {catalogo.nombre}
+                </h1>
+                {catalogo.descripcion && (
+                  <p className="mt-3 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-white/90 sm:text-base">
+                    {catalogo.descripcion}
+                  </p>
+                )}
+              </div>
+              {whatsapp && (
+                <a
+                  href={`https://wa.me/${whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center justify-center rounded-2xl px-5 py-3.5 text-center text-sm font-extrabold text-white shadow-lg transition hover:brightness-110"
+                  style={{ backgroundColor: secundario }}
+                >
+                  Contactar por WhatsApp ↗
+                </a>
+              )}
+            </div>
           </div>
-          {whatsapp && (
-            <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noopener noreferrer" className="rounded-xl px-5 py-3 text-center font-semibold text-white" style={{ backgroundColor: secundario }}>
-              Contactar por WhatsApp
-            </a>
-          )}
         </div>
       </header>
 

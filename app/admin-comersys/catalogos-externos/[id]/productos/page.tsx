@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
@@ -21,6 +21,11 @@ type ProductoExterno = {
   codigo: string | null;
   descripcion: string | null;
   precio: number;
+  costo: number | null;
+  stock_minimo: number | null;
+  nuevo_ingreso: boolean;
+  en_oferta: boolean;
+  destacado: boolean;
   precio_mayorista: number | null;
   cantidad_minima_mayorista: number | null;
   stock: number | null;
@@ -39,6 +44,11 @@ type FormProducto = {
   categoria_id: string;
   descripcion: string;
   precio: string;
+  costo: string;
+  stock_minimo: string;
+  nuevo_ingreso: boolean;
+  en_oferta: boolean;
+  destacado: boolean;
   precio_mayorista: string;
   cantidad_minima_mayorista: string;
   stock: string;
@@ -54,6 +64,11 @@ const FORM_VACIO: FormProducto = {
   categoria_id: "",
   descripcion: "",
   precio: "",
+  costo: "",
+  stock_minimo: "0",
+  nuevo_ingreso: true,
+  en_oferta: false,
+  destacado: false,
   precio_mayorista: "",
   cantidad_minima_mayorista: "10",
   stock: "",
@@ -67,6 +82,7 @@ const dinero = (valor: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(valor);
 
 export default function ProductosCatalogoExternoPage() {
+  const archivoImagenRef = useRef<HTMLInputElement>(null);
   const params = useParams();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const catalogoId = Number(idParam);
@@ -185,6 +201,11 @@ export default function ProductosCatalogoExternoPage() {
       categoria_id: producto.categoria_id == null ? "" : String(producto.categoria_id),
       descripcion: producto.descripcion || "",
       precio: String(producto.precio),
+      costo: producto.costo == null ? "" : String(producto.costo),
+      stock_minimo: String(producto.stock_minimo ?? 0),
+      nuevo_ingreso: Boolean(producto.nuevo_ingreso),
+      en_oferta: Boolean(producto.en_oferta),
+      destacado: Boolean(producto.destacado),
       precio_mayorista: producto.precio_mayorista == null ? "" : String(producto.precio_mayorista),
       cantidad_minima_mayorista: String(producto.cantidad_minima_mayorista ?? 10),
       stock: producto.stock == null ? "" : String(producto.stock),
@@ -232,6 +253,8 @@ export default function ProductosCatalogoExternoPage() {
     setAviso("");
     const nombre = form.nombre.trim();
     const precio = Number(form.precio);
+    const costo = form.costo.trim() === "" ? 0 : Number(form.costo);
+    const stockMinimo = Number(form.stock_minimo);
     const precioMayorista = form.precio_mayorista.trim() === "" ? null : Number(form.precio_mayorista);
     const minimo = Number(form.cantidad_minima_mayorista);
     const stock = form.stock.trim() === "" ? null : Number(form.stock);
@@ -240,6 +263,9 @@ export default function ProductosCatalogoExternoPage() {
     if (!nombre || form.precio.trim() === "" || !Number.isFinite(precio) || precio < 0) {
       setError("Ingresá un nombre y un precio válido (puede ser 0)."); return;
     }
+    if (!Number.isFinite(costo) || costo < 0) { setError("El costo debe ser un número igual o mayor a cero."); return; }
+    if (!Number.isInteger(stockMinimo) || stockMinimo < 0) { setError("El stock mínimo debe ser un entero igual o mayor a cero."); return; }
+    if (form.descripcion.length > 1500) { setError("La descripción no puede superar 1500 caracteres."); return; }
     if (precioMayorista !== null && (!Number.isFinite(precioMayorista) || precioMayorista < 0)) {
       setError("El precio mayorista no es válido."); return;
     }
@@ -257,6 +283,11 @@ export default function ProductosCatalogoExternoPage() {
       codigo: form.codigo.trim() || null,
       descripcion: form.descripcion.trim() || null,
       precio,
+      costo,
+      stock_minimo: stockMinimo,
+      nuevo_ingreso: form.nuevo_ingreso,
+      en_oferta: form.en_oferta,
+      destacado: form.destacado,
       precio_mayorista: precioMayorista,
       cantidad_minima_mayorista: minimo,
       stock,
@@ -274,9 +305,10 @@ export default function ProductosCatalogoExternoPage() {
         : supabase.from("productos_externos").update(datos).eq("id", editando).eq("catalogo_id", catalogoId);
       const { error: errorGuardado } = await consulta;
       if (errorGuardado) throw errorGuardado;
+      const eraNuevo = editando === null;
       nuevoProducto();
       await cargar();
-      setAviso(editando === null ? "Producto creado correctamente." : "Producto actualizado correctamente.");
+      setAviso(eraNuevo ? "Producto creado correctamente." : "Producto actualizado correctamente.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar el producto.");
     } finally {
@@ -324,55 +356,117 @@ export default function ProductosCatalogoExternoPage() {
         {error && <div role="alert" className={`rounded-xl border p-4 ${modoOscuro ? "border-red-800 bg-red-950/50 text-red-200" : "border-red-200 bg-red-50 text-red-800"}`}>{error}</div>}
         {aviso && <div role="status" className={`rounded-xl border p-4 ${modoOscuro ? "border-green-800 bg-green-950/50 text-green-200" : "border-green-200 bg-green-50 text-green-800"}`}>{aviso}</div>}
 
-        <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-black">{editando === null ? "Nuevo producto" : `Editar producto #${editando}`}</h2>
-            {editando !== null && <button type="button" onClick={nuevoProducto} className={`rounded-xl border px-4 py-2 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
-          </div>
-          <form onSubmit={guardar} className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-semibold">Nombre *
-              <input required maxLength={200} value={form.nombre} onChange={(e) => editarCampo("nombre", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <label className="block text-sm font-semibold">Código (opcional)
-              <input maxLength={80} value={form.codigo} onChange={(e) => editarCampo("codigo", e.target.value)} placeholder="Ej.: 000125, MAT-001" className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <label className="block text-sm font-semibold">Categoría
-              <select value={form.categoria_id} onChange={(e) => editarCampo("categoria_id", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`}>
-                <option value="">Sin categoría</option>
-                {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}{!c.activo ? " (inactiva)" : ""}</option>)}
-              </select>
-            </label>
-            <label className="block text-sm font-semibold">Precio minorista (ARS) *
-              <input required type="number" min="0" step="0.01" value={form.precio} onChange={(e) => editarCampo("precio", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <label className="block text-sm font-semibold">Precio mayorista (opcional)
-              <input type="number" min="0" step="0.01" value={form.precio_mayorista} onChange={(e) => editarCampo("precio_mayorista", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <label className="block text-sm font-semibold">Cantidad mínima mayorista
-              <input type="number" min="1" step="1" value={form.cantidad_minima_mayorista} onChange={(e) => editarCampo("cantidad_minima_mayorista", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <label className="block text-sm font-semibold">Stock (opcional)
-              <input type="number" min="0" step="1" value={form.stock} onChange={(e) => editarCampo("stock", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <label className="block text-sm font-semibold">Imagen del producto (JPG, PNG, WebP; máx. 10 MB)
-              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={subiendoImagen} onChange={(e) => { void subirImagen(e.target.files?.[0]); e.target.value = ""; }} className={`mt-1 block w-full rounded-xl border p-3 text-sm ${temaCampo}`} />
-              {subiendoImagen && <span className={`mt-1 block ${temaLink}`}>Subiendo imagen...</span>}
-            </label>
-            {form.imagen_url && <div className="sm:col-span-2 flex flex-wrap items-center gap-4"><img src={form.imagen_url} alt="Vista previa del producto" className={`h-28 w-28 rounded-xl border object-cover ${modoOscuro ? "border-slate-600" : "border-slate-200"}`} /><button type="button" className={`text-sm font-semibold underline ${modoOscuro ? "text-red-400" : "text-red-700"}`} onClick={() => editarCampo("imagen_url", "")}>Quitar imagen del producto</button><span className={`text-xs ${temaAyuda}`}>Esto no elimina el archivo almacenado.</span></div>}
-            <label className="block text-sm font-semibold sm:col-span-2">Descripción
-              <textarea rows={3} value={form.descripcion} onChange={(e) => editarCampo("descripcion", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
-            </label>
-            <div className="sm:col-span-2 flex flex-wrap gap-x-6 gap-y-3">
-              <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.controlar_stock} onChange={(e) => editarCampo("controlar_stock", e.target.checked)} /> Controlar stock</label>
-              <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.activo} onChange={(e) => editarCampo("activo", e.target.checked)} /> Producto activo</label>
-              <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.visible} onChange={(e) => editarCampo("visible", e.target.checked)} /> Visible en catálogo</label>
-            </div>
-            <button type="submit" disabled={guardando || subiendoImagen} className="rounded-xl bg-blue-700 px-6 py-3 font-bold text-white disabled:opacity-50 sm:col-span-2">
-              {guardando ? "Guardando..." : editando === null ? "Crear producto" : "Guardar cambios"}
-            </button>
-          </form>
-        </section>
-
+         <form onSubmit={guardar} className="space-y-6">
+           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+             <section className={`rounded-3xl border p-6 shadow-sm sm:p-8 ${temaTarjeta}`}>
+               <div className="flex flex-wrap items-center justify-between gap-3">
+                 <h2 className="text-xl font-bold">{editando === null ? "Información del producto" : `Editar producto #${editando}`}</h2>
+                 {editando !== null && <button type="button" onClick={nuevoProducto} className={`rounded-xl border px-4 py-2 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
+               </div>
+               <div className="mt-6 grid gap-6 md:grid-cols-2">
+                 <div className="md:col-span-2">
+                   <label htmlFor="externo-nombre" className="mb-2 block font-semibold">Nombre del producto *</label>
+                   <input id="externo-nombre" required maxLength={200} value={form.nombre} onChange={(e) => editarCampo("nombre", e.target.value)} placeholder="Ejemplo: Mate imperial premium" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                 </div>
+                 <div className="md:col-span-2">
+                   <label htmlFor="externo-codigo" className="mb-2 block font-semibold">Código del producto (opcional)</label>
+                   <input id="externo-codigo" maxLength={80} value={form.codigo} onChange={(e) => editarCampo("codigo", e.target.value)} placeholder="Ejemplo: 000125 o MAT-001" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                   <p className={`mt-2 text-xs ${temaAyuda}`}>Escribí el código tal como lo usa el negocio. No se modifica automáticamente.</p>
+                 </div>
+                 <div>
+                   <label htmlFor="externo-categoria" className="mb-2 block font-semibold">Categoría</label>
+                   <select id="externo-categoria" value={form.categoria_id} onChange={(e) => editarCampo("categoria_id", e.target.value)} className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`}>
+                     <option value="">Sin categoría</option>
+                     {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}{!c.activo ? " (inactiva)" : ""}</option>)}
+                   </select>
+                   {categorias.length === 0 && <Link href={`/admin-comersys/catalogos-externos/${catalogoId}/categorias`} className={`mt-2 inline-block text-xs font-semibold underline ${temaLink}`}>Crear una categoría</Link>}
+                 </div>
+                 <div>
+                   <label htmlFor="externo-precio" className="mb-2 block font-semibold">Precio minorista *</label>
+                   <input id="externo-precio" required type="number" min="0" step="0.01" value={form.precio} onChange={(e) => editarCampo("precio", e.target.value)} placeholder="Ejemplo: 25000" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                 </div>
+                 <div>
+                   <label htmlFor="externo-costo" className="mb-2 block font-semibold">Costo del producto</label>
+                   <input id="externo-costo" type="number" min="0" step="0.01" value={form.costo} onChange={(e) => editarCampo("costo", e.target.value)} placeholder="Ejemplo: 15000" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                 </div>
+                 <div>
+                   <label htmlFor="externo-mayorista" className="mb-2 block font-semibold">Precio mayorista</label>
+                   <input id="externo-mayorista" type="number" min="0" step="0.01" value={form.precio_mayorista} onChange={(e) => editarCampo("precio_mayorista", e.target.value)} placeholder="Opcional. Ejemplo: 22000" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                 </div>
+                 <div>
+                   <label htmlFor="externo-minimo-mayorista" className="mb-2 block font-semibold">Mayorista desde</label>
+                   <input id="externo-minimo-mayorista" type="number" min="1" step="1" value={form.cantidad_minima_mayorista} onChange={(e) => editarCampo("cantidad_minima_mayorista", e.target.value)} className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                 </div>
+                 <div className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${modoOscuro ? "border-blue-800 bg-blue-950/40 text-blue-200" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
+                   Si no cargás precio mayorista se usa el minorista. El precio mayorista se muestra desde la cantidad indicada.
+                 </div>
+                 {form.controlar_stock && <>
+                   <div>
+                     <label htmlFor="externo-stock" className="mb-2 block font-semibold">Stock actual *</label>
+                     <input id="externo-stock" required type="number" min="0" step="1" value={form.stock} onChange={(e) => editarCampo("stock", e.target.value)} placeholder="Ejemplo: 10" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                   </div>
+                   <div>
+                     <label htmlFor="externo-stock-minimo" className="mb-2 block font-semibold">Stock mínimo</label>
+                     <input id="externo-stock-minimo" type="number" min="0" step="1" value={form.stock_minimo} onChange={(e) => editarCampo("stock_minimo", e.target.value)} className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
+                   </div>
+                 </>}
+                 <div>
+                   <label htmlFor="externo-estado" className="mb-2 block font-semibold">Estado</label>
+                   <select id="externo-estado" value={form.activo ? "activo" : "inactivo"} onChange={(e) => editarCampo("activo", e.target.value === "activo")} className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`}>
+                     <option value="activo">Activo</option><option value="inactivo">Inactivo</option>
+                   </select>
+                 </div>
+                 <div className="md:col-span-2">
+                   <label htmlFor="externo-descripcion" className="mb-2 block font-semibold">Descripción</label>
+                   <textarea id="externo-descripcion" rows={6} maxLength={1500} value={form.descripcion} onChange={(e) => editarCampo("descripcion", e.target.value)} placeholder="Descripción comercial del producto..." className={`w-full resize-none rounded-xl border px-4 py-3 ${temaCampo}`} />
+                   <p className={`mt-2 text-right text-xs ${temaAyuda}`}>{form.descripcion.length}/1500</p>
+                 </div>
+               </div>
+             </section>
+             <div className="space-y-6">
+               <section className={`rounded-3xl border p-6 shadow-sm ${temaTarjeta}`}>
+                 <h2 className="text-xl font-bold">Imagen principal</h2>
+                 <input ref={archivoImagenRef} type="file" accept="image/jpeg,image/png,image/webp" disabled={subiendoImagen || guardando} onChange={(e) => { void subirImagen(e.target.files?.[0]); e.target.value = ""; }} className="hidden" />
+                 {form.imagen_url ? <>
+                   <img src={form.imagen_url} alt="Vista previa del producto" className={`mt-5 h-72 w-full rounded-2xl border object-contain ${modoOscuro ? "border-slate-700" : "border-slate-200"}`} />
+                   <button type="button" disabled={subiendoImagen || guardando} onClick={() => archivoImagenRef.current?.click()} className={`mt-4 w-full rounded-xl border px-4 py-3 font-semibold ${temaBordeBoton}`}>Cambiar imagen</button>
+                   <button type="button" disabled={subiendoImagen || guardando} onClick={() => editarCampo("imagen_url", "")} className={`mt-2 w-full rounded-xl border px-4 py-3 font-semibold ${modoOscuro ? "border-red-800 text-red-300" : "border-red-200 text-red-700"}`}>Quitar imagen</button>
+                 </> : <button type="button" disabled={subiendoImagen || guardando} onClick={() => archivoImagenRef.current?.click()} className={`mt-5 flex h-72 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition disabled:opacity-50 ${modoOscuro ? "border-slate-600 bg-slate-800/70 hover:border-blue-400" : "border-slate-300 bg-slate-50 hover:border-blue-500 hover:bg-blue-50"}`}>
+                   <span className="text-5xl">🖼️</span>
+                   <span className="mt-4 font-semibold">{subiendoImagen ? "Subiendo imagen..." : "Seleccionar imagen"}</span>
+                   <span className={`mt-2 text-xs ${temaAyuda}`}>JPG, PNG o WEBP · Máximo 10 MB</span>
+                 </button>}
+                 <div className={`mt-5 rounded-2xl border p-4 ${modoOscuro ? "border-slate-700 bg-slate-800/70" : "border-blue-200 bg-blue-50"}`}>
+                   <p className="font-bold">✨ Mejorar foto con ChatGPT</p>
+                   <p className={`mt-2 text-sm leading-6 ${temaSecundario}`}>Es opcional. Podés mejorar la iluminación y el fondo con ChatGPT y luego seleccionar la foto acá.</p>
+                   <a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" className="mt-4 block rounded-xl bg-blue-600 px-4 py-3 text-center font-semibold text-white hover:bg-blue-700">Abrir ChatGPT para mejorar foto ↗</a>
+                   <p className={`mt-2 text-xs ${temaAyuda}`}>La foto no se envía automáticamente.</p>
+                 </div>
+               </section>
+               <section className={`rounded-3xl border p-6 shadow-sm ${temaTarjeta}`}>
+                 <h2 className="text-xl font-bold">Publicación y etiquetas</h2>
+                 <div className="mt-5 space-y-3">
+                   {([
+                     ["controlar_stock", "Controlar stock disponible", "Activado: permite informar el stock disponible. No se generan ventas ni se descuenta stock automáticamente."],
+                     ["visible", "Visible en catálogo", "El público podrá ver este producto si está activo."],
+                     ["nuevo_ingreso", "Nuevo ingreso", "Muestra la etiqueta Nuevo."],
+                     ["en_oferta", "Oferta", "Muestra la etiqueta Oferta."],
+                     ["destacado", "Destacado", "Permite identificar un producto destacado."],
+                   ] as const).map(([campo, titulo, detalle]) => (
+                     <label key={campo} className={`flex cursor-pointer gap-3 rounded-2xl border p-4 ${modoOscuro ? "border-slate-700 bg-slate-950/30" : "border-slate-200 bg-slate-50"}`}>
+                       <input type="checkbox" checked={form[campo]} onChange={(e) => editarCampo(campo, e.target.checked)} className="mt-1 h-5 w-5" />
+                       <span><span className="block font-semibold">{titulo}</span><span className={`mt-1 block text-xs leading-5 ${temaAyuda}`}>{detalle}</span></span>
+                     </label>
+                   ))}
+                 </div>
+               </section>
+             </div>
+           </div>
+           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+             {editando !== null && <button type="button" onClick={nuevoProducto} className={`rounded-xl border px-6 py-3 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
+             <button type="submit" disabled={guardando || subiendoImagen} className="rounded-xl bg-blue-700 px-7 py-3 font-bold text-white transition hover:bg-blue-800 disabled:opacity-50">{guardando ? "Guardando producto..." : editando === null ? "Guardar producto" : "Guardar cambios"}</button>
+           </div>
+         </form>
         <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-black">Productos cargados ({productos.length})</h2>
