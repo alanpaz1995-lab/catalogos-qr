@@ -84,6 +84,39 @@ export default function ProductosCatalogoExternoPage() {
   const [guardando, setGuardando] = useState(false);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [modoOscuro, setModoOscuro] = useState(false);
+
+  useEffect(() => {
+    const aplicarTema = () => {
+      setModoOscuro(window.localStorage.getItem("comersys-modo-oscuro") === "true");
+    };
+    aplicarTema();
+    window.addEventListener("storage", aplicarTema);
+    window.addEventListener("focus", aplicarTema);
+    window.addEventListener("comersys-modo-oscuro-cambio", aplicarTema);
+    return () => {
+      window.removeEventListener("storage", aplicarTema);
+      window.removeEventListener("focus", aplicarTema);
+      window.removeEventListener("comersys-modo-oscuro-cambio", aplicarTema);
+    };
+  }, []);
+
+  const temaPagina = modoOscuro
+    ? "bg-slate-950 text-slate-100"
+    : "bg-[#F8FAFC] text-slate-800";
+  const temaTarjeta = modoOscuro
+    ? "border-slate-700 bg-slate-900"
+    : "border-slate-200 bg-white";
+  const temaCampo = modoOscuro
+    ? "border-slate-600 bg-slate-800 text-slate-100 placeholder:text-slate-400"
+    : "border-slate-300 bg-white text-slate-800";
+  const temaSecundario = modoOscuro ? "text-slate-300" : "text-slate-600";
+  const temaAyuda = modoOscuro ? "text-slate-400" : "text-slate-500";
+  const temaLink = modoOscuro ? "text-blue-400" : "text-blue-700";
+  const temaBordeBoton = modoOscuro
+    ? "border-slate-600 text-slate-100 hover:bg-slate-800"
+    : "border-slate-300 hover:bg-slate-50";
+
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -267,19 +300,19 @@ export default function ProductosCatalogoExternoPage() {
   const filtrados = productos.filter((p) => [p.nombre, p.codigo, p.descripcion, nombreCategoria.get(p.categoria_id ?? -1)]
     .some((valor) => (valor || "").toLocaleLowerCase("es").includes(texto)));
 
-  if (cargando && !catalogo) return <main className="min-h-screen bg-slate-50 p-8 text-slate-600">Cargando productos externos...</main>;
+  if (cargando && !catalogo) return <main className={`min-h-screen p-8 ${temaPagina}`}>Cargando productos externos...</main>;
   if (!autorizado || !catalogo) return (
-    <main className="min-h-screen bg-slate-50 p-8">
-      <div className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
+    <main className={`min-h-screen p-8 ${temaPagina}`}>
+      <div className={`mx-auto max-w-2xl rounded-2xl border p-8 shadow-sm ${temaTarjeta}`}>
         <h1 className="text-2xl font-bold">Acceso restringido</h1>
-        <p className="mt-3 text-red-700">{error || "No se encontró el catálogo o no tenés permisos."}</p>
-        <Link className="mt-5 inline-block text-blue-700 underline" href="/admin-comersys/catalogos-externos">Volver a Catálogos Externos</Link>
+        <p className={`mt-3 ${modoOscuro ? "text-red-300" : "text-red-700"}`}>{error || "No se encontró el catálogo o no tenés permisos."}</p>
+        <Link className={`mt-5 inline-block underline ${temaLink}`} href="/admin-comersys/catalogos-externos">Volver a Catálogos Externos</Link>
       </div>
     </main>
   );
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] px-4 py-8 text-slate-800 sm:px-8">
+    <main className={`min-h-screen px-4 py-8 sm:px-8 ${temaPagina}`}>
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="rounded-3xl bg-gradient-to-r from-blue-700 to-violet-700 p-6 text-white">
           <Link href="/admin-comersys/catalogos-externos" className="text-sm font-semibold text-blue-100 hover:underline">← Catálogos Externos</Link>
@@ -288,46 +321,46 @@ export default function ProductosCatalogoExternoPage() {
           <Link href={`/admin-comersys/catalogos-externos/${catalogoId}/categorias`} className="mt-4 inline-block rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700">Administrar categorías</Link>
         </header>
 
-        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error}</div>}
-        {aviso && <div role="status" className="rounded-xl border border-green-200 bg-green-50 p-4 text-green-800">{aviso}</div>}
+        {error && <div role="alert" className={`rounded-xl border p-4 ${modoOscuro ? "border-red-800 bg-red-950/50 text-red-200" : "border-red-200 bg-red-50 text-red-800"}`}>{error}</div>}
+        {aviso && <div role="status" className={`rounded-xl border p-4 ${modoOscuro ? "border-green-800 bg-green-950/50 text-green-200" : "border-green-200 bg-green-50 text-green-800"}`}>{aviso}</div>}
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-black">{editando === null ? "Nuevo producto" : `Editar producto #${editando}`}</h2>
-            {editando !== null && <button type="button" onClick={nuevoProducto} className="rounded-xl border border-slate-300 px-4 py-2 font-semibold">Cancelar edición</button>}
+            {editando !== null && <button type="button" onClick={nuevoProducto} className={`rounded-xl border px-4 py-2 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
           </div>
           <form onSubmit={guardar} className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-semibold">Nombre *
-              <input required maxLength={200} value={form.nombre} onChange={(e) => editarCampo("nombre", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <input required maxLength={200} value={form.nombre} onChange={(e) => editarCampo("nombre", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <label className="block text-sm font-semibold">Código (opcional)
-              <input maxLength={80} value={form.codigo} onChange={(e) => editarCampo("codigo", e.target.value)} placeholder="Ej.: 000125, MAT-001" className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <input maxLength={80} value={form.codigo} onChange={(e) => editarCampo("codigo", e.target.value)} placeholder="Ej.: 000125, MAT-001" className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <label className="block text-sm font-semibold">Categoría
-              <select value={form.categoria_id} onChange={(e) => editarCampo("categoria_id", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3">
+              <select value={form.categoria_id} onChange={(e) => editarCampo("categoria_id", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`}>
                 <option value="">Sin categoría</option>
                 {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}{!c.activo ? " (inactiva)" : ""}</option>)}
               </select>
             </label>
             <label className="block text-sm font-semibold">Precio minorista (ARS) *
-              <input required type="number" min="0" step="0.01" value={form.precio} onChange={(e) => editarCampo("precio", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <input required type="number" min="0" step="0.01" value={form.precio} onChange={(e) => editarCampo("precio", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <label className="block text-sm font-semibold">Precio mayorista (opcional)
-              <input type="number" min="0" step="0.01" value={form.precio_mayorista} onChange={(e) => editarCampo("precio_mayorista", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <input type="number" min="0" step="0.01" value={form.precio_mayorista} onChange={(e) => editarCampo("precio_mayorista", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <label className="block text-sm font-semibold">Cantidad mínima mayorista
-              <input type="number" min="1" step="1" value={form.cantidad_minima_mayorista} onChange={(e) => editarCampo("cantidad_minima_mayorista", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <input type="number" min="1" step="1" value={form.cantidad_minima_mayorista} onChange={(e) => editarCampo("cantidad_minima_mayorista", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <label className="block text-sm font-semibold">Stock (opcional)
-              <input type="number" min="0" step="1" value={form.stock} onChange={(e) => editarCampo("stock", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <input type="number" min="0" step="1" value={form.stock} onChange={(e) => editarCampo("stock", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <label className="block text-sm font-semibold">Imagen del producto (JPG, PNG, WebP; máx. 10 MB)
-              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={subiendoImagen} onChange={(e) => { void subirImagen(e.target.files?.[0]); e.target.value = ""; }} className="mt-1 block w-full rounded-xl border border-slate-300 p-3 text-sm" />
-              {subiendoImagen && <span className="mt-1 block text-blue-700">Subiendo imagen...</span>}
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={subiendoImagen} onChange={(e) => { void subirImagen(e.target.files?.[0]); e.target.value = ""; }} className={`mt-1 block w-full rounded-xl border p-3 text-sm ${temaCampo}`} />
+              {subiendoImagen && <span className={`mt-1 block ${temaLink}`}>Subiendo imagen...</span>}
             </label>
-            {form.imagen_url && <div className="sm:col-span-2 flex flex-wrap items-center gap-4"><img src={form.imagen_url} alt="Vista previa del producto" className="h-28 w-28 rounded-xl border object-cover" /><button type="button" className="text-sm font-semibold text-red-700 underline" onClick={() => editarCampo("imagen_url", "")}>Quitar imagen del producto</button><span className="text-xs text-slate-500">Esto no elimina el archivo almacenado.</span></div>}
+            {form.imagen_url && <div className="sm:col-span-2 flex flex-wrap items-center gap-4"><img src={form.imagen_url} alt="Vista previa del producto" className={`h-28 w-28 rounded-xl border object-cover ${modoOscuro ? "border-slate-600" : "border-slate-200"}`} /><button type="button" className={`text-sm font-semibold underline ${modoOscuro ? "text-red-400" : "text-red-700"}`} onClick={() => editarCampo("imagen_url", "")}>Quitar imagen del producto</button><span className={`text-xs ${temaAyuda}`}>Esto no elimina el archivo almacenado.</span></div>}
             <label className="block text-sm font-semibold sm:col-span-2">Descripción
-              <textarea rows={3} value={form.descripcion} onChange={(e) => editarCampo("descripcion", e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3" />
+              <textarea rows={3} value={form.descripcion} onChange={(e) => editarCampo("descripcion", e.target.value)} className={`mt-1 w-full rounded-xl border p-3 ${temaCampo}`} />
             </label>
             <div className="sm:col-span-2 flex flex-wrap gap-x-6 gap-y-3">
               <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.controlar_stock} onChange={(e) => editarCampo("controlar_stock", e.target.checked)} /> Controlar stock</label>
@@ -340,25 +373,25 @@ export default function ProductosCatalogoExternoPage() {
           </form>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-black">Productos cargados ({productos.length})</h2>
-            <input type="search" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar nombre, código o categoría" aria-label="Buscar productos" className="w-full rounded-xl border border-slate-300 p-3 sm:w-80" />
+            <input type="search" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar nombre, código o categoría" aria-label="Buscar productos" className={`w-full rounded-xl border p-3 sm:w-80 ${temaCampo}`} />
           </div>
-          {filtrados.length === 0 ? <p className="mt-5 text-slate-500">No se encontraron productos.</p> : (
+          {filtrados.length === 0 ? <p className={`mt-5 ${temaAyuda}`}>No se encontraron productos.</p> : (
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filtrados.map((p) => (
-                <article key={p.id} className="flex flex-col rounded-2xl border border-slate-200 p-4">
-                  {p.imagen_url ? <img src={p.imagen_url} alt={p.nombre} className="h-40 w-full rounded-xl object-cover" /> : <div className="flex h-40 items-center justify-center rounded-xl bg-slate-100 text-slate-400">Sin imagen</div>}
-                  <p className="mt-3 text-xs font-semibold text-blue-700">{nombreCategoria.get(p.categoria_id ?? -1) || "Sin categoría"}</p>
+                <article key={p.id} className={`flex flex-col rounded-2xl border p-4 ${modoOscuro ? "border-slate-700 bg-slate-800/60" : "border-slate-200 bg-white"}`}>
+                  {p.imagen_url ? <img src={p.imagen_url} alt={p.nombre} className="h-40 w-full rounded-xl object-cover" /> : <div className={`flex h-40 items-center justify-center rounded-xl ${modoOscuro ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-400"}`}>Sin imagen</div>}
+                  <p className={`mt-3 text-xs font-semibold ${temaLink}`}>{nombreCategoria.get(p.categoria_id ?? -1) || "Sin categoría"}</p>
                   <h3 className="mt-1 text-lg font-bold">{p.nombre}</h3>
-                  {p.codigo && <p className="mt-1 break-words text-sm text-slate-600">Código: {p.codigo}</p>}
+                  {p.codigo && <p className={`mt-1 break-words text-sm ${temaSecundario}`}>Código: {p.codigo}</p>}
                   <p className="mt-2 font-bold">{dinero(Number(p.precio))}</p>
-                  {p.precio_mayorista != null && <p className="text-sm text-slate-600">Mayorista: {dinero(Number(p.precio_mayorista))}</p>}
-                  <p className="mt-1 text-xs text-slate-500">{p.activo ? "Activo" : "Inactivo"} · {p.visible ? "Visible" : "Oculto"}</p>
+                  {p.precio_mayorista != null && <p className={`text-sm ${temaSecundario}`}>Mayorista: {dinero(Number(p.precio_mayorista))}</p>}
+                  <p className={`mt-1 text-xs ${temaAyuda}`}>{p.activo ? "Activo" : "Inactivo"} · {p.visible ? "Visible" : "Oculto"}</p>
                   <div className="mt-auto flex gap-2 pt-4">
                     <button type="button" onClick={() => seleccionarProducto(p)} className="flex-1 rounded-xl bg-blue-700 px-3 py-2 text-sm font-bold text-white">Editar</button>
-                    <button type="button" onClick={() => void eliminar(p)} className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700">Eliminar</button>
+                    <button type="button" onClick={() => void eliminar(p)} className={`rounded-xl border px-3 py-2 text-sm font-bold ${modoOscuro ? "border-red-700 text-red-400 hover:bg-red-950/40" : "border-red-300 text-red-700"}`}>Eliminar</button>
                   </div>
                 </article>
               ))}

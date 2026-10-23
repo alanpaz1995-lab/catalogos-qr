@@ -80,6 +80,22 @@ export default function CatalogosExternosAdminPage() {
   const [guardando, setGuardando] = useState(false);
   const [subiendo, setSubiendo] = useState<string | null>(null);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [modoOscuro, setModoOscuro] = useState(false);
+
+  useEffect(() => {
+    const aplicarTema = () => {
+      setModoOscuro(window.localStorage.getItem("comersys-modo-oscuro") === "true");
+    };
+    aplicarTema();
+    window.addEventListener("storage", aplicarTema);
+    window.addEventListener("focus", aplicarTema);
+    window.addEventListener("comersys-modo-oscuro-cambio", aplicarTema);
+    return () => {
+      window.removeEventListener("storage", aplicarTema);
+      window.removeEventListener("focus", aplicarTema);
+      window.removeEventListener("comersys-modo-oscuro-cambio", aplicarTema);
+    };
+  }, []);
 
   useEffect(() => {
     let vigente = true;
@@ -218,13 +234,19 @@ export default function CatalogosExternosAdminPage() {
     }
   }
 
-  if (cargando) return <main className="min-h-screen bg-slate-50 p-8 text-slate-600">Cargando Catálogos Externos...</main>;
+  if (cargando) return (
+    <main className={`min-h-screen p-8 ${modoOscuro ? "bg-slate-950 text-slate-300" : "bg-slate-50 text-slate-600"}`}>
+      Cargando Catálogos Externos...
+    </main>
+  );
   if (!autorizado) return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <section className="max-w-lg rounded-3xl bg-white p-8 text-center shadow-sm">
+    <main className={`flex min-h-screen items-center justify-center p-6 ${modoOscuro ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-800"}`}>
+      <section className={`max-w-lg rounded-3xl p-8 text-center shadow-sm ${modoOscuro ? "border border-slate-700 bg-slate-900" : "bg-white"}`}>
         <h1 className="text-2xl font-bold">Acceso restringido</h1>
-        <p className="mt-3 text-slate-600">{error || "Este módulo es exclusivo del propietario de ComerSys."}</p>
-        <Link href="/admin-comersys" className="mt-6 inline-block rounded-xl bg-blue-600 px-5 py-3 font-bold text-white">Volver</Link>
+        <p className={`mt-3 ${modoOscuro ? "text-slate-300" : "text-slate-600"}`}>
+          {error || "Este módulo es exclusivo del propietario de ComerSys."}
+        </p>
+        <Link href="/admin" className="mt-6 inline-block rounded-xl bg-blue-600 px-5 py-3 font-bold text-white">Volver</Link>
       </section>
     </main>
   );
@@ -236,11 +258,50 @@ export default function CatalogosExternosAdminPage() {
   ] as const;
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] p-5 text-slate-800 sm:p-8">
+    <main className={`catalogos-externos-admin min-h-screen p-5 sm:p-8 ${modoOscuro ? "catalogos-externos-admin-dark bg-slate-950 text-slate-100" : "bg-[#F8FAFC] text-slate-800"}`}>
+      {modoOscuro && (
+        <style jsx global>{`
+          .catalogos-externos-admin-dark .bg-white { background-color: #0f172a !important; }
+          .catalogos-externos-admin-dark .bg-slate-50,
+          .catalogos-externos-admin-dark .bg-slate-100 { background-color: #1e293b !important; }
+          .catalogos-externos-admin-dark .border-slate-200,
+          .catalogos-externos-admin-dark .border-slate-300,
+          .catalogos-externos-admin-dark .border-blue-200 { border-color: #334155 !important; }
+          .catalogos-externos-admin-dark .text-slate-800,
+          .catalogos-externos-admin-dark .text-slate-700 { color: #f1f5f9 !important; }
+          .catalogos-externos-admin-dark .text-slate-600 { color: #cbd5e1 !important; }
+          .catalogos-externos-admin-dark .text-slate-500,
+          .catalogos-externos-admin-dark .text-slate-400 { color: #94a3b8 !important; }
+          .catalogos-externos-admin-dark input:not([type="color"]):not([type="checkbox"]):not([type="file"]) {
+            background-color: #1e293b !important;
+            border-color: #475569 !important;
+            color: #f8fafc !important;
+          }
+          .catalogos-externos-admin-dark input::placeholder { color: #94a3b8 !important; }
+          .catalogos-externos-admin-dark input[type="color"] { background-color: #1e293b; border-color: #475569; }
+          .catalogos-externos-admin-dark input[type="file"] { color: #cbd5e1; }
+          .catalogos-externos-admin-dark input[type="file"]::file-selector-button {
+            background-color: #334155; color: #f8fafc; border: 0; border-radius: 0.5rem;
+            padding: 0.4rem 0.65rem; margin-right: 0.75rem;
+          }
+          .catalogos-externos-admin-dark button.border { border-color: #475569; color: #f8fafc; }
+          .catalogos-externos-admin-dark button.border:hover { background-color: #334155; }
+          .catalogos-externos-admin-dark .text-green-700 { color: #86efac !important; }
+          .catalogos-externos-admin-dark .text-amber-700 { color: #fcd34d !important; }
+          .catalogos-externos-admin-dark .text-blue-700 { color: #93c5fd !important; }
+          .catalogos-externos-admin-dark button.border-blue-200:hover { background-color: #1e3a8a !important; }
+          .catalogos-externos-admin-dark .bg-red-50 { background-color: #450a0a !important; }
+          .catalogos-externos-admin-dark .bg-green-50 { background-color: #052e16 !important; }
+          .catalogos-externos-admin-dark .text-red-700 { color: #fca5a5 !important; }
+          .catalogos-externos-admin-dark .text-green-800 { color: #86efac !important; }
+          .catalogos-externos-admin-dark .border-red-200 { border-color: #991b1b !important; }
+          .catalogos-externos-admin-dark .border-green-200 { border-color: #166534 !important; }
+        `}</style>
+      )}
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <Link href="/admin-comersys" className="text-sm font-semibold text-blue-600 hover:underline">← SuperAdmin ComerSys</Link>
+            <Link href="/admin" className="text-sm font-semibold text-blue-600 hover:underline">← Panel principal</Link>
             <h1 className="mt-2 text-3xl font-black">Catálogos Externos</h1>
             <p className="mt-2 text-slate-500">Emprendimientos independientes, administrados únicamente desde ComerSys.</p>
           </div>

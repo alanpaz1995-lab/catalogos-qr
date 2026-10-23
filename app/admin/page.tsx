@@ -2378,6 +2378,30 @@ const cargarDashboard = useCallback(async () => {
 
         )}
 
+        {empresa?.id === 1 && (
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  MÓDULO EXCLUSIVO · EMPRESA ID 1
+                </p>
+                <h2 className="mt-1 text-lg font-black text-slate-900">
+                  Catálogos Externos
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Creá y administrá catálogos independientes, solo de consulta por WhatsApp, sin carrito ni Mercado Pago.
+                </p>
+              </div>
+              <Link
+                href="/admin-comersys/catalogos-externos"
+                className="shrink-0 rounded-2xl bg-[#2563EB] px-5 py-3 text-center text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
+              >
+                📚 Administrar catálogos externos
+              </Link>
+            </div>
+          </section>
+        )}
+
         {estadoPrueba?.mostrarAviso && (
 
           <section

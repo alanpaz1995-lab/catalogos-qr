@@ -31,12 +31,29 @@ type PagoSuscripcion = {
 export default function SuperAdminComerSysPage() {
   const [cargando, setCargando] = useState(true);
   const [autorizado, setAutorizado] = useState(false);
-  const [puedeAdministrarCatalogosExternos, setPuedeAdministrarCatalogosExternos] = useState(false);
   const [error, setError] = useState("");
   const [empresas, setEmpresas] = useState<EmpresaSuscripcion[]>([]);
   const [pagos, setPagos] = useState<PagoSuscripcion[]>([]);
   const [procesandoEmpresaId, setProcesandoEmpresaId] = useState<number | null>(null);
   const [empresaDetalle, setEmpresaDetalle] = useState<EmpresaSuscripcion | null>(null);
+  const [modoOscuro, setModoOscuro] = useState(false);
+
+  useEffect(() => {
+    const aplicarTema = () => {
+      setModoOscuro(window.localStorage.getItem("comersys-modo-oscuro") === "true");
+    };
+
+    aplicarTema();
+    window.addEventListener("storage", aplicarTema);
+    window.addEventListener("focus", aplicarTema);
+    window.addEventListener("comersys-modo-oscuro-cambio", aplicarTema);
+
+    return () => {
+      window.removeEventListener("storage", aplicarTema);
+      window.removeEventListener("focus", aplicarTema);
+      window.removeEventListener("comersys-modo-oscuro-cambio", aplicarTema);
+    };
+  }, []);
 
   useEffect(() => {
     cargarSuperAdmin();
@@ -45,7 +62,6 @@ export default function SuperAdminComerSysPage() {
   async function cargarSuperAdmin() {
     setCargando(true);
     setError("");
-    setPuedeAdministrarCatalogosExternos(false);
 
     const {
       data: { user },
@@ -78,17 +94,6 @@ export default function SuperAdminComerSysPage() {
     }
 
     setAutorizado(true);
-
-    // Solo el SuperAdmin que es titular de la empresa ID 1 ve este acceso.
-    // Las políticas RLS de Supabase protegen los datos aunque se conozca la URL.
-    const { data: empresaPropietaria, error: errorPropietaria } = await supabase
-      .from("empresas")
-      .select("id")
-      .eq("id", 1)
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
-
-    setPuedeAdministrarCatalogosExternos(!errorPropietaria && !!empresaPropietaria);
 
     const { data: empresasData, error: errorEmpresas } = await supabase
       .from("empresas")
@@ -368,7 +373,7 @@ export default function SuperAdminComerSysPage() {
 
   if (cargando) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-8">
+      <main className={`flex min-h-screen items-center justify-center p-8 ${modoOscuro ? "bg-slate-950 text-slate-100" : "bg-[#F8FAFC] text-slate-900"}`}>
         <div className="text-center">
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
           <p className="mt-4 font-semibold text-slate-500">
@@ -381,8 +386,8 @@ export default function SuperAdminComerSysPage() {
 
   if (!autorizado) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] p-6">
-        <section className="w-full max-w-xl rounded-3xl border border-red-200 bg-white p-8 text-center shadow-lg">
+      <main className={`flex min-h-screen items-center justify-center p-6 ${modoOscuro ? "bg-slate-950 text-slate-100" : "bg-[#F8FAFC] text-slate-900"}`}>
+        <section className={`w-full max-w-xl rounded-3xl border p-8 text-center shadow-lg ${modoOscuro ? "border-slate-700 bg-slate-900" : "border-red-200 bg-white"}`}>
           <div className="text-5xl">🔒</div>
           <h1 className="mt-5 text-3xl font-black">Acceso restringido</h1>
           <p className="mt-3 text-slate-500">
@@ -407,7 +412,38 @@ export default function SuperAdminComerSysPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
+    <main className={`superadmin-comersys min-h-screen p-5 sm:p-8 ${modoOscuro ? "superadmin-comersys-dark bg-slate-950 text-slate-100" : "bg-[#F8FAFC] text-[#1E293B]"}`}>
+      {modoOscuro && (
+        <style jsx global>{`
+          .superadmin-comersys-dark .bg-white { background-color: #0f172a !important; }
+          .superadmin-comersys-dark .bg-slate-50,
+          .superadmin-comersys-dark .bg-slate-100 { background-color: #1e293b !important; }
+          .superadmin-comersys-dark .border-slate-100,
+          .superadmin-comersys-dark .border-slate-200,
+          .superadmin-comersys-dark .border-slate-300 { border-color: #334155 !important; }
+          .superadmin-comersys-dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+            border-color: #334155 !important;
+          }
+          .superadmin-comersys-dark .text-slate-900,
+          .superadmin-comersys-dark .text-slate-800,
+          .superadmin-comersys-dark .text-slate-700 { color: #f1f5f9 !important; }
+          .superadmin-comersys-dark .text-slate-600 { color: #cbd5e1 !important; }
+          .superadmin-comersys-dark .text-slate-500,
+          .superadmin-comersys-dark .text-slate-400 { color: #94a3b8 !important; }
+          .superadmin-comersys-dark .superadmin-refresh-button {
+            background-color: #fff !important;
+            color: #0f172a !important;
+          }
+          .superadmin-comersys-dark table tr:hover { background-color: #1e293b; }
+          .superadmin-comersys-dark input,
+          .superadmin-comersys-dark select,
+          .superadmin-comersys-dark textarea {
+            background-color: #1e293b;
+            color: #f8fafc;
+            border-color: #475569;
+          }
+        `}</style>
+      )}
       <div className="mx-auto max-w-7xl space-y-8">
         <header className="rounded-3xl bg-gradient-to-r from-[#0868F7] via-[#4C49F4] to-[#7412F4] p-7 text-white shadow-lg">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -426,36 +462,12 @@ export default function SuperAdminComerSysPage() {
             <button
               type="button"
               onClick={cargarSuperAdmin}
-              className="rounded-xl bg-white px-5 py-3 font-black text-slate-900 shadow-md"
+              className="superadmin-refresh-button rounded-xl bg-white px-5 py-3 font-black text-slate-900 shadow-md"
             >
               Actualizar
             </button>
           </div>
         </header>
-
-        {puedeAdministrarCatalogosExternos && (
-          <section className="rounded-3xl border border-blue-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-black uppercase tracking-widest text-blue-600">
-                  Módulo exclusivo · Empresa ID 1
-                </p>
-                <h2 className="mt-2 text-xl font-black">Catálogos Externos</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Creá catálogos independientes para otros emprendimientos.
-                  Administrá sus productos y categorías y compartí únicamente
-                  el enlace público, sin carrito ni Mercado Pago.
-                </p>
-              </div>
-              <Link
-                href="/admin-comersys/catalogos-externos"
-                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-600 px-5 py-3 font-black text-white hover:bg-blue-700"
-              >
-                Administrar catálogos externos →
-              </Link>
-            </div>
-          </section>
-        )}
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
