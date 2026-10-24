@@ -278,13 +278,13 @@ export default function CatalogosExternosAdminPage() {
   }
 
   if (cargando) return (
-    <main className={`min-h-screen p-8 ${modoOscuro ? "bg-slate-950 text-slate-300" : "bg-slate-50 text-slate-600"}`}>
+    <main className={`min-h-screen p-8 ${modoOscuro ? "bg-black text-slate-300" : "bg-slate-50 text-slate-600"}`}>
       Cargando Catálogos Externos...
     </main>
   );
   if (!autorizado) return (
-    <main className={`flex min-h-screen items-center justify-center p-6 ${modoOscuro ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-800"}`}>
-      <section className={`max-w-lg rounded-3xl p-8 text-center shadow-sm ${modoOscuro ? "border border-slate-700 bg-slate-900" : "bg-white"}`}>
+    <main className={`flex min-h-screen items-center justify-center p-6 ${modoOscuro ? "bg-black text-slate-100" : "bg-slate-50 text-slate-800"}`}>
+      <section className={`max-w-lg rounded-3xl p-8 text-center shadow-sm ${modoOscuro ? "border border-neutral-700 bg-[#171717]" : "bg-white"}`}>
         <h1 className="text-2xl font-bold">Acceso restringido</h1>
         <p className={`mt-3 ${modoOscuro ? "text-slate-300" : "text-slate-600"}`}>
           {error || "Este módulo es exclusivo del propietario de ComerSys."}
@@ -301,38 +301,39 @@ export default function CatalogosExternosAdminPage() {
   ] as const;
 
   return (
-    <main className={`catalogos-externos-admin min-h-screen p-5 sm:p-8 ${modoOscuro ? "catalogos-externos-admin-dark bg-slate-950 text-slate-100" : "bg-[#F8FAFC] text-slate-800"}`}>
+    <main className={`catalogos-externos-admin min-h-screen p-5 sm:p-8 ${modoOscuro ? "catalogos-externos-admin-dark bg-black text-slate-100" : "bg-[#F8FAFC] text-slate-800"}`}>
       {modoOscuro && (
         <style jsx global>{`
-          .catalogos-externos-admin-dark .bg-white { background-color: #0f172a !important; }
+          /* Mismo negro y gris carbón del panel principal de ComerSys. */
+          .catalogos-externos-admin-dark .bg-white { background-color: #171717 !important; }
           .catalogos-externos-admin-dark .bg-slate-50,
-          .catalogos-externos-admin-dark .bg-slate-100 { background-color: #1e293b !important; }
+          .catalogos-externos-admin-dark .bg-slate-100 { background-color: #242424 !important; }
           .catalogos-externos-admin-dark .border-slate-200,
           .catalogos-externos-admin-dark .border-slate-300,
-          .catalogos-externos-admin-dark .border-blue-200 { border-color: #334155 !important; }
+          .catalogos-externos-admin-dark .border-blue-200 { border-color: #404040 !important; }
           .catalogos-externos-admin-dark .text-slate-800,
           .catalogos-externos-admin-dark .text-slate-700 { color: #f1f5f9 !important; }
           .catalogos-externos-admin-dark .text-slate-600 { color: #cbd5e1 !important; }
           .catalogos-externos-admin-dark .text-slate-500,
           .catalogos-externos-admin-dark .text-slate-400 { color: #94a3b8 !important; }
           .catalogos-externos-admin-dark input:not([type="color"]):not([type="checkbox"]):not([type="file"]) {
-            background-color: #1e293b !important;
-            border-color: #475569 !important;
+            background-color: #242424 !important;
+            border-color: #525252 !important;
             color: #f8fafc !important;
           }
           .catalogos-externos-admin-dark input::placeholder { color: #94a3b8 !important; }
-          .catalogos-externos-admin-dark input[type="color"] { background-color: #1e293b; border-color: #475569; }
+          .catalogos-externos-admin-dark input[type="color"] { background-color: #242424; border-color: #525252; }
           .catalogos-externos-admin-dark input[type="file"] { color: #cbd5e1; }
           .catalogos-externos-admin-dark input[type="file"]::file-selector-button {
-            background-color: #334155; color: #f8fafc; border: 0; border-radius: 0.5rem;
+            background-color: #404040; color: #f8fafc; border: 0; border-radius: 0.5rem;
             padding: 0.4rem 0.65rem; margin-right: 0.75rem;
           }
-          .catalogos-externos-admin-dark button.border { border-color: #475569; color: #f8fafc; }
-          .catalogos-externos-admin-dark button.border:hover { background-color: #334155; }
+          .catalogos-externos-admin-dark button.border { border-color: #525252; color: #f8fafc; }
+          .catalogos-externos-admin-dark button.border:hover { background-color: #303030; }
           .catalogos-externos-admin-dark .text-green-700 { color: #86efac !important; }
           .catalogos-externos-admin-dark .text-amber-700 { color: #fcd34d !important; }
           .catalogos-externos-admin-dark .text-blue-700 { color: #93c5fd !important; }
-          .catalogos-externos-admin-dark button.border-blue-200:hover { background-color: #1e3a8a !important; }
+          .catalogos-externos-admin-dark button.border-blue-200:hover { background-color: #303030 !important; }
           .catalogos-externos-admin-dark .bg-red-50 { background-color: #450a0a !important; }
           .catalogos-externos-admin-dark .bg-green-50 { background-color: #052e16 !important; }
           .catalogos-externos-admin-dark .text-red-700 { color: #fca5a5 !important; }

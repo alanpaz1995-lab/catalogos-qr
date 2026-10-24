@@ -118,19 +118,19 @@ export default function ProductosCatalogoExternoPage() {
   }, []);
 
   const temaPagina = modoOscuro
-    ? "bg-slate-950 text-slate-100"
+    ? "bg-[#000000] text-slate-100"
     : "bg-[#F8FAFC] text-slate-800";
   const temaTarjeta = modoOscuro
-    ? "border-slate-700 bg-slate-900"
+    ? "border-[#353535] bg-[#171717]"
     : "border-slate-200 bg-white";
   const temaCampo = modoOscuro
-    ? "border-slate-600 bg-slate-800 text-slate-100 placeholder:text-slate-400"
+    ? "border-[#454545] bg-[#252525] text-slate-100 placeholder:text-slate-400"
     : "border-slate-300 bg-white text-slate-800";
   const temaSecundario = modoOscuro ? "text-slate-300" : "text-slate-600";
   const temaAyuda = modoOscuro ? "text-slate-400" : "text-slate-500";
   const temaLink = modoOscuro ? "text-blue-400" : "text-blue-700";
   const temaBordeBoton = modoOscuro
-    ? "border-slate-600 text-slate-100 hover:bg-slate-800"
+    ? "border-[#454545] text-slate-100 hover:bg-[#292929]"
     : "border-slate-300 hover:bg-slate-50";
 
 
@@ -397,7 +397,7 @@ export default function ProductosCatalogoExternoPage() {
                    <label htmlFor="externo-minimo-mayorista" className="mb-2 block font-semibold">Mayorista desde</label>
                    <input id="externo-minimo-mayorista" type="number" min="1" step="1" value={form.cantidad_minima_mayorista} onChange={(e) => editarCampo("cantidad_minima_mayorista", e.target.value)} className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
                  </div>
-                 <div className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${modoOscuro ? "border-blue-800 bg-blue-950/40 text-blue-200" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
+                 <div className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${modoOscuro ? "border-[#454545] bg-[#252525] text-blue-200" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
                    Si no cargás precio mayorista se usa el minorista. El precio mayorista se muestra desde la cantidad indicada.
                  </div>
                  {form.controlar_stock && <>
@@ -428,15 +428,15 @@ export default function ProductosCatalogoExternoPage() {
                  <h2 className="text-xl font-bold">Imagen principal</h2>
                  <input ref={archivoImagenRef} type="file" accept="image/jpeg,image/png,image/webp" disabled={subiendoImagen || guardando} onChange={(e) => { void subirImagen(e.target.files?.[0]); e.target.value = ""; }} className="hidden" />
                  {form.imagen_url ? <>
-                   <img src={form.imagen_url} alt="Vista previa del producto" className={`mt-5 h-72 w-full rounded-2xl border object-contain ${modoOscuro ? "border-slate-700" : "border-slate-200"}`} />
+                   <img src={form.imagen_url} alt="Vista previa del producto" className={`mt-5 h-72 w-full rounded-2xl border object-contain ${modoOscuro ? "border-[#353535]" : "border-slate-200"}`} />
                    <button type="button" disabled={subiendoImagen || guardando} onClick={() => archivoImagenRef.current?.click()} className={`mt-4 w-full rounded-xl border px-4 py-3 font-semibold ${temaBordeBoton}`}>Cambiar imagen</button>
                    <button type="button" disabled={subiendoImagen || guardando} onClick={() => editarCampo("imagen_url", "")} className={`mt-2 w-full rounded-xl border px-4 py-3 font-semibold ${modoOscuro ? "border-red-800 text-red-300" : "border-red-200 text-red-700"}`}>Quitar imagen</button>
-                 </> : <button type="button" disabled={subiendoImagen || guardando} onClick={() => archivoImagenRef.current?.click()} className={`mt-5 flex h-72 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition disabled:opacity-50 ${modoOscuro ? "border-slate-600 bg-slate-800/70 hover:border-blue-400" : "border-slate-300 bg-slate-50 hover:border-blue-500 hover:bg-blue-50"}`}>
+                 </> : <button type="button" disabled={subiendoImagen || guardando} onClick={() => archivoImagenRef.current?.click()} className={`mt-5 flex h-72 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition disabled:opacity-50 ${modoOscuro ? "border-[#454545] bg-[#252525] hover:border-blue-400" : "border-slate-300 bg-slate-50 hover:border-blue-500 hover:bg-blue-50"}`}>
                    <span className="text-5xl">🖼️</span>
                    <span className="mt-4 font-semibold">{subiendoImagen ? "Subiendo imagen..." : "Seleccionar imagen"}</span>
                    <span className={`mt-2 text-xs ${temaAyuda}`}>JPG, PNG o WEBP · Máximo 10 MB</span>
                  </button>}
-                 <div className={`mt-5 rounded-2xl border p-4 ${modoOscuro ? "border-slate-700 bg-slate-800/70" : "border-blue-200 bg-blue-50"}`}>
+                 <div className={`mt-5 rounded-2xl border p-4 ${modoOscuro ? "border-[#353535] bg-[#252525]" : "border-blue-200 bg-blue-50"}`}>
                    <p className="font-bold">✨ Mejorar foto con ChatGPT</p>
                    <p className={`mt-2 text-sm leading-6 ${temaSecundario}`}>Es opcional. Podés mejorar la iluminación y el fondo con ChatGPT y luego seleccionar la foto acá.</p>
                    <a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" className="mt-4 block rounded-xl bg-blue-600 px-4 py-3 text-center font-semibold text-white hover:bg-blue-700">Abrir ChatGPT para mejorar foto ↗</a>
@@ -453,7 +453,7 @@ export default function ProductosCatalogoExternoPage() {
                      ["en_oferta", "Oferta", "Muestra la etiqueta Oferta."],
                      ["destacado", "Destacado", "Permite identificar un producto destacado."],
                    ] as const).map(([campo, titulo, detalle]) => (
-                     <label key={campo} className={`flex cursor-pointer gap-3 rounded-2xl border p-4 ${modoOscuro ? "border-slate-700 bg-slate-950/30" : "border-slate-200 bg-slate-50"}`}>
+                     <label key={campo} className={`flex cursor-pointer gap-3 rounded-2xl border p-4 ${modoOscuro ? "border-[#353535] bg-[#202020]" : "border-slate-200 bg-slate-50"}`}>
                        <input type="checkbox" checked={form[campo]} onChange={(e) => editarCampo(campo, e.target.checked)} className="mt-1 h-5 w-5" />
                        <span><span className="block font-semibold">{titulo}</span><span className={`mt-1 block text-xs leading-5 ${temaAyuda}`}>{detalle}</span></span>
                      </label>
@@ -475,8 +475,8 @@ export default function ProductosCatalogoExternoPage() {
           {filtrados.length === 0 ? <p className={`mt-5 ${temaAyuda}`}>No se encontraron productos.</p> : (
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filtrados.map((p) => (
-                <article key={p.id} className={`flex flex-col rounded-2xl border p-4 ${modoOscuro ? "border-slate-700 bg-slate-800/60" : "border-slate-200 bg-white"}`}>
-                  {p.imagen_url ? <img src={p.imagen_url} alt={p.nombre} className="h-40 w-full rounded-xl object-cover" /> : <div className={`flex h-40 items-center justify-center rounded-xl ${modoOscuro ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-400"}`}>Sin imagen</div>}
+                <article key={p.id} className={`flex flex-col rounded-2xl border p-4 ${modoOscuro ? "border-[#353535] bg-[#202020]" : "border-slate-200 bg-white"}`}>
+                  {p.imagen_url ? <img src={p.imagen_url} alt={p.nombre} className="h-40 w-full rounded-xl object-cover" /> : <div className={`flex h-40 items-center justify-center rounded-xl ${modoOscuro ? "bg-[#252525] text-slate-400" : "bg-slate-100 text-slate-400"}`}>Sin imagen</div>}
                   <p className={`mt-3 text-xs font-semibold ${temaLink}`}>{nombreCategoria.get(p.categoria_id ?? -1) || "Sin categoría"}</p>
                   <h3 className="mt-1 text-lg font-bold">{p.nombre}</h3>
                   {p.codigo && <p className={`mt-1 break-words text-sm ${temaSecundario}`}>Código: {p.codigo}</p>}

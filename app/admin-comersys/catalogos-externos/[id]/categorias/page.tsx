@@ -221,9 +221,9 @@ export default function CategoriasExternasPage() {
     });
   }
 
-  if (cargando) return <main className={`min-h-screen p-8 text-center ${modoOscuro ? "bg-slate-950 text-slate-300" : "bg-slate-50 text-slate-600"}`}>Comprobando acceso y cargando categorías...</main>;
+  if (cargando) return <main className={`min-h-screen p-8 text-center ${modoOscuro ? "bg-black text-slate-300" : "bg-slate-50 text-slate-600"}`}>Comprobando acceso y cargando categorías...</main>;
   if (!autorizado || !catalogo) return (
-    <main className={`min-h-screen p-6 ${modoOscuro ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-800"}`}><div className={`mx-auto max-w-xl rounded-2xl border p-7 ${modoOscuro ? "border-slate-700 bg-slate-900" : "border-red-200 bg-white"}`}>
+    <main className={`min-h-screen p-6 ${modoOscuro ? "bg-black text-slate-100" : "bg-slate-50 text-slate-800"}`}><div className={`mx-auto max-w-xl rounded-2xl border p-7 ${modoOscuro ? "border-[#343434] bg-[#171717]" : "border-red-200 bg-white"}`}>
       <h1 className="text-xl font-bold text-red-700">No se puede acceder a las categorías</h1>
       <p className={`mt-3 ${modoOscuro ? "text-slate-300" : "text-slate-600"}`}>{error || "Acceso no autorizado."}</p>
       <Link href="/admin-comersys/catalogos-externos" className="mt-5 inline-block font-semibold text-blue-600">Volver a catálogos externos</Link>
@@ -231,17 +231,17 @@ export default function CategoriasExternasPage() {
   );
 
   return (
-    <main className={`categorias-externas-admin min-h-screen p-4 sm:p-8 ${modoOscuro ? "categorias-externas-oscuro bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-800"}`}>
+    <main className={`categorias-externas-admin min-h-screen p-4 sm:p-8 ${modoOscuro ? "categorias-externas-oscuro bg-black text-slate-100" : "bg-slate-50 text-slate-800"}`}>
       {modoOscuro && (
         <style jsx global>{`
-          .categorias-externas-oscuro .bg-white { background-color: #0f172a !important; }
+          .categorias-externas-oscuro .bg-white { background-color: #171717 !important; }
           .categorias-externas-oscuro .bg-slate-50,
-          .categorias-externas-oscuro .bg-slate-100 { background-color: #1e293b !important; }
-          .categorias-externas-oscuro .bg-slate-200 { background-color: #334155 !important; }
+          .categorias-externas-oscuro .bg-slate-100 { background-color: #252525 !important; }
+          .categorias-externas-oscuro .bg-slate-200 { background-color: #303030 !important; }
           .categorias-externas-oscuro .border-slate-100,
           .categorias-externas-oscuro .border-slate-200,
-          .categorias-externas-oscuro .border-slate-300 { border-color: #334155 !important; }
-          .categorias-externas-oscuro .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #334155 !important; }
+          .categorias-externas-oscuro .border-slate-300 { border-color: #343434 !important; }
+          .categorias-externas-oscuro .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #343434 !important; }
           .categorias-externas-oscuro .text-slate-800,
           .categorias-externas-oscuro .text-slate-700 { color: #f1f5f9 !important; }
           .categorias-externas-oscuro .text-slate-600 { color: #cbd5e1 !important; }
@@ -249,14 +249,14 @@ export default function CategoriasExternasPage() {
           .categorias-externas-oscuro .text-slate-400 { color: #94a3b8 !important; }
           .categorias-externas-oscuro input,
           .categorias-externas-oscuro textarea {
-            background-color: #111827 !important;
-            border-color: #475569 !important;
+            background-color: #252525 !important;
+            border-color: #404040 !important;
             color: #f8fafc !important;
           }
           .categorias-externas-oscuro input::placeholder,
           .categorias-externas-oscuro textarea::placeholder { color: #94a3b8 !important; }
           .categorias-externas-oscuro button:not(.bg-blue-600) {
-            border-color: #475569;
+            border-color: #404040;
           }
           .categorias-externas-oscuro .bg-green-100 { background-color: #064e3b !important; }
           .categorias-externas-oscuro .text-green-700 { color: #a7f3d0 !important; }
