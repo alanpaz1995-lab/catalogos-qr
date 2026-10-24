@@ -82,6 +82,7 @@ export default function CatalogosExternosAdminPage() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [modoOscuro, setModoOscuro] = useState(false);
   const [cambiandoEstadoId, setCambiandoEstadoId] = useState<number | null>(null);
+  const [eliminandoId, setEliminandoId] = useState<number | null>(null);
 
   useEffect(() => {
     const aplicarTema = () => {
@@ -277,6 +278,58 @@ export default function CatalogosExternosAdminPage() {
     }
   }
 
+
+  // Elimina solamente el registro principal. Las relaciones de Supabase deciden
+  // si sus datos dependientes se eliminan en cascada o si hay que impedir el borrado.
+  // No se borran archivos de Storage porque algunos podrían seguir referenciados.
+  async function eliminarProyecto(catalogo: CatalogoExterno) {
+    if (!autorizado || guardando || subiendo !== null || cambiandoEstadoId !== null || eliminandoId !== null) return;
+
+    const escrito = window.prompt(
+      `Vas a eliminar definitivamente el proyecto «${catalogo.nombre}».\n\n` +
+      `Si la base de datos tiene eliminación en cascada, también se borrarán sus productos y categorías.\n` +
+      `Esta acción no se puede deshacer.\n\n` +
+      `Para confirmar, escribí exactamente: ${catalogo.nombre}`
+    );
+    if (escrito === null) return;
+    if (escrito !== catalogo.nombre) {
+      setError("El nombre ingresado no coincide. No se eliminó el proyecto.");
+      return;
+    }
+    if (!window.confirm(`Última confirmación: ¿eliminar definitivamente «${catalogo.nombre}»?`)) return;
+
+    setError("");
+    setMensaje("");
+    setEliminandoId(catalogo.id);
+    try {
+      const { data, error: errorEliminacion } = await supabase
+        .from("catalogos_externos")
+        .delete()
+        .eq("id", catalogo.id)
+        .select("id");
+      if (errorEliminacion) throw errorEliminacion;
+      if (!data?.some((fila) => fila.id === catalogo.id)) {
+        throw new Error("No se pudo confirmar la eliminación. Verificá los permisos de Supabase.");
+      }
+      if (editandoId === catalogo.id) {
+        setMostrarFormulario(false);
+        setEditandoId(null);
+        setFormulario({ ...inicial });
+      }
+      await actualizarLista();
+      setMensaje(`Proyecto «${catalogo.nombre}» eliminado. Los archivos de imágenes almacenados no se borraron automáticamente.`);
+    } catch (err) {
+      const detalle = err instanceof Error ? err.message : "No se pudo eliminar el proyecto.";
+      setError(
+        /foreign key|violates foreign key|23503/i.test(detalle)
+          ? "No se pudo eliminar porque el proyecto tiene productos o categorías vinculados. No se borraron manualmente. Primero debemos configurar un borrado transaccional seguro en Supabase."
+          : detalle
+      );
+    } finally {
+      setEliminandoId(null);
+    }
+  }
+
   if (cargando) return (
     <main className={`min-h-screen p-8 ${modoOscuro ? "bg-black text-slate-300" : "bg-slate-50 text-slate-600"}`}>
       Cargando Catálogos Externos...
@@ -455,6 +508,14 @@ export default function CatalogosExternosAdminPage() {
                         className={`rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-50 ${catalogo.activo ? "border-amber-400 text-amber-700" : "border-green-400 text-green-700"}`}
                       >
                         {cambiandoEstadoId === catalogo.id ? "Procesando..." : catalogo.activo ? "Pausar catálogo" : "Reactivar catálogo"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={eliminandoId !== null || cambiandoEstadoId !== null || guardando || subiendo !== null}
+                        onClick={() => void eliminarProyecto(catalogo)}
+                        className={`rounded-lg border border-red-500 px-3 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${modoOscuro ? "text-red-300 hover:bg-red-950/40" : "text-red-700 hover:bg-red-50"}`}
+                      >
+                        {eliminandoId === catalogo.id ? "Eliminando..." : "Eliminar proyecto"}
                       </button>
                     </div>
                   </div>

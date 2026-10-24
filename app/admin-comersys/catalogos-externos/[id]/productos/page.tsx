@@ -96,6 +96,8 @@ export default function ProductosCatalogoExternoPage() {
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
   const [editando, setEditando] = useState<number | null>(null);
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const formularioInicialRef = useRef<FormProducto>({ ...FORM_VACIO });
   const [form, setForm] = useState<FormProducto>({ ...FORM_VACIO });
   const [guardando, setGuardando] = useState(false);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
@@ -188,10 +190,44 @@ export default function ProductosCatalogoExternoPage() {
 
   function nuevoProducto() {
     setEditando(null);
-    setForm({ ...FORM_VACIO });
+    const vacio = { ...FORM_VACIO };
+    formularioInicialRef.current = vacio;
+    setForm(vacio);
+    setMostrarFormulario(true);
     setError("");
     setAviso("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  function volverALista() {
+    if (guardando || subiendoImagen) return;
+    if (mostrarFormulario && JSON.stringify(form) !== JSON.stringify(formularioInicialRef.current)) {
+      if (!window.confirm("Hay cambios sin guardar. ¿Querés volver a la lista de productos?")) return;
+    }
+    setMostrarFormulario(false);
+    setEditando(null);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Atajo para abrir "Nuevo producto" dentro de Catálogos Externos.
+  // Nota: algunos navegadores reservan Ctrl+N para una ventana nueva.
+  useEffect(() => {
+    function manejarNuevo(event: KeyboardEvent) {
+      if (event.repeat || event.key.toLowerCase() !== "n" || !event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+      if (!autorizado || !catalogo || guardando || subiendoImagen) return;
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], dialog[open]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (mostrarFormulario && JSON.stringify(form) !== JSON.stringify(formularioInicialRef.current)) {
+        if (!window.confirm("Hay cambios sin guardar. ¿Querés crear un producto nuevo?")) return;
+      }
+      nuevoProducto();
+    }
+    window.addEventListener("keydown", manejarNuevo, true);
+    return () => window.removeEventListener("keydown", manejarNuevo, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autorizado, catalogo, guardando, subiendoImagen, mostrarFormulario, form]);
 
   function seleccionarProducto(producto: ProductoExterno) {
     setEditando(producto.id);
@@ -214,6 +250,26 @@ export default function ProductosCatalogoExternoPage() {
       activo: producto.activo,
       visible: producto.visible,
     });
+    formularioInicialRef.current = {
+      nombre: producto.nombre,
+      codigo: producto.codigo || "",
+      categoria_id: producto.categoria_id == null ? "" : String(producto.categoria_id),
+      descripcion: producto.descripcion || "",
+      precio: String(producto.precio),
+      costo: producto.costo == null ? "" : String(producto.costo),
+      stock_minimo: String(producto.stock_minimo ?? 0),
+      nuevo_ingreso: Boolean(producto.nuevo_ingreso),
+      en_oferta: Boolean(producto.en_oferta),
+      destacado: Boolean(producto.destacado),
+      precio_mayorista: producto.precio_mayorista == null ? "" : String(producto.precio_mayorista),
+      cantidad_minima_mayorista: String(producto.cantidad_minima_mayorista ?? 10),
+      stock: producto.stock == null ? "" : String(producto.stock),
+      controlar_stock: producto.controlar_stock,
+      imagen_url: producto.imagen_url || "",
+      activo: producto.activo,
+      visible: producto.visible,
+    };
+    setMostrarFormulario(true);
     setError("");
     setAviso("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -306,7 +362,10 @@ export default function ProductosCatalogoExternoPage() {
       const { error: errorGuardado } = await consulta;
       if (errorGuardado) throw errorGuardado;
       const eraNuevo = editando === null;
-      nuevoProducto();
+      setMostrarFormulario(false);
+      setEditando(null);
+      setForm({ ...FORM_VACIO });
+      formularioInicialRef.current = { ...FORM_VACIO };
       await cargar();
       setAviso(eraNuevo ? "Producto creado correctamente." : "Producto actualizado correctamente.");
     } catch (e) {
@@ -322,7 +381,11 @@ export default function ProductosCatalogoExternoPage() {
     const { error: errorEliminar } = await supabase.from("productos_externos")
       .delete().eq("id", producto.id).eq("catalogo_id", catalogoId);
     if (errorEliminar) { setError(errorEliminar.message); return; }
-    if (editando === producto.id) nuevoProducto();
+    if (editando === producto.id) {
+      setMostrarFormulario(false);
+      setEditando(null);
+      setForm({ ...FORM_VACIO });
+    }
     await cargar();
     setAviso("Producto eliminado. La imagen almacenada no se borra automáticamente.");
   }
@@ -350,18 +413,25 @@ export default function ProductosCatalogoExternoPage() {
           <Link href="/admin-comersys/catalogos-externos" className="text-sm font-semibold text-blue-100 hover:underline">← Catálogos Externos</Link>
           <h1 className="mt-3 text-3xl font-black">Productos · {catalogo.nombre}</h1>
           <p className="mt-1 text-sm text-blue-100">Solo administración. Este módulo no genera pedidos ni pagos.</p>
-          <Link href={`/admin-comersys/catalogos-externos/${catalogoId}/categorias`} className="mt-4 inline-block rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700">Administrar categorías</Link>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href={`/admin-comersys/catalogos-externos/${catalogoId}/categorias`} className="inline-block rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700">Administrar categorías</Link>
+            {mostrarFormulario ? (
+              <button type="button" onClick={volverALista} className="rounded-xl border border-white/50 px-4 py-2 text-sm font-bold text-white hover:bg-white/10">← Volver a productos</button>
+            ) : (
+              <button type="button" onClick={nuevoProducto} className="rounded-xl border border-white/60 bg-white/15 px-4 py-2 text-sm font-bold text-white hover:bg-white/25">+ Nuevo producto <span className="ml-1 text-xs font-normal opacity-80">Ctrl + N</span></button>
+            )}
+          </div>
         </header>
 
         {error && <div role="alert" className={`rounded-xl border p-4 ${modoOscuro ? "border-red-800 bg-red-950/50 text-red-200" : "border-red-200 bg-red-50 text-red-800"}`}>{error}</div>}
         {aviso && <div role="status" className={`rounded-xl border p-4 ${modoOscuro ? "border-green-800 bg-green-950/50 text-green-200" : "border-green-200 bg-green-50 text-green-800"}`}>{aviso}</div>}
 
-         <form onSubmit={guardar} className="space-y-6">
+         {mostrarFormulario && <form onSubmit={guardar} className="space-y-6">
            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
              <section className={`rounded-3xl border p-6 shadow-sm sm:p-8 ${temaTarjeta}`}>
                <div className="flex flex-wrap items-center justify-between gap-3">
                  <h2 className="text-xl font-bold">{editando === null ? "Información del producto" : `Editar producto #${editando}`}</h2>
-                 {editando !== null && <button type="button" onClick={nuevoProducto} className={`rounded-xl border px-4 py-2 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
+                 {editando !== null && <button type="button" onClick={volverALista} className={`rounded-xl border px-4 py-2 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
                </div>
                <div className="mt-6 grid gap-6 md:grid-cols-2">
                  <div className="md:col-span-2">
@@ -463,13 +533,13 @@ export default function ProductosCatalogoExternoPage() {
              </div>
            </div>
            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-             {editando !== null && <button type="button" onClick={nuevoProducto} className={`rounded-xl border px-6 py-3 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
+             {editando !== null && <button type="button" onClick={volverALista} className={`rounded-xl border px-6 py-3 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
              <button type="submit" disabled={guardando || subiendoImagen} className="rounded-xl bg-blue-700 px-7 py-3 font-bold text-white transition hover:bg-blue-800 disabled:opacity-50">{guardando ? "Guardando producto..." : editando === null ? "Guardar producto" : "Guardar cambios"}</button>
            </div>
-         </form>
-        <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>
+         </form>}
+        {!mostrarFormulario && <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-black">Productos cargados ({productos.length})</h2>
+            <div><h2 className="text-xl font-black">Productos cargados ({productos.length})</h2><p className={`mt-1 text-sm ${temaAyuda}`}>Administrá los productos del emprendimiento o creá uno nuevo desde el botón superior.</p></div>
             <input type="search" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar nombre, código o categoría" aria-label="Buscar productos" className={`w-full rounded-xl border p-3 sm:w-80 ${temaCampo}`} />
           </div>
           {filtrados.length === 0 ? <p className={`mt-5 ${temaAyuda}`}>No se encontraron productos.</p> : (
@@ -491,7 +561,7 @@ export default function ProductosCatalogoExternoPage() {
               ))}
             </div>
           )}
-        </section>
+        </section>}
       </div>
     </main>
   );
