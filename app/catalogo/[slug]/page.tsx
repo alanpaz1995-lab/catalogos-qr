@@ -897,7 +897,19 @@ export default function CatalogoEmpresaPage() {
     return (producto as Producto & { codigo?: string | null }).codigo?.trim() || "";
   }
 
-  const productosFiltrados = productos.filter((producto) => {
+  // Mantener SIEMPRE el orden configurado por el administrador, incluso
+  // después de INSERT/UPDATE recibidos en tiempo real desde Supabase.
+  const posicionCategoriaActual = new Map(
+    categoriasOrdenadas.map((nombre, indice) => [nombre, indice])
+  );
+
+  const productosOrdenados = [...productos].sort((a, b) => {
+    const ordenA = posicionCategoriaActual.get(a.categoria || "") ?? Number.MAX_SAFE_INTEGER;
+    const ordenB = posicionCategoriaActual.get(b.categoria || "") ?? Number.MAX_SAFE_INTEGER;
+    return ordenA !== ordenB ? ordenA - ordenB : b.id - a.id;
+  });
+
+  const productosFiltrados = productosOrdenados.filter((producto) => {
 
     const textoBuscado = busqueda.trim().toLowerCase();
 

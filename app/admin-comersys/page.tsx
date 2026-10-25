@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -29,6 +30,7 @@ type PagoSuscripcion = {
 };
 
 export default function SuperAdminComerSysPage() {
+  const router = useRouter();
   const [cargando, setCargando] = useState(true);
   const [autorizado, setAutorizado] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +60,24 @@ export default function SuperAdminComerSysPage() {
   useEffect(() => {
     cargarSuperAdmin();
   }, []);
+
+  useEffect(() => {
+    const manejarTecla = (evento: KeyboardEvent) => {
+      if (evento.defaultPrevented || evento.isComposing || evento.repeat) return;
+      if (evento.ctrlKey && evento.key === "Enter") {
+        evento.preventDefault();
+        router.push("/admin");
+        return;
+      }
+      if (evento.key === "Escape" && empresaDetalle) {
+        evento.preventDefault();
+        setEmpresaDetalle(null);
+      }
+    };
+
+    window.addEventListener("keydown", manejarTecla);
+    return () => window.removeEventListener("keydown", manejarTecla);
+  }, [empresaDetalle, router]);
 
   async function cargarSuperAdmin() {
     setCargando(true);
