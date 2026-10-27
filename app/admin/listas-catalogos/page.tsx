@@ -216,6 +216,46 @@ export default function ListasCatalogosPage() {
     setProcesandoId(null);
   }
 
+  async function eliminarLista(lista: ListaCatalogo) {
+    if (!empresa?.id || procesandoId !== null || guardando) return;
+
+    const confirmacion = window.prompt(
+      `ELIMINACIÓN DEFINITIVA\n\nVas a eliminar la lista "${lista.nombre}". Esta acción no se puede deshacer.\n\nEscribí exactamente el nombre de la lista para confirmar:`
+    );
+    if (confirmacion === null) return;
+    if (confirmacion.trim() !== lista.nombre.trim()) {
+      setError("El nombre no coincide. No se eliminó la lista.");
+      setMensaje("");
+      return;
+    }
+
+    setProcesandoId(lista.id);
+    setError("");
+    setMensaje("");
+
+    try {
+      const { data, error: errorEliminacion } = await supabase
+        .from("listas_catalogos")
+        .delete()
+        .eq("id", lista.id)
+        .eq("empresa_id", empresa.id)
+        .select("id")
+        .maybeSingle();
+
+      if (errorEliminacion) throw errorEliminacion;
+      if (!data) throw new Error("No se eliminó ningún registro. Verificá tus permisos de acceso.");
+
+      setListas((actuales) => actuales.filter((item) => item.id !== lista.id));
+      if (editandoId === lista.id) setEditandoId(null);
+      setMensaje(`Se eliminó la lista "${lista.nombre}" correctamente.`);
+    } catch (fallo) {
+      const detalle = fallo instanceof Error ? fallo.message : "Error desconocido";
+      setError(`No se pudo eliminar la lista: ${detalle}. Si existen datos vinculados, debemos revisar las relaciones de Supabase antes de borrarlos.`);
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
   if (cargandoEmpresa) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-8">
@@ -410,6 +450,14 @@ export default function ListasCatalogosPage() {
                         }`}
                       >
                         {lista.activa ? "Desactivar" : "Activar"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={procesandoId !== null || guardando}
+                        onClick={() => void eliminarLista(lista)}
+                        className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {procesandoId === lista.id ? "Procesando..." : "Eliminar lista"}
                       </button>
                     </div>
                   </article>
