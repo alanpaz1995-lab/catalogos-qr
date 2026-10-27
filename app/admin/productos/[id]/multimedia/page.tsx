@@ -17,12 +17,18 @@ import GaleriaMultimedia, {
 } from "@/components/productos/GaleriaMultimedia";
 
 const BUCKET = "productos";
-const TAMANO_MAXIMO = 10 * 1024 * 1024;
+const TAMANO_MAXIMO_IMAGEN = 10 * 1024 * 1024;
+const TAMANO_MAXIMO_VIDEO = 50 * 1024 * 1024;
 const TIPOS_PERMITIDOS = [
   "image/jpeg",
   "image/png",
   "image/webp",
+  "video/mp4",
 ];
+
+function esVideo(item: { tipo?: string; url?: string; archivo?: File }) {
+  return item.tipo === "Video" || item.archivo?.type === "video/mp4" || /\.mp4(?:[?#]|$)/i.test(item.url || "");
+}
 
 type Producto = {
   id: number;
@@ -172,22 +178,22 @@ export default function ProductoMultimediaPage() {
     cargarDatos();
   }, [empresa?.id, cargarDatos]);
 
+  // Los enlaces temporales se liberan al cerrar la pantalla, no al agregar archivos.
+  const previewsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    const previews = previewsRef.current;
     return () => {
-      archivos.forEach((item) => {
-        URL.revokeObjectURL(
-          item.vistaPrevia
-        );
-      });
+      previews.forEach((url) => URL.revokeObjectURL(url));
+      previews.clear();
     };
-  }, [archivos]);
+  }, []);
 
   const principal = useMemo(
     () =>
       multimedia.find(
-        (item) => item.es_principal
+        (item) => item.es_principal && !esVideo(item)
       ) ||
-      multimedia[0] ||
+      multimedia.find((item) => !esVideo(item)) ||
       null,
     [multimedia]
   );
@@ -212,25 +218,23 @@ export default function ProductoMultimediaPage() {
         )
       ) {
         setError(
-          "Solo se permiten imágenes JPG, PNG o WEBP."
+          "Solo se permiten imágenes JPG, PNG o WEBP y videos MP4."
         );
         continue;
       }
 
-      if (
-        archivo.size > TAMANO_MAXIMO
-      ) {
+      const video = esVideo({ archivo });
+      const maximo = video ? TAMANO_MAXIMO_VIDEO : TAMANO_MAXIMO_IMAGEN;
+      if (archivo.size > maximo) {
         setError(
-          `La imagen "${archivo.name}" supera los 10 MB.`
+          `El archivo "${archivo.name}" supera los ${video ? 50 : 10} MB.`
         );
         continue;
       }
 
-      validos.push({
-        archivo,
-        vistaPrevia:
-          URL.createObjectURL(archivo),
-      });
+      const vistaPrevia = URL.createObjectURL(archivo);
+      previewsRef.current.add(vistaPrevia);
+      validos.push({ archivo, vistaPrevia });
     }
 
     setArchivos((actuales) => [
@@ -251,9 +255,8 @@ export default function ProductoMultimediaPage() {
         actuales[indice];
 
       if (archivo) {
-        URL.revokeObjectURL(
-          archivo.vistaPrevia
-        );
+        URL.revokeObjectURL(archivo.vistaPrevia);
+        previewsRef.current.delete(archivo.vistaPrevia);
       }
 
       return actuales.filter(
@@ -275,12 +278,13 @@ export default function ProductoMultimediaPage() {
       extension === "jpg" ||
       extension === "jpeg" ||
       extension === "png" ||
-      extension === "webp"
+      extension === "webp" ||
+      (extension === "mp4" && archivo.type === "video/mp4")
     ) {
       return extension;
     }
 
-    return "jpg";
+    return archivo.type === "video/mp4" ? "mp4" : "jpg";
   }
 
   async function subirArchivos() {
@@ -293,7 +297,7 @@ export default function ProductoMultimediaPage() {
 
     if (archivos.length === 0) {
       setError(
-        "Seleccioná al menos una imagen para subir."
+        "Seleccioná al menos una imagen o video para subir."
       );
       return;
     }
@@ -306,7 +310,9 @@ export default function ProductoMultimediaPage() {
       ruta: string;
       url: string;
       nombreArchivo: string;
+      tipo: "Video" | "Original";
     }[] = [];
+    let registrosGuardados = false;
 
     try {
       for (const item of archivos) {
@@ -348,12 +354,13 @@ export default function ProductoMultimediaPage() {
           url: urlData.publicUrl,
           nombreArchivo:
             item.archivo.name,
+          tipo: esVideo({ archivo: item.archivo }) ? "Video" : "Original",
         });
       }
 
       const yaExistePrincipal =
         multimedia.some(
-          (item) => item.es_principal
+          (item) => item.es_principal && !esVideo(item)
         );
 
       const ordenInicial =
@@ -366,18 +373,20 @@ export default function ProductoMultimediaPage() {
               )
             ) + 1;
 
+      const primeraImagen = subidas.findIndex((item) => item.tipo !== "Video");
       const registros = subidas.map(
         (item, indice) => ({
           empresa_id: empresa.id,
           producto_id: productoId,
-          tipo: "Original",
+          tipo: item.tipo,
           url: item.url,
           nombre_archivo:
             item.nombreArchivo,
           descripcion: null,
           es_principal:
             !yaExistePrincipal &&
-            indice === 0,
+            indice === primeraImagen &&
+            item.tipo !== "Video",
           activo: true,
           orden:
             ordenInicial + indice,
@@ -393,18 +402,12 @@ export default function ProductoMultimediaPage() {
         .select("*");
 
       if (baseError) {
-        await supabase.storage
-          .from(BUCKET)
-          .remove(
-            subidas.map(
-              (item) => item.ruta
-            )
-          );
-
         throw new Error(
           baseError.message
         );
       }
+
+      registrosGuardados = true;
 
       const creados =
         (
@@ -443,19 +446,24 @@ export default function ProductoMultimediaPage() {
       }
 
       archivos.forEach((item) => {
-        URL.revokeObjectURL(
-          item.vistaPrevia
-        );
+        URL.revokeObjectURL(item.vistaPrevia);
+        previewsRef.current.delete(item.vistaPrevia);
       });
 
       setArchivos([]);
 
       setMensaje(
-        `${creados.length} imagen(es) subida(s) correctamente.`
+        `${creados.length} archivo(s) subido(s) correctamente.`
       );
 
       await cargarDatos();
     } catch (errorDesconocido) {
+      if (!registrosGuardados && subidas.length > 0) {
+        const { error: limpiezaError } = await supabase.storage
+          .from(BUCKET)
+          .remove(subidas.map((item) => item.ruta));
+        if (limpiezaError) console.warn("No se pudieron limpiar archivos tras el error:", limpiezaError);
+      }
       console.error(
         "Error al subir multimedia:",
         errorDesconocido
@@ -465,7 +473,7 @@ export default function ProductoMultimediaPage() {
         errorDesconocido instanceof
           Error
           ? errorDesconocido.message
-          : "No se pudieron subir las imágenes."
+          : "No se pudieron subir los archivos."
       );
     } finally {
       setSubiendo(false);
@@ -484,6 +492,7 @@ export default function ProductoMultimediaPage() {
 
     if (
       item.es_principal ||
+      esVideo(item) ||
       actualizandoId !== null
     ) {
       return;
@@ -631,7 +640,7 @@ export default function ProductoMultimediaPage() {
 
     const confirmar =
       window.confirm(
-        `¿Seguro que querés eliminar "${item.nombre_archivo || "esta imagen"}"?`
+        `¿Seguro que querés eliminar "${item.nombre_archivo || "este archivo"}"?`
       );
 
     if (!confirmar) {
@@ -693,7 +702,7 @@ export default function ProductoMultimediaPage() {
 
       if (eraPrincipal) {
         const nuevaPrincipal =
-          restantes[0] || null;
+          restantes.find((restante) => !esVideo(restante)) || null;
 
         if (nuevaPrincipal) {
           await supabase
@@ -757,7 +766,7 @@ export default function ProductoMultimediaPage() {
       }
 
       setMensaje(
-        "Imagen eliminada correctamente."
+        "Archivo eliminado correctamente."
       );
     } catch (errorDesconocido) {
       setError(
@@ -837,7 +846,7 @@ export default function ProductoMultimediaPage() {
       );
 
       setMensaje(
-        "Orden de imágenes guardado correctamente."
+        "Orden de archivos guardado correctamente."
       );
     } catch (errorDesconocido) {
       setMultimedia(anteriores);
@@ -936,8 +945,8 @@ export default function ProductoMultimediaPage() {
             </h1>
 
             <p className="mt-2 max-w-2xl text-slate-500">
-              Subí varias imágenes,
-              elegí la principal y
+              Subí fotos y videos MP4,
+              elegí una foto principal y
               administrá la galería del
               producto.
             </p>
@@ -993,19 +1002,18 @@ export default function ProductoMultimediaPage() {
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-bold">
-                Agregar imágenes
+                Agregar fotos y videos
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Podés seleccionar varias
-                fotografías de una sola vez.
+                Podés seleccionar varias fotos y videos MP4 de una sola vez.
               </p>
 
               <input
                 ref={inputRef}
                 type="file"
                 multiple
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,video/mp4"
                 onChange={
                   seleccionarArchivos
                 }
@@ -1020,12 +1028,12 @@ export default function ProductoMultimediaPage() {
                 }
                 className="mt-5 w-full rounded-xl border-2 border-dashed border-violet-300 bg-violet-50 px-5 py-8 font-semibold text-violet-700 disabled:opacity-50"
               >
-                📁 Seleccionar imágenes
+                📁 Seleccionar fotos y videos
               </button>
 
               <p className="mt-3 text-center text-xs text-slate-400">
                 JPG, PNG o WEBP · Máximo
-                10 MB por imagen
+                10 MB por imagen · MP4 hasta 50 MB por video
               </p>
 
               {archivos.length > 0 && (
@@ -1037,15 +1045,23 @@ export default function ProductoMultimediaPage() {
                           key={`${item.archivo.name}-${indice}`}
                           className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
                         >
-                          <img
-                            src={
-                              item.vistaPrevia
-                            }
-                            alt={
-                              item.archivo.name
-                            }
-                            className="h-32 w-full object-cover"
-                          />
+                          {esVideo({ archivo: item.archivo }) ? (
+                            <video
+                              src={item.vistaPrevia}
+                              controls
+                              playsInline
+                              preload="metadata"
+                              className="h-32 w-full bg-black object-contain"
+                            />
+                          ) : (
+                            <a href={item.vistaPrevia} target="_blank" rel="noreferrer" title="Ver imagen ampliada">
+                              <img
+                                src={item.vistaPrevia}
+                                alt={item.archivo.name}
+                                className="h-32 w-full object-contain"
+                              />
+                            </a>
+                          )}
 
                           <button
                             type="button"
@@ -1082,8 +1098,8 @@ export default function ProductoMultimediaPage() {
                     className="mt-5 w-full rounded-xl bg-[#F97316] px-5 py-4 font-semibold text-white disabled:opacity-50"
                   >
                     {subiendo
-                      ? "Subiendo imágenes..."
-                      : `Subir ${archivos.length} imagen(es)`}
+                      ? "Subiendo archivos..."
+                      : `Subir ${archivos.length} archivo(s)`}
                   </button>
                 </>
               )}

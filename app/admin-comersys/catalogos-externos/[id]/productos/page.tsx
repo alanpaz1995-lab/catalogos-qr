@@ -36,6 +36,17 @@ type ProductoExterno = {
   creado_en?: string;
 };
 
+type MultimediaExterna = {
+  id: number;
+  catalogo_id: number;
+  producto_id: number;
+  tipo: string;
+  url: string;
+  nombre_archivo: string | null;
+  orden: number;
+  activo: boolean;
+};
+
 type CatalogoExterno = { id: number; nombre: string; slug: string };
 
 type FormProducto = {
@@ -83,6 +94,7 @@ const dinero = (valor: number) =>
 
 export default function ProductosCatalogoExternoPage() {
   const archivoImagenRef = useRef<HTMLInputElement>(null);
+  const archivoGaleriaRef = useRef<HTMLInputElement>(null);
   const params = useParams();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const catalogoId = Number(idParam);
@@ -93,6 +105,8 @@ export default function ProductosCatalogoExternoPage() {
   const [catalogo, setCatalogo] = useState<CatalogoExterno | null>(null);
   const [categorias, setCategorias] = useState<CategoriaExterna[]>([]);
   const [productos, setProductos] = useState<ProductoExterno[]>([]);
+  const [multimedia, setMultimedia] = useState<MultimediaExterna[]>([]);
+  const [procesandoGaleria, setProcesandoGaleria] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
   const [editando, setEditando] = useState<number | null>(null);
@@ -162,19 +176,22 @@ export default function ProductosCatalogoExternoPage() {
       }
       setAutorizado(true);
 
-      const [respuestaCatalogo, respuestaCategorias, respuestaProductos] = await Promise.all([
+      const [respuestaCatalogo, respuestaCategorias, respuestaProductos, respuestaMultimedia] = await Promise.all([
         supabase.from("catalogos_externos").select("id, nombre, slug").eq("id", catalogoId).maybeSingle(),
         supabase.from("categorias_externas").select("id, catalogo_id, nombre, orden, activo").eq("catalogo_id", catalogoId).order("orden", { ascending: true }).order("nombre", { ascending: true }),
         supabase.from("productos_externos").select("*").eq("catalogo_id", catalogoId).order("id", { ascending: false }),
+        supabase.from("producto_multimedia_externo").select("id,catalogo_id,producto_id,tipo,url,nombre_archivo,orden,activo").eq("catalogo_id",catalogoId).order("orden",{ascending:true}).order("id",{ascending:true}),
       ]);
       if (respuestaCatalogo.error) throw respuestaCatalogo.error;
       if (respuestaCategorias.error) throw respuestaCategorias.error;
       if (respuestaProductos.error) throw respuestaProductos.error;
+      if (respuestaMultimedia.error) throw respuestaMultimedia.error;
       if (!respuestaCatalogo.data) throw new Error("No se encontró este catálogo externo.");
 
       setCatalogo(respuestaCatalogo.data as CatalogoExterno);
       setCategorias((respuestaCategorias.data || []) as CategoriaExterna[]);
       setProductos((respuestaProductos.data || []) as ProductoExterno[]);
+      setMultimedia((respuestaMultimedia.data || []) as MultimediaExterna[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar los productos.");
     } finally {
@@ -200,7 +217,7 @@ export default function ProductosCatalogoExternoPage() {
   }
 
   function volverALista() {
-    if (guardando || subiendoImagen) return;
+    if (guardando || subiendoImagen || procesandoGaleria) return;
     if (mostrarFormulario && JSON.stringify(form) !== JSON.stringify(formularioInicialRef.current)) {
       if (!window.confirm("Hay cambios sin guardar. ¿Querés volver a la lista de productos?")) return;
     }
@@ -215,7 +232,7 @@ export default function ProductosCatalogoExternoPage() {
   useEffect(() => {
     function manejarNuevo(event: KeyboardEvent) {
       if (event.repeat || event.key.toLowerCase() !== "n" || !event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-      if (!autorizado || !catalogo || guardando || subiendoImagen) return;
+      if (!autorizado || !catalogo || guardando || subiendoImagen || procesandoGaleria) return;
       if (document.querySelector('[role="dialog"], [aria-modal="true"], dialog[open]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -302,9 +319,108 @@ export default function ProductosCatalogoExternoPage() {
     }
   }
 
+  async function subirGaleria(archivos: FileList | null) {
+    if (!archivos || editando === null || !autorizado || procesandoGaleria) return;
+    const productoId = editando;
+    const lista = Array.from(archivos);
+    const tiposImagen = ["image/jpeg", "image/png", "image/webp"];
+    const tiposVideo = ["video/mp4", "video/webm"];
+    setProcesandoGaleria(true);
+    setError("");
+    setAviso("");
+    let etapa = "preparación";
+    let archivoActual = "";
+    try {
+      let siguienteOrden = Math.max(0, ...multimedia.filter(x => x.producto_id === productoId).map(x => x.orden)) + 1;
+      for (const archivo of lista) {
+        archivoActual = archivo.name;
+        etapa = "validación del archivo";
+        const esImagen = tiposImagen.includes(archivo.type);
+        const esVideo = tiposVideo.includes(archivo.type);
+        if (!esImagen && !esVideo) throw new Error(`Formato no permitido: ${archivo.name}. Usá JPG, PNG, WebP, MP4 o WebM.`);
+        if (archivo.size > (esImagen ? 10 : 50) * 1024 * 1024) throw new Error(`Archivo demasiado grande: ${archivo.name}. Máximo 10 MB por foto o 50 MB por video.`);
+        const extension = ({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm"} as Record<string,string>)[archivo.type];
+        const ruta = `${catalogoId}/productos/${productoId}/galeria/${crypto.randomUUID()}.${extension}`;
+        etapa = "subida a Storage";
+        const {error: errorSubida} = await supabase.storage.from("catalogos-externos").upload(ruta, archivo, {contentType:archivo.type,upsert:false});
+        if (errorSubida) throw errorSubida;
+        const {data: enlace} = supabase.storage.from("catalogos-externos").getPublicUrl(ruta);
+        etapa = "registro en la tabla multimedia";
+        const {error: errorRegistro} = await supabase.from("producto_multimedia_externo").insert({catalogo_id:catalogoId,producto_id:productoId,tipo:esImagen?"Imagen":"Video",url:enlace.publicUrl,nombre_archivo:archivo.name,orden:siguienteOrden++,activo:true});
+        if (errorRegistro) {
+          await supabase.storage.from("catalogos-externos").remove([ruta]);
+          throw errorRegistro;
+        }
+      }
+      await cargar();
+      setAviso("Archivos multimedia guardados correctamente.");
+    } catch(e) {
+      const detalle = e && typeof e === "object" && "message" in e
+        ? String((e as { message: unknown }).message)
+        : String(e);
+      const codigo = e && typeof e === "object" && "code" in e
+        ? ` [${String((e as { code: unknown }).code)}]`
+        : "";
+      await cargar();
+      setError(`Error durante ${etapa}${archivoActual ? ` (${archivoActual})` : ""}: ${detalle}${codigo}`);
+    } finally { setProcesandoGaleria(false); }
+  }
+
+  async function eliminarMultimedia(item: MultimediaExterna) {
+    if (!autorizado || procesandoGaleria || !window.confirm("¿Eliminar este archivo de la galería?")) return;
+    setProcesandoGaleria(true); setError(""); setAviso("");
+    try {
+      const {error: err} = await supabase.from("producto_multimedia_externo").delete().eq("id",item.id).eq("catalogo_id",catalogoId);
+      if (err) throw err;
+      // Se elimina primero el registro; si falla Storage el archivo podría quedar huérfano.
+      const urlBase = supabase.storage.from("catalogos-externos").getPublicUrl("").data.publicUrl;
+      const prefijo = urlBase.endsWith("/") ? urlBase : urlBase + "/";
+      if (item.url.startsWith(prefijo)) {
+        const ruta = decodeURIComponent(item.url.slice(prefijo.length).split("?")[0]);
+        const {error: errStorage} = await supabase.storage.from("catalogos-externos").remove([ruta]);
+        if (errStorage) setAviso("El archivo se quitó de la galería, pero no pudo borrarse de Storage: " + errStorage.message);
+      }
+      await cargar();
+      setAviso(anterior => anterior || "Archivo eliminado de la galería.");
+    } catch(e) { setError(e instanceof Error ? e.message : "No se pudo eliminar el archivo."); }
+    finally {setProcesandoGaleria(false);}
+  }
+
+  async function moverMultimedia(item: MultimediaExterna, direccion: -1 | 1) {
+    if (procesandoGaleria) return;
+    const lista = multimedia.filter(x => x.producto_id === item.producto_id).sort((a,b) => a.orden-b.orden || a.id-b.id);
+    const indice = lista.findIndex(x => x.id === item.id);
+    const otro = lista[indice + direccion];
+    if (!otro) return;
+    setProcesandoGaleria(true); setError("");
+    try {
+      // Usar dos valores nuevos evita conflictos si existe un índice único sobre orden.
+      const max = Math.max(...lista.map(x=>x.orden),0);
+      const temporal = max + 1;
+      const pasos = [[item.id,temporal],[otro.id,item.orden],[item.id,otro.orden]] as const;
+      for (const [id,orden] of pasos) {
+        const {error: err} = await supabase.from("producto_multimedia_externo").update({orden}).eq("id",id).eq("catalogo_id",catalogoId);
+        if (err) throw err;
+      }
+      await cargar();
+    } catch(e) {await cargar(); setError(e instanceof Error ? e.message : "No se pudo reordenar la galería.");}
+    finally {setProcesandoGaleria(false);}
+  }
+
+  async function cambiarVisibilidadMultimedia(item: MultimediaExterna) {
+    if (procesandoGaleria) return;
+    setProcesandoGaleria(true); setError("");
+    try {
+      const {error: err} = await supabase.from("producto_multimedia_externo").update({activo:!item.activo}).eq("id",item.id).eq("catalogo_id",catalogoId);
+      if(err) throw err;
+      await cargar();
+    } catch(e) {setError(e instanceof Error ? e.message : "No se pudo modificar el archivo.");}
+    finally {setProcesandoGaleria(false);}
+  }
+
   async function guardar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!autorizado || !catalogo || guardando || subiendoImagen) return;
+    if (!autorizado || !catalogo || guardando || subiendoImagen || procesandoGaleria) return;
     setError("");
     setAviso("");
     const nombre = form.nombre.trim();
@@ -513,6 +629,32 @@ export default function ProductosCatalogoExternoPage() {
                    <p className={`mt-2 text-xs ${temaAyuda}`}>La foto no se envía automáticamente.</p>
                  </div>
                </section>
+                <section className={`rounded-3xl border p-6 shadow-sm ${temaTarjeta}`}>
+                  <h2 className="text-xl font-bold">Galería de fotos y videos</h2>
+                  {editando === null ? (
+                    <p className={`mt-3 text-sm ${temaSecundario}`}>Primero guardá el producto. Después abrilo con Editar para agregar fotos y videos.</p>
+                  ) : <>
+                    <p className={`mt-2 text-sm ${temaSecundario}`}>Archivos adicionales del producto. La imagen principal se mantiene independiente.</p>
+                    <input ref={archivoGaleriaRef} type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" className="hidden" disabled={procesandoGaleria || guardando} onChange={e => {void subirGaleria(e.target.files); e.target.value="";}} />
+                    <button type="button" disabled={procesandoGaleria || guardando} onClick={()=>archivoGaleriaRef.current?.click()} className="mt-4 w-full rounded-xl bg-blue-700 px-4 py-3 font-semibold text-white disabled:opacity-50">{procesandoGaleria ? "Procesando..." : "+ Agregar fotos o videos"}</button>
+                    <p className={`mt-2 text-xs ${temaAyuda}`}>JPG, PNG, WebP (10 MB) · MP4, WebM (50 MB). El bucket puede tener un límite menor.</p>
+                    <div className="mt-4 space-y-3">
+                      {multimedia.filter(x=>x.producto_id===editando).sort((a,b)=>a.orden-b.orden || a.id-b.id).map((item,indice,lista)=>(
+                        <div key={item.id} className={`rounded-xl border p-3 ${temaBordeBoton}`}>
+                          {item.tipo.toLowerCase() === "video" ? <video src={item.url} controls preload="metadata" className="h-40 w-full rounded-lg bg-black object-contain" /> : <img src={item.url} alt={item.nombre_archivo || "Foto de producto"} className="h-40 w-full rounded-lg object-contain" />}
+                          <p className="mt-2 break-all text-xs">{item.nombre_archivo || (item.tipo.toLowerCase() === "video" ? "Video" : "Foto")}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button type="button" disabled={procesandoGaleria || indice===0} onClick={()=>void moverMultimedia(item,-1)} className="rounded-lg border px-2 py-1 text-xs disabled:opacity-40">↑</button>
+                            <button type="button" disabled={procesandoGaleria || indice===lista.length-1} onClick={()=>void moverMultimedia(item,1)} className="rounded-lg border px-2 py-1 text-xs disabled:opacity-40">↓</button>
+                            <button type="button" disabled={procesandoGaleria} onClick={()=>void cambiarVisibilidadMultimedia(item)} className="rounded-lg border px-2 py-1 text-xs">{item.activo ? "Ocultar" : "Mostrar"}</button>
+                            <button type="button" disabled={procesandoGaleria} onClick={()=>void eliminarMultimedia(item)} className="rounded-lg border border-red-500 px-2 py-1 text-xs text-red-500">Eliminar</button>
+                          </div>
+                        </div>
+                      ))}
+                      {!multimedia.some(x=>x.producto_id===editando) && <p className={`text-sm ${temaAyuda}`}>Todavía no hay archivos adicionales.</p>}
+                    </div>
+                  </>}
+                </section>
                <section className={`rounded-3xl border p-6 shadow-sm ${temaTarjeta}`}>
                  <h2 className="text-xl font-bold">Publicación y etiquetas</h2>
                  <div className="mt-5 space-y-3">
@@ -534,7 +676,7 @@ export default function ProductosCatalogoExternoPage() {
            </div>
            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
              {editando !== null && <button type="button" onClick={volverALista} className={`rounded-xl border px-6 py-3 font-semibold ${temaBordeBoton}`}>Cancelar edición</button>}
-             <button type="submit" disabled={guardando || subiendoImagen} className="rounded-xl bg-blue-700 px-7 py-3 font-bold text-white transition hover:bg-blue-800 disabled:opacity-50">{guardando ? "Guardando producto..." : editando === null ? "Guardar producto" : "Guardar cambios"}</button>
+             <button type="submit" disabled={guardando || subiendoImagen || procesandoGaleria} className="rounded-xl bg-blue-700 px-7 py-3 font-bold text-white transition hover:bg-blue-800 disabled:opacity-50">{guardando ? "Guardando producto..." : editando === null ? "Guardar producto" : "Guardar cambios"}</button>
            </div>
          </form>}
         {!mostrarFormulario && <section className={`rounded-3xl border p-5 shadow-sm sm:p-7 ${temaTarjeta}`}>

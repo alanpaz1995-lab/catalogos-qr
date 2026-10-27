@@ -26,6 +26,19 @@ type CategoriaExterna = {
   activo: boolean;
 };
 
+type MultimediaExterna = {
+  id: number;
+  producto_id: number;
+  tipo: string;
+  url: string;
+  orden: number;
+  activo: boolean;
+};
+
+type MedioVisible = { tipo: "imagen" | "video"; url: string };
+
+type VistaAmpliada = { nombre: string; medios: MedioVisible[]; indice: number };
+
 type ProductoExterno = {
   id: number;
   catalogo_id: number;
@@ -64,11 +77,12 @@ export default function CatalogoExternoPublicoPage() {
   const [catalogo, setCatalogo] = useState<CatalogoExterno | null>(null);
   const [categorias, setCategorias] = useState<CategoriaExterna[]>([]);
   const [productos, setProductos] = useState<ProductoExterno[]>([]);
+  const [multimedia, setMultimedia] = useState<MultimediaExterna[]>([]);
   const [categoriaActual, setCategoriaActual] = useState<number | "todos">("todos");
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
-  const [imagenAmpliada, setImagenAmpliada] = useState<{ url: string; nombre: string } | null>(null);
+  const [imagenAmpliada, setImagenAmpliada] = useState<VistaAmpliada | null>(null);
 
   useEffect(() => {
     let vigente = true;
@@ -79,6 +93,7 @@ export default function CatalogoExternoPublicoPage() {
       setCatalogo(null);
       setCategorias([]);
       setProductos([]);
+      setMultimedia([]);
       setCategoriaActual("todos");
 
       if (!slug) {
@@ -121,6 +136,17 @@ export default function CatalogoExternoPublicoPage() {
         if (errorProductos) throw errorProductos;
         if (!vigente) return;
 
+        const {data: multimediaData, error: errorMultimedia} = await supabase
+          .from("producto_multimedia_externo")
+          .select("id,producto_id,tipo,url,orden,activo")
+          .eq("catalogo_id",catalogoData.id)
+          .eq("activo",true)
+          .order("orden",{ascending:true})
+          .order("id",{ascending:true});
+        if (errorMultimedia) throw errorMultimedia;
+        if (!vigente) return;
+        setMultimedia((multimediaData || []) as MultimediaExterna[]);
+
         setCatalogo(catalogoData as CatalogoExterno);
         setCategorias((categoriasData || []) as CategoriaExterna[]);
         setProductos((productosData || []) as ProductoExterno[]);
@@ -140,12 +166,45 @@ export default function CatalogoExternoPublicoPage() {
 
   useEffect(() => {
     if (!imagenAmpliada) return;
-    function cerrar(event: KeyboardEvent) {
-      if (event.key === "Escape") setImagenAmpliada(null);
+
+    function manejarTecladoGaleria(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setImagenAmpliada(null);
+        return;
+      }
+
+      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const objetivo = event.target;
+      if (objetivo instanceof HTMLElement &&
+          (objetivo.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(objetivo.tagName))) return;
+
+      event.preventDefault();
+      const desplazamiento = event.key === "ArrowRight" ? 1 : -1;
+      setImagenAmpliada((actual) => {
+        if (!actual || actual.medios.length <= 1) return actual;
+        return {
+          ...actual,
+          indice: (actual.indice + desplazamiento + actual.medios.length) % actual.medios.length,
+        };
+      });
     }
-    window.addEventListener("keydown", cerrar);
-    return () => window.removeEventListener("keydown", cerrar);
+
+    window.addEventListener("keydown", manejarTecladoGaleria);
+    return () => window.removeEventListener("keydown", manejarTecladoGaleria);
   }, [imagenAmpliada]);
+
+  function mediosProducto(producto: ProductoExterno): MedioVisible[] {
+    const medios: MedioVisible[] = [];
+    if (producto.imagen_url) medios.push({tipo:"imagen",url:producto.imagen_url});
+    for (const item of multimedia) {
+      if (item.producto_id !== producto.id || !item.activo) continue;
+      if (item.tipo.toLowerCase() === "video") medios.push({tipo:"video",url:item.url});
+      else if (item.tipo.toLowerCase() === "imagen" || item.tipo.toLowerCase() === "foto") medios.push({tipo:"imagen",url:item.url});
+    }
+    return medios;
+  }
 
   const categoriasVisibles = useMemo(() => {
     const existentes = new Set(productos.map((p) => p.categoria_id));
@@ -291,15 +350,23 @@ export default function CatalogoExternoPublicoPage() {
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {productosVisibles.map((producto) => {
               const nombreCategoria = categorias.find((cat) => cat.id === producto.categoria_id)?.nombre || "Sin categoría";
+              const medios = mediosProducto(producto);
               const sinStock = producto.controlar_stock && producto.stock != null && producto.stock <= 0;
               return (
                 <article key={producto.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  {producto.imagen_url ? (
-                    <button type="button" onClick={() => setImagenAmpliada({ url: producto.imagen_url!, nombre: producto.nombre })} aria-label={`Ampliar imagen de ${producto.nombre}`} className="h-56 w-full overflow-hidden bg-slate-100">
-                      <img src={producto.imagen_url} alt={producto.nombre} className="h-full w-full object-cover" />
-                    </button>
+                   {medios.length > 0 ? (
+                     <div>
+                       <button type="button" onClick={() => setImagenAmpliada({ medios, indice:0, nombre:producto.nombre })} aria-label={`Ver galería de ${producto.nombre}`} className="relative h-56 w-full overflow-hidden bg-slate-100">
+                         {medios[0].tipo === "video" ? <video src={medios[0].url} muted preload="metadata" className="h-full w-full object-cover" /> : <img src={medios[0].url} alt={producto.nombre} className="h-full w-full object-cover" />}
+                         {medios[0].tipo === "video" && <span className="absolute inset-0 flex items-center justify-center text-5xl text-white drop-shadow-lg">▶</span>}
+                         {medios.length > 1 && <span className="absolute bottom-3 right-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">{medios.length} archivos</span>}
+                       </button>
+                       {medios.length > 1 && <div className="flex gap-2 overflow-x-auto p-2">{medios.map((medio,i)=><button key={`${medio.url}-${i}`} type="button" onClick={()=>setImagenAmpliada({medios,indice:i,nombre:producto.nombre})} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100" aria-label={`Abrir archivo ${i+1}`}>
+                         {medio.tipo === "video" ? <span className="flex h-full items-center justify-center bg-slate-900 text-xl text-white">▶</span> : <img src={medio.url} alt="" className="h-full w-full object-cover" />}
+                       </button>)}</div>}
+                     </div>
                   ) : (
-                    <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400">Sin imagen</div>
+                     <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400">Sin imagen</div>
                   )}
                   <div className="flex flex-1 flex-col p-5">
                     <p className="text-sm font-semibold" style={{ color: principal }}>{nombreCategoria}</p>
@@ -327,11 +394,20 @@ export default function CatalogoExternoPublicoPage() {
         )}
       </section>
 
-      {imagenAmpliada && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-5" role="dialog" aria-modal="true" aria-label={`Imagen de ${imagenAmpliada.nombre}`} onClick={() => setImagenAmpliada(null)}>
-          <button type="button" onClick={() => setImagenAmpliada(null)} className="absolute right-5 top-5 rounded-full bg-white px-4 py-2 font-bold text-slate-900">Cerrar ×</button>
-          <img src={imagenAmpliada.url} alt={imagenAmpliada.nombre} className="max-h-[85vh] max-w-[95vw] object-contain" />
-        </div>
+       {imagenAmpliada && (
+         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/95 p-5" role="dialog" aria-modal="true" aria-label={`Galería de ${imagenAmpliada.nombre}`} onClick={() => setImagenAmpliada(null)}>
+           <button type="button" onClick={() => setImagenAmpliada(null)} className="absolute right-5 top-5 z-10 rounded-full bg-white px-4 py-2 font-bold text-slate-900">Cerrar ×</button>
+           <div className="flex w-full max-w-5xl items-center justify-center gap-3" onClick={e=>e.stopPropagation()}>
+             {imagenAmpliada.medios.length>1 && <button type="button" aria-label="Anterior" className="rounded-full bg-white p-3 font-bold" onClick={()=>setImagenAmpliada(v=>v?{...v,indice:(v.indice-1+v.medios.length)%v.medios.length}:null)}>‹</button>}
+             <div className="flex min-w-0 flex-1 justify-center">
+               {imagenAmpliada.medios[imagenAmpliada.indice].tipo === "video" ?
+                 <video key={imagenAmpliada.medios[imagenAmpliada.indice].url} src={imagenAmpliada.medios[imagenAmpliada.indice].url} controls playsInline preload="metadata" className="max-h-[80vh] max-w-full" /> :
+                 <img src={imagenAmpliada.medios[imagenAmpliada.indice].url} alt={imagenAmpliada.nombre} className="max-h-[80vh] max-w-full object-contain" />}
+             </div>
+             {imagenAmpliada.medios.length>1 && <button type="button" aria-label="Siguiente" className="rounded-full bg-white p-3 font-bold" onClick={()=>setImagenAmpliada(v=>v?{...v,indice:(v.indice+1)%v.medios.length}:null)}>›</button>}
+           </div>
+           <p className="text-sm text-white">{imagenAmpliada.indice+1} de {imagenAmpliada.medios.length}</p>
+         </div>
       )}
       <footer className="mt-8 border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">Catálogo creado con ComerSys</footer>
     </main>

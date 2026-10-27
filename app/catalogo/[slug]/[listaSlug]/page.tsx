@@ -109,6 +109,28 @@ type ProductoLista = Producto & {
 
 };
 
+type MultimediaProducto = {
+  id: number;
+  producto_id: number;
+  tipo: string;
+  url: string;
+  es_principal: boolean;
+  activo: boolean;
+  orden: number;
+};
+
+type ElementoGaleria = {
+  src: string;
+  alt: string;
+  esVideo: boolean;
+};
+
+type VisorGaleria = {
+  elementos: ElementoGaleria[];
+  indice: number;
+  nombreProducto: string;
+};
+
 
 
 function dinero(valor: number) {
@@ -215,6 +237,7 @@ export default function CatalogoListaPage() {
 
 
   const [productos, setProductos] = useState<ProductoLista[]>([]);
+  const [multimediaPorProducto, setMultimediaPorProducto] = useState<Record<number, MultimediaProducto[]>>({});
 
 
 
@@ -238,7 +261,7 @@ export default function CatalogoListaPage() {
 
 
 
-  const [imagenAmpliada, setImagenAmpliada] = useState<string | null>(null);
+  const [imagenAmpliada, setImagenAmpliada] = useState<VisorGaleria | null>(null);
 
 
 
@@ -601,6 +624,8 @@ export default function CatalogoListaPage() {
 
 
       setProductos([]);
+      setMultimediaPorProducto({});
+      setImagenAmpliada(null);
 
 
 
@@ -978,8 +1003,31 @@ export default function CatalogoListaPage() {
 
         if (!vigente) return;
 
+        // Los videos y fotografías pertenecen a los productos ya autorizados por la lista.
+        const idsVisibles = productosDeLista.map((producto) => producto.id);
+        const agrupada: Record<number, MultimediaProducto[]> = {};
+        if (idsVisibles.length > 0) {
+          const { data: multimediaData, error: multimediaError } = await supabase
+            .from("producto_multimedia")
+            .select("id, producto_id, tipo, url, es_principal, activo, orden")
+            .eq("empresa_id", datosEmpresa.id)
+            .eq("activo", true)
+            .in("producto_id", idsVisibles)
+            .order("orden", { ascending: true });
 
-
+          if (multimediaError) {
+            console.warn("No se pudo cargar multimedia de la lista:", multimediaError);
+          } else {
+            for (const item of (multimediaData || []) as MultimediaProducto[]) {
+              if (!item.url) continue;
+              const idProducto = Number(item.producto_id);
+              if (!agrupada[idProducto]) agrupada[idProducto] = [];
+              agrupada[idProducto].push(item);
+            }
+          }
+        }
+        if (!vigente) return;
+        setMultimediaPorProducto(agrupada);
         setEmpresa(datosEmpresa as Empresa);
 
 
@@ -1061,34 +1109,64 @@ export default function CatalogoListaPage() {
 
 
   useEffect(() => {
-
-
-
     if (!imagenAmpliada) return;
 
-
-
-    const cerrar = (evento: KeyboardEvent) => {
-
-
-
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const manejarTeclado = (evento: KeyboardEvent) => {
       if (evento.key === "Escape") setImagenAmpliada(null);
+      if (evento.key === "ArrowRight" || evento.key === "ArrowLeft") {
+        const direccion = evento.key === "ArrowRight" ? 1 : -1;
+        setImagenAmpliada((actual) => {
+          if (!actual || actual.elementos.length <= 1) return actual;
+          return {
+            ...actual,
+            indice: (actual.indice + direccion + actual.elementos.length) % actual.elementos.length,
+          };
+        });
+      }
+    };
+    window.addEventListener("keydown", manejarTeclado);
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+      window.removeEventListener("keydown", manejarTeclado);
+    };
+  }, [imagenAmpliada !== null]);
 
-
-
+  function obtenerGaleriaProducto(producto: ProductoLista): ElementoGaleria[] {
+    const elementos: ElementoGaleria[] = [];
+    const urls = new Set<string>();
+    const agregar = (urlOriginal: string | null | undefined, esVideo: boolean) => {
+      const url = urlOriginal?.trim();
+      if (!url || urls.has(url)) return;
+      urls.add(url);
+      elementos.push({ src: url, alt: producto.nombre, esVideo });
     };
 
+    agregar(producto.imaguen, false);
+    const adicionales = [...(multimediaPorProducto[producto.id] || [])].sort((a, b) => {
+      if (a.es_principal !== b.es_principal) return a.es_principal ? -1 : 1;
+      return (a.orden ?? 0) - (b.orden ?? 0);
+    });
+    adicionales.forEach((item) => agregar(item.url, item.tipo === "Video"));
+    return elementos;
+  }
 
+  function abrirGaleriaProducto(producto: ProductoLista) {
+    const elementos = obtenerGaleriaProducto(producto);
+    if (elementos.length === 0) return;
+    setImagenAmpliada({ elementos, indice: 0, nombreProducto: producto.nombre });
+  }
 
-    window.addEventListener("keydown", cerrar);
-
-
-
-    return () => window.removeEventListener("keydown", cerrar);
-
-
-
-  }, [imagenAmpliada]);
+  function cambiarElementoGaleria(direccion: -1 | 1) {
+    setImagenAmpliada((actual) => {
+      if (!actual || actual.elementos.length <= 1) return actual;
+      return {
+        ...actual,
+        indice: (actual.indice + direccion + actual.elementos.length) % actual.elementos.length,
+      };
+    });
+  }
 
 
 
@@ -1859,7 +1937,7 @@ export default function CatalogoListaPage() {
 
 
 
-                      onClick={() => setImagenAmpliada(producto.imaguen || null)}
+                      onClick={() => abrirGaleriaProducto(producto)}
 
 
 
@@ -2528,89 +2606,103 @@ export default function CatalogoListaPage() {
 
 
       {imagenAmpliada && (
-
-
-
         <div
-
-
-
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-5"
-
-
-
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-3 sm:p-6"
           onClick={() => setImagenAmpliada(null)}
-
-
-
           role="dialog"
-
-
-
           aria-modal="true"
-
-
-
-          aria-label="Imagen del producto"
-
-
-
+          aria-label={`Galería de ${imagenAmpliada.nombreProducto}`}
         >
-
-
-
           <button
-
-
-
             type="button"
-
-
-
             onClick={() => setImagenAmpliada(null)}
-
-
-
-            className="absolute right-5 top-5 rounded-full bg-white px-4 py-2 font-bold"
-
-
-
+            className="absolute right-4 top-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-white text-2xl font-black text-slate-800 shadow-xl"
+            aria-label="Cerrar galería"
           >
-
-
-
-            Cerrar ✕
-
-
-
+            ✕
           </button>
 
+          <div
+            className="flex h-full w-full flex-col items-center justify-center gap-4"
+            onClick={(evento) => evento.stopPropagation()}
+          >
+            <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
+              {imagenAmpliada.elementos.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => cambiarElementoGaleria(-1)}
+                  className="absolute left-1 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-3xl font-black text-slate-900 shadow-xl sm:left-4 sm:h-14 sm:w-14"
+                  aria-label="Elemento anterior"
+                >
+                  ‹
+                </button>
+              )}
 
+              {imagenAmpliada.elementos[imagenAmpliada.indice].esVideo ? (
+                <video
+                  key={imagenAmpliada.elementos[imagenAmpliada.indice].src}
+                  src={imagenAmpliada.elementos[imagenAmpliada.indice].src}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+                  aria-label={`Video de ${imagenAmpliada.nombreProducto}`}
+                >
+                  Tu navegador no puede reproducir este video.
+                </video>
+              ) : (
+                <img
+                  src={imagenAmpliada.elementos[imagenAmpliada.indice].src}
+                  alt={imagenAmpliada.elementos[imagenAmpliada.indice].alt}
+                  className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+                />
+              )}
 
-          <img
+              {imagenAmpliada.elementos.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => cambiarElementoGaleria(1)}
+                  className="absolute right-1 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-3xl font-black text-slate-900 shadow-xl sm:right-4 sm:h-14 sm:w-14"
+                  aria-label="Elemento siguiente"
+                >
+                  ›
+                </button>
+              )}
+            </div>
 
-
-
-            src={imagenAmpliada}
-
-
-
-            alt="Producto ampliado"
-
-
-
-            className="max-h-[85vh] max-w-[95vw] object-contain"
-
-
-
-          />
-
-
-
+            {imagenAmpliada.elementos.length > 1 && (
+              <div className="flex w-full max-w-3xl flex-col items-center gap-3">
+                <div className="rounded-full bg-black/60 px-4 py-2 text-sm font-bold text-white">
+                  {imagenAmpliada.indice + 1} / {imagenAmpliada.elementos.length}
+                </div>
+                <div className="flex max-w-full gap-2 overflow-x-auto rounded-2xl bg-black/40 p-2">
+                  {imagenAmpliada.elementos.map((elemento, indice) => (
+                    <button
+                      key={`${elemento.src}-${indice}`}
+                      type="button"
+                      onClick={() => setImagenAmpliada((actual) => actual ? { ...actual, indice } : actual)}
+                      className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-16 sm:w-16 ${
+                        indice === imagenAmpliada.indice
+                          ? "border-white opacity-100"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      }`}
+                      aria-label={`${elemento.esVideo ? "Ver video" : "Ver imagen"} ${indice + 1}`}
+                    >
+                      {elemento.esVideo ? (
+                        <>
+                          <video src={elemento.src} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-xl text-white">▶</span>
+                        </>
+                      ) : (
+                        <img src={elemento.src} alt="" className="h-full w-full object-cover" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-
-
-
       )}
 
 

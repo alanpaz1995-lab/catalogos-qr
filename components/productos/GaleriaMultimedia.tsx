@@ -21,6 +21,10 @@ export type MultimediaProducto = {
   updated_at: string;
 };
 
+export function esVideoProducto(item: Pick<MultimediaProducto, "tipo" | "url">) {
+  return item.tipo?.toLowerCase() === "video" || /\.(mp4|webm)(?:[?#]|$)/i.test(item.url);
+}
+
 type GaleriaMultimediaProps = {
   multimedia: MultimediaProducto[];
   productoNombre: string;
@@ -54,6 +58,16 @@ export default function GaleriaMultimedia({
     useState<number | null>(null);
   const [sobreId, setSobreId] =
     useState<number | null>(null);
+  const [ampliado, setAmpliado] = useState<MultimediaProducto | null>(null);
+
+  useEffect(() => {
+    if (!ampliado) return;
+    const cerrar = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAmpliado(null);
+    };
+    window.addEventListener("keydown", cerrar);
+    return () => window.removeEventListener("keydown", cerrar);
+  }, [ampliado]);
 
   useEffect(() => {
     setItems(
@@ -190,8 +204,8 @@ export default function GaleriaMultimedia({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            {items.length} imagen(es)
-            activa(s)
+            {items.filter((item) => !esVideoProducto(item)).length} imagen(es) y{" "}
+            {items.filter(esVideoProducto).length} video(s) activos
           </p>
         </div>
 
@@ -257,8 +271,26 @@ export default function GaleriaMultimedia({
                 onEliminar={
                   onEliminar
                 }
+                onAmpliar={setAmpliado}
               />
             )
+          )}
+        </div>
+      )}
+
+      {ampliado && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista ampliada del archivo"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setAmpliado(null)}
+        >
+          <button type="button" onClick={() => setAmpliado(null)} className="absolute right-5 top-5 rounded-lg bg-white px-4 py-2 font-bold text-slate-900">Cerrar ✕</button>
+          {esVideoProducto(ampliado) ? (
+            <video key={ampliado.id} src={ampliado.url} controls playsInline preload="metadata" className="max-h-[85vh] max-w-full" onClick={(event) => event.stopPropagation()} />
+          ) : (
+            <img src={ampliado.url} alt={ampliado.descripcion || ampliado.nombre_archivo || productoNombre} className="max-h-[85vh] max-w-full object-contain" onClick={(event) => event.stopPropagation()} />
           )}
         </div>
       )}
@@ -281,6 +313,7 @@ function TarjetaMultimedia({
   onDragEnd,
   onMarcarPrincipal,
   onEliminar,
+  onAmpliar,
 }: {
   item: MultimediaProducto;
   indice: number;
@@ -309,7 +342,9 @@ function TarjetaMultimedia({
   onEliminar: (
     item: MultimediaProducto
   ) => void | Promise<void>;
+  onAmpliar: (item: MultimediaProducto) => void;
 }) {
+  const video = esVideoProducto(item);
   const actualizando =
     actualizandoId === item.id;
   const eliminando =
@@ -322,7 +357,7 @@ function TarjetaMultimedia({
 
   return (
     <article
-      draggable={!bloqueado}
+      draggable={!bloqueado && !video}
       onDragStart={(event) =>
         onDragStart(event, item)
       }
@@ -352,18 +387,27 @@ function TarjetaMultimedia({
       }`}
     >
       <div className="relative bg-slate-100">
-        <img
-          src={item.url}
-          alt={
-            item.descripcion ||
-            item.nombre_archivo ||
-            productoNombre
-          }
-          draggable={false}
-          className="h-56 w-full select-none object-contain"
-        />
+        {video ? (
+          <video
+            src={item.url}
+            controls
+            playsInline
+            preload="metadata"
+            draggable={false}
+            className="h-56 w-full bg-black object-contain"
+          />
+        ) : (
+          <button type="button" className="block w-full" onClick={() => onAmpliar(item)} title="Ampliar fotografía">
+            <img
+              src={item.url}
+              alt={item.descripcion || item.nombre_archivo || productoNombre}
+              draggable={false}
+              className="h-56 w-full select-none object-contain"
+            />
+          </button>
+        )}
 
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2">
           {item.es_principal && (
             <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-semibold text-white shadow">
               ⭐ Principal
@@ -375,7 +419,9 @@ function TarjetaMultimedia({
           </span>
         </div>
 
-        {!bloqueado && (
+        {video && <button type="button" onClick={() => onAmpliar(item)} className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-xs font-semibold text-slate-900">Ampliar video</button>}
+
+        {!bloqueado && !video && (
           <span className="absolute bottom-3 right-3 rounded-xl bg-white/90 px-3 py-2 text-sm font-bold text-slate-700 shadow backdrop-blur">
             ⠿
           </span>
@@ -387,11 +433,11 @@ function TarjetaMultimedia({
           className="truncate font-semibold"
           title={
             item.nombre_archivo ||
-            "Imagen del producto"
+            (video ? "Video del producto" : "Imagen del producto")
           }
         >
           {item.nombre_archivo ||
-            "Imagen del producto"}
+            (video ? "Video del producto" : "Imagen del producto")}
         </p>
 
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -411,10 +457,11 @@ function TarjetaMultimedia({
         )}
 
         <div className="mt-4 grid gap-2">
-          <button
+          {!video && <button
             type="button"
             disabled={
               item.es_principal ||
+              video ||
               bloqueado
             }
             onClick={() =>
@@ -427,7 +474,7 @@ function TarjetaMultimedia({
               : actualizando
                 ? "Actualizando..."
                 : "Marcar como principal"}
-          </button>
+          </button>}
 
           <button
             type="button"
@@ -439,7 +486,7 @@ function TarjetaMultimedia({
           >
             {eliminando
               ? "Eliminando..."
-              : "Eliminar imagen"}
+              : video ? "Eliminar video" : "Eliminar imagen"}
           </button>
         </div>
       </div>
@@ -459,7 +506,7 @@ function EstadoVacio() {
       </p>
 
       <p className="mt-2 text-sm text-slate-500">
-        Seleccioná imágenes desde el
+        Seleccioná fotos o videos desde el
         panel izquierdo.
       </p>
     </div>

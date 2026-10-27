@@ -54,6 +54,8 @@ type ImagenGaleria = {
 
   alt: string;
 
+  tipo: "imagen" | "video";
+
 };
 
 export default function CatalogoEmpresaPage() {
@@ -815,7 +817,7 @@ export default function CatalogoEmpresaPage() {
 
     const urlsAgregadas = new Set<string>();
 
-    const agregarImagen = (src?: string | null) => {
+    const agregarImagen = (src?: string | null, tipo: "imagen" | "video" = "imagen") => {
 
       const url = src?.trim();
 
@@ -823,7 +825,7 @@ export default function CatalogoEmpresaPage() {
 
       urlsAgregadas.add(url);
 
-      imagenes.push({ src: url, alt: producto.nombre });
+      imagenes.push({ src: url, alt: producto.nombre, tipo });
 
     };
 
@@ -845,7 +847,12 @@ export default function CatalogoEmpresaPage() {
 
     );
 
-    adicionales.forEach((item) => agregarImagen(item.url));
+    adicionales.forEach((item) => {
+      const tipoNormalizado = (item.tipo || "").trim().toLowerCase();
+      const esVideo = tipoNormalizado.includes("video") ||
+        /\.(mp4|webm|mov|m4v|ogv)(?:[?#]|$)/i.test(item.url);
+      agregarImagen(item.url, esVideo ? "video" : "imagen");
+    });
 
     return imagenes;
 
@@ -2464,15 +2471,24 @@ export default function CatalogoEmpresaPage() {
 
               )}
 
-              <img
-
-                src={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
-
-                alt={imagenAmpliada.imagenes[imagenAmpliada.indice].alt}
-
-                className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
-
-              />
+              {imagenAmpliada.imagenes[imagenAmpliada.indice].tipo === "video" ? (
+                <video
+                  key={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
+                  src={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="max-h-[78vh] max-w-[94vw]"
+                >
+                  Tu navegador no puede reproducir este video.
+                </video>
+              ) : (
+                <img
+                  src={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
+                  alt={imagenAmpliada.imagenes[imagenAmpliada.indice].alt}
+                  className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+                />
+              )}
 
               {imagenAmpliada.imagenes.length > 1 && (
 
@@ -2540,15 +2556,11 @@ export default function CatalogoEmpresaPage() {
 
                     >
 
-                      <img
-
-                        src={imagen.src}
-
-                        alt=""
-
-                        className="h-full w-full object-cover"
-
-                      />
+                      {imagen.tipo === "video" ? (
+                        <span className="flex h-full w-full items-center justify-center bg-slate-900 text-xl text-white" aria-hidden="true">▶</span>
+                      ) : (
+                        <img src={imagen.src} alt="" className="h-full w-full object-cover" />
+                      )}
 
                     </button>
 
