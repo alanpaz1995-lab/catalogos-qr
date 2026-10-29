@@ -531,6 +531,7 @@ export default function ProductosCatalogoExternoPage() {
           <p className="mt-1 text-sm text-blue-100">Solo administración. Este módulo no genera pedidos ni pagos.</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link href={`/admin-comersys/catalogos-externos/${catalogoId}/categorias`} className="inline-block rounded-xl bg-white px-4 py-2 text-sm font-bold text-blue-700">Administrar categorías</Link>
+            {!mostrarFormulario && <Link href={`/admin-comersys/catalogos-externos/${catalogoId}/actualizacion-masiva`} className="inline-block rounded-xl border border-white/60 bg-white/15 px-4 py-2 text-sm font-bold text-white hover:bg-white/25">↗ Actualización masiva de precios</Link>}
             {mostrarFormulario ? (
               <button type="button" onClick={volverALista} className="rounded-xl border border-white/50 px-4 py-2 text-sm font-bold text-white hover:bg-white/10">← Volver a productos</button>
             ) : (
