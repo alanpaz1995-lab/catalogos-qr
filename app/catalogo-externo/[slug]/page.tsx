@@ -347,7 +347,7 @@ export default function CatalogoExternoPublicoPage() {
         {productosVisibles.length === 0 ? (
           <div className="mt-8 rounded-2xl bg-white p-10 text-center text-slate-500">No se encontraron productos.</div>
         ) : (
-          <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {productosVisibles.map((producto) => {
               const nombreCategoria = categorias.find((cat) => cat.id === producto.categoria_id)?.nombre || "Sin categoría";
               const medios = mediosProducto(producto);
@@ -361,30 +361,30 @@ export default function CatalogoExternoPublicoPage() {
                          {medios[0].tipo === "video" && <span className="absolute inset-0 flex items-center justify-center text-5xl text-white drop-shadow-lg">▶</span>}
                          {medios.length > 1 && <span className="absolute bottom-3 right-3 rounded-full bg-black/75 px-3 py-1 text-xs font-semibold text-white">{medios.length} archivos</span>}
                        </button>
-                       {medios.length > 1 && <div className="flex gap-2 overflow-x-auto p-2">{medios.map((medio,i)=><button key={`${medio.url}-${i}`} type="button" onClick={()=>setImagenAmpliada({medios,indice:i,nombre:producto.nombre})} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100" aria-label={`Abrir archivo ${i+1}`}>
+                       {medios.length > 1 && <div className="flex gap-2 overflow-x-auto px-2 py-1.5">{medios.map((medio,i)=><button key={`${medio.url}-${i}`} type="button" onClick={()=>setImagenAmpliada({medios,indice:i,nombre:producto.nombre})} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-100" aria-label={`Abrir archivo ${i+1}`}>
                          {medio.tipo === "video" ? <span className="flex h-full items-center justify-center bg-slate-900 text-xl text-white">▶</span> : <img src={medio.url} alt="" className="h-full w-full object-cover" />}
                        </button>)}</div>}
                      </div>
                   ) : (
                      <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400">Sin imagen</div>
                   )}
-                  <div className="flex flex-1 flex-col p-5">
+                  <div className="flex flex-1 flex-col p-3.5">
                     <p className="text-sm font-semibold" style={{ color: principal }}>{nombreCategoria}</p>
-                    <h3 className="mt-2 text-xl font-bold">{producto.nombre}</h3>
-                    {producto.descripcion && <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{producto.descripcion}</p>}
-                    {producto.codigo?.trim() && <p className="mt-2 break-words text-sm text-slate-500">Código: <strong>{producto.codigo}</strong></p>}
-                    <div className="mt-auto pt-5">
+                    <h3 className="mt-1 text-lg font-bold leading-snug">{producto.nombre}</h3>
+                    {producto.descripcion && <p className="mt-1 whitespace-pre-line text-sm leading-snug text-slate-600">{producto.descripcion}</p>}
+                    {producto.codigo?.trim() && <p className="mt-1 break-words text-xs text-slate-500">Código: <strong>{producto.codigo}</strong></p>}
+                    <div className="mt-auto pt-2.5">
                       <p className="text-xs font-semibold uppercase text-slate-400">{producto.precio_mayorista != null ? "Precio minorista" : "Precio"}</p>
-                      <p className="mt-1 text-2xl font-bold">{precioARS(Number(producto.precio))}</p>
+                      <p className="mt-0.5 text-xl font-bold">{precioARS(Number(producto.precio))}</p>
                       {producto.precio_mayorista != null && (
-                        <div className="mt-3 rounded-xl bg-emerald-50 p-3">
+                        <div className="mt-2 rounded-lg bg-emerald-50 p-2.5">
                           <p className="text-xs font-semibold text-emerald-700">Precio mayorista</p>
-                          <p className="mt-1 text-xl font-bold text-emerald-800">{precioARS(Number(producto.precio_mayorista))}</p>
-                          <p className="mt-1 text-xs text-emerald-700">Desde {Math.max(1, Number(producto.cantidad_minima_mayorista || 10))} unidades</p>
+                          <p className="mt-0.5 text-lg font-bold text-emerald-800">{precioARS(Number(producto.precio_mayorista))}</p>
+                          <p className="mt-0.5 text-xs text-emerald-700">Desde {Math.max(1, Number(producto.cantidad_minima_mayorista || 10))} unidades</p>
                         </div>
                       )}
-                      {sinStock && <p className="mt-3 text-sm font-semibold text-slate-500">Sin stock</p>}
-                      <a href={linkConsulta(producto)} target="_blank" rel="noopener noreferrer" className="mt-5 block rounded-xl px-4 py-3 text-center font-semibold text-white hover:brightness-95" style={{ backgroundColor: secundario }}>Consultar por WhatsApp</a>
+                      {sinStock && <p className="mt-2 text-xs font-semibold text-slate-500">Sin stock</p>}
+                      <a href={linkConsulta(producto)} target="_blank" rel="noopener noreferrer" className="mx-auto mt-3 block w-fit max-w-full rounded-lg px-4 py-2 text-center text-xs font-semibold text-white transition hover:brightness-95" style={{ backgroundColor: secundario }}>Consultar por WhatsApp</a>
                     </div>
                   </div>
                 </article>
