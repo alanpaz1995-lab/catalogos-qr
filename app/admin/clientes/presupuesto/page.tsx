@@ -48,6 +48,7 @@ const numeroSeguro = (valor: unknown) => { const n = Number(valor); return Numbe
 type TextoPDF = { str: string; transform: number[]; width?: number };
 type LineaPDF = { y: number; piezas: { x: number; texto: string }[] };
 type FilaCalculoPDF = { codigo: string; nombre: string; cantidad: number; precio: number };
+type CoincidenciaPendientePDF = { fila: FilaCalculoPDF; candidatos: number[] };
 
 type PDFJsMinimo = {
   GlobalWorkerOptions: { workerSrc: string };
@@ -245,6 +246,7 @@ export default function PresupuestoClientePage() {
   const [importandoPDF, setImportandoPDF] = useState(false);
   const [resultadoPDF, setResultadoPDF] = useState("");
   const [advertenciasPDF, setAdvertenciasPDF] = useState<string[]>([]);
+  const [pendientesPDF, setPendientesPDF] = useState<CoincidenciaPendientePDF[]>([]);
 
   const cargarDatos = useCallback(async () => {
     if (!empresa?.id) return;
@@ -434,20 +436,35 @@ export default function PresupuestoClientePage() {
     setImportandoPDF(true);
     setResultadoPDF("");
     setAdvertenciasPDF([]);
+    setPendientesPDF([]);
     setError("");
     try {
       const { filas, clientePDF } = await leerCalculoPDF(archivo);
       const nuevaSeleccion: Record<number, Seleccion> = {};
       const advertencias: string[] = [];
+      const pendientes: CoincidenciaPendientePDF[] = [];
       let importados = 0;
       for (const fila of filas) {
         const codigo = normalizarCoincidencia(fila.codigo);
-        let coincidencias = codigo && codigo !== "sin codigo"
+        const nombre = normalizarCoincidencia(fila.nombre);
+        // Puede haber códigos repetidos en la empresa. Primero cruzar CÓDIGO + NOMBRE;
+        // nunca seleccionar arbitrariamente el primer artículo con ese código.
+        const porCodigo = codigo && codigo !== "sin codigo"
           ? productos.filter(p => normalizarCoincidencia(p.codigo || "") === codigo)
           : [];
-        if (coincidencias.length === 0) coincidencias = productos.filter(p => normalizarCoincidencia(p.nombre) === normalizarCoincidencia(fila.nombre));
+        const porNombre = productos.filter(p => normalizarCoincidencia(p.nombre) === nombre);
+        let coincidencias = porCodigo.length > 0 ? porCodigo : porNombre;
+        if (coincidencias.length > 1) {
+          const exactos = coincidencias.filter(p => normalizarCoincidencia(p.nombre) === nombre);
+          if (exactos.length > 0) coincidencias = exactos;
+        }
         if (coincidencias.length !== 1) {
-          advertencias.push(`«${fila.nombre}» (${fila.codigo || "sin código"}): ${coincidencias.length ? "coincidencia ambigua" : "no existe en el catálogo"}. No se importó.`);
+          if (coincidencias.length > 1) {
+            pendientes.push({ fila, candidatos: coincidencias.map(p => p.id) });
+            advertencias.push(`«${fila.nombre}» (código ${fila.codigo || "sin código"}): hay ${coincidencias.length} productos posibles. Elegí el correcto en «Resolver productos pendientes».`);
+          } else {
+            advertencias.push(`«${fila.nombre}» (${fila.codigo || "sin código"}): no existe en este catálogo. No se importó.`);
+          }
           continue;
         }
         const producto = coincidencias[0];
@@ -498,13 +515,42 @@ export default function PresupuestoClientePage() {
         }
       }
       setAdvertenciasPDF(advertencias);
-      setResultadoPDF(`Se importaron ${importados} de ${filas.length} productos. Revisá precios, listas, cantidades y datos del cliente antes de generar el PDF.`);
+      setPendientesPDF(pendientes);
+      setResultadoPDF(`Se importaron ${importados} de ${filas.length} productos.${pendientes.length ? ` Hay ${pendientes.length} pendiente(s) por identificar.` : ""} Revisá precios, listas, cantidades y datos del cliente antes de generar el PDF.`);
     } catch (errorDesconocido) {
       setError(errorDesconocido instanceof Error ? errorDesconocido.message : "No se pudo leer el PDF.");
     } finally {
       setImportandoPDF(false);
       if (selectorPDF.current) selectorPDF.current.value = "";
     }
+  }
+
+  function resolverProductoPendiente(indice: number, productoId: number) {
+    const pendiente = pendientesPDF[indice];
+    if (!pendiente || !pendiente.candidatos.includes(productoId)) return;
+    const producto = productos.find(p => p.id === productoId);
+    if (!producto) return;
+    if (seleccion[productoId]) {
+      setError(`«${producto.nombre}» ya está incluido en el presupuesto. Revisá si el PDF repite el mismo producto.`);
+      return;
+    }
+    // Solo aceptar un precio realmente existente en las listas de esta empresa.
+    const opciones = opcionesPrecio(producto);
+    const coincidentes = opciones.filter(o => Math.abs(o.precio - pendiente.fila.precio) < 0.011);
+    if (!coincidentes.length) {
+      setError(`El producto «${producto.nombre}» existe, pero el precio del PDF (${pesos(pendiente.fila.precio)}) no coincide con sus precios actuales. Seleccionalo manualmente y verificá la lista.`);
+      return;
+    }
+    const opcion = coincidentes.find(o => o.clave.startsWith("principal:")) || coincidentes[0];
+    setSeleccion(prev => ({ ...prev, [productoId]: {
+      cantidad: pendiente.fila.cantidad,
+      lista: opcion.clave.split(":")[0],
+      tipoPrecio: opcion.tipo,
+    } }));
+    setPendientesPDF(prev => prev.filter((_, posicion) => posicion !== indice));
+    setAdvertenciasPDF(prev => prev.filter(aviso => !aviso.includes(`«${pendiente.fila.nombre}» (código ${pendiente.fila.codigo || "sin código"}): hay`)));
+    setResultadoPDF(prev => `${prev} Producto «${producto.nombre}» recuperado manualmente.`);
+    setError("");
   }
 
   function imprimirDocumento() {
@@ -607,6 +653,26 @@ export default function PresupuestoClientePage() {
         <p className="font-bold">Revisá estos detalles antes de continuar:</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">{advertenciasPDF.map((aviso, indice) => <li key={indice}>{aviso}</li>)}</ul>
       </div>}
+      {pendientesPDF.length > 0 && <section className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-slate-800">
+        <h2 className="font-bold text-blue-900">Resolver productos pendientes del PDF ({pendientesPDF.length})</h2>
+        <p className="mt-1 text-sm text-blue-900">El código no identifica un único producto. Elegí el artículo exacto; se cargarán su cantidad y su precio solamente si coincide con una lista vigente.</p>
+        <div className="mt-3 space-y-3">
+          {pendientesPDF.map((pendiente, indice) => <div key={`${pendiente.fila.codigo}-${pendiente.fila.nombre}-${indice}`} className="rounded-lg border border-blue-200 bg-white p-3">
+            <p className="text-sm font-bold">{pendiente.fila.nombre} — Código: {pendiente.fila.codigo || "Sin código"}</p>
+            <p className="mt-1 text-xs text-slate-600">PDF: {pendiente.fila.cantidad} unidad(es) · {pesos(pendiente.fila.precio)} cada una</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {pendiente.candidatos.map(id => {
+                const producto = productos.find(p => p.id === id);
+                if (!producto) return null;
+                return <button key={id} type="button" onClick={() => resolverProductoPendiente(indice, id)}
+                  className="rounded-lg border border-blue-400 bg-white px-3 py-2 text-left text-sm font-semibold text-blue-800 hover:bg-blue-100">
+                  {producto.nombre} · Código {producto.codigo || "—"} · ID {producto.id}
+                </button>;
+              })}
+            </div>
+          </div>)}
+        </div>
+      </section>}
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Seleccionar productos</h2><span className="text-xs text-slate-500">Cada producto puede tener su propia lista y precio</span></div>
