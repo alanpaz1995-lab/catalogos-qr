@@ -65,7 +65,7 @@ export default function HeroEmpresa({
     setErrorCierre("");
 
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) throw error;
       window.location.replace("/login");
     } catch (error) {
