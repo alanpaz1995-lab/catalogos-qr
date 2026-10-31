@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { crearCliente } from "@/services/clientes";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
@@ -42,6 +42,178 @@ const pesos = (n: number) => MONEDA.format(n);
 const escapar = (valor: unknown) => String(valor ?? "").replace(/[&<>"']/g, (caracter) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[caracter] || caracter);
 const numeroSeguro = (valor: unknown) => { const n = Number(valor); return Number.isFinite(n) && n >= 0 ? n : 0; };
 
+
+// Importación de documentos PDF generados por «Calcular mi compra».
+// PDF.js se carga bajo demanda: no requiere modificar package.json ni otro archivo.
+type TextoPDF = { str: string; transform: number[]; width?: number };
+type LineaPDF = { y: number; piezas: { x: number; texto: string }[] };
+type FilaCalculoPDF = { codigo: string; nombre: string; cantidad: number; precio: number };
+
+type PDFJsMinimo = {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (datos: { data: Uint8Array }) => { promise: Promise<{
+    numPages: number;
+    getPage: (numero: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }>;
+    destroy: () => Promise<void>;
+  }> };
+};
+
+declare global {
+  interface Window { pdfjsLib?: PDFJsMinimo }
+}
+
+const PDF_JS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDF_WORKER_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+let promesaPDFJS: Promise<PDFJsMinimo> | null = null;
+function obtenerPDFJS(): Promise<PDFJsMinimo> {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (!promesaPDFJS) {
+    promesaPDFJS = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = PDF_JS_CDN;
+      script.async = true;
+      script.onload = () => {
+        if (!window.pdfjsLib) { reject(new Error("No se pudo iniciar el lector de PDF.")); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_CDN;
+        resolve(window.pdfjsLib);
+      };
+      script.onerror = () => reject(new Error("No se pudo descargar el lector de PDF. Revisá la conexión a Internet."));
+      document.head.appendChild(script);
+    }).catch((error) => { promesaPDFJS = null; throw error; });
+  }
+  return promesaPDFJS;
+}
+
+function normalizarCoincidencia(texto: string) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLocaleLowerCase("es");
+}
+function precioExtraido(texto: string) {
+  const limpio = texto.replace(/[^\d,.-]/g, "");
+  if (!limpio) return NaN;
+  const ultimaComa = limpio.lastIndexOf(",");
+  const ultimoPunto = limpio.lastIndexOf(".");
+  const separadorDecimal = ultimaComa > ultimoPunto ? "," : ultimoPunto > ultimaComa ? "." : "";
+  const num = separadorDecimal === ","
+    ? limpio.replace(/\./g, "").replace(",", ".")
+    : separadorDecimal === "." && (limpio.length - ultimoPunto - 1) <= 2
+      ? limpio.replace(/,/g, "")
+      : limpio.replace(/[.,]/g, "");
+  return Number(num);
+}
+
+// Se identifican las columnas por su posición en el PDF. No se interpreta
+// texto libre como si fueran productos: únicamente tablas con ese encabezado.
+function extraerFilasCalculo(lineas: LineaPDF[]): FilaCalculoPDF[] {
+  const filas: FilaCalculoPDF[] = [];
+  let columnas: number[] | null = null;
+  let filaActual: { codigo: string; nombre: string; cantidad: number; precio: number } | null = null;
+  const finalizar = () => {
+    if (filaActual) {
+      if (filaActual.nombre && Number.isInteger(filaActual.cantidad) && filaActual.cantidad > 0 && Number.isFinite(filaActual.precio)) {
+        filas.push(filaActual);
+      }
+      filaActual = null;
+    }
+  };
+  for (const linea of lineas) {
+    const piezas = [...linea.piezas].sort((a, b) => a.x - b.x);
+    const completo = piezas.map(p => p.texto).join(" ").replace(/\s+/g, " ").trim();
+    if (!completo) continue;
+    const etiquetas = piezas.map(p => normalizarCoincidencia(p.texto));
+    const buscarX = (textos: string[]) => {
+      const i = etiquetas.findIndex(t => textos.some(v => t === v || t.startsWith(v + " ")));
+      return i >= 0 ? piezas[i].x : -1;
+    };
+    // El encabezado tiene las 5 columnas del PDF del catálogo.
+    const xCodigo = buscarX(["codigo"]), xProducto = buscarX(["producto"]);
+    const xCantidad = buscarX(["cantidad"]), xPrecio = buscarX(["precio unitario", "precio"]);
+    const xSubtotal = buscarX(["subtotal"]);
+    if (xCodigo >= 0 && xProducto > xCodigo && xCantidad > xProducto && xPrecio > xCantidad && xSubtotal > xPrecio) {
+      finalizar();
+      columnas = [xCodigo, xProducto, xCantidad, xPrecio, xSubtotal];
+      continue;
+    }
+    if (!columnas) continue;
+    if (/^total estimado\s*:/i.test(normalizarCoincidencia(completo)) ||
+        /^(este calculo|calculo informativo|no constituye)/i.test(normalizarCoincidencia(completo))) {
+      finalizar();
+      columnas = null;
+      continue;
+    }
+    const limites = [
+      (columnas[0] + columnas[1]) / 2,
+      (columnas[1] + columnas[2]) / 2,
+      (columnas[2] + columnas[3]) / 2,
+      (columnas[3] + columnas[4]) / 2,
+    ];
+    const celdas: string[][] = [[], [], [], [], []];
+    for (const p of piezas) {
+      const indice = limites.findIndex(limite => p.x < limite);
+      celdas[indice === -1 ? 4 : indice].push(p.texto);
+    }
+    const c = celdas.map(partes => partes.join(" ").replace(/\s+/g, " ").trim());
+    const cantidad = Number(c[2].replace(/\D/g, ""));
+    const precio = precioExtraido(c[3]);
+    const subtotal = precioExtraido(c[4]);
+    const esRenglon = Number.isInteger(cantidad) && cantidad > 0 && c[2] !== "" &&
+      Number.isFinite(precio) && Number.isFinite(subtotal);
+    if (esRenglon) {
+      finalizar();
+      filaActual = { codigo: c[0], nombre: c[1], cantidad, precio };
+    } else if (filaActual && (c[0] || c[1]) && !c[2] && !c[3] && !c[4]) {
+      // Nombre o código largo repartido en más de una línea.
+      filaActual.codigo += c[0] ? ` ${c[0]}` : "";
+      filaActual.nombre += c[1] ? ` ${c[1]}` : "";
+    }
+  }
+  finalizar();
+  return filas;
+}
+
+async function leerCalculoPDF(archivo: File) {
+  if (!archivo.name.toLowerCase().endsWith(".pdf") || archivo.size > 15 * 1024 * 1024) {
+    throw new Error("Seleccioná un PDF válido de hasta 15 MB.");
+  }
+  const datos = new Uint8Array(await archivo.arrayBuffer());
+  if (new TextDecoder().decode(datos.slice(0, 5)) !== "%PDF-") {
+    throw new Error("El archivo seleccionado no es un PDF válido.");
+  }
+  const lector = await obtenerPDFJS();
+  const pdf = await lector.getDocument({ data: datos }).promise;
+  const lineas: LineaPDF[] = [];
+  let clientePDF: { nombre: string; telefono: string } | null = null;
+  try {
+    if (pdf.numPages > 30) throw new Error("El PDF tiene demasiadas páginas para importar.");
+    for (let numero = 1; numero <= pdf.numPages; numero++) {
+      const pagina = await pdf.getPage(numero);
+      const contenido = await pagina.getTextContent();
+      const agrupadas: LineaPDF[] = [];
+      for (const elemento of contenido.items as TextoPDF[]) {
+        if (typeof elemento.str !== "string" || !Array.isArray(elemento.transform)) continue;
+        const texto = elemento.str.trim();
+        if (!texto) continue;
+        const x = Number(elemento.transform[4]);
+        const y = Number(elemento.transform[5]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        let linea = agrupadas.find(l => Math.abs(l.y - y) < 2.8);
+        if (!linea) { linea = { y, piezas: [] }; agrupadas.push(linea); }
+        linea.piezas.push({ x, texto });
+      }
+      agrupadas.sort((a,b) => b.y - a.y);
+      for (const linea of agrupadas) {
+        linea.piezas.sort((a,b) => a.x - b.x);
+        const texto = linea.piezas.map(p => p.texto).join(" ");
+        const encontrado = texto.match(/Cliente:\s*(.*?)\s*[·•]\s*Tel\.?\s*:\s*(.+)$/i);
+        if (encontrado) clientePDF = { nombre: encontrado[1].trim(), telefono: encontrado[2].trim() };
+      }
+      lineas.push(...agrupadas);
+    }
+  } finally { await pdf.destroy(); }
+  const filas = extraerFilasCalculo(lineas);
+  if (!filas.length) throw new Error("No encontré la tabla de «Mi cálculo de compra». Usá el PDF generado desde el catálogo y no una fotografía o un PDF escaneado.");
+  return { filas, clientePDF };
+}
+
 export default function PresupuestoClientePage() {
   const { empresa, cargandoEmpresa, errorEmpresa } = useEmpresa();
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -69,6 +241,10 @@ export default function PresupuestoClientePage() {
   const [descuentoValor, setDescuentoValor] = useState("0");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const selectorPDF = useRef<HTMLInputElement>(null);
+  const [importandoPDF, setImportandoPDF] = useState(false);
+  const [resultadoPDF, setResultadoPDF] = useState("");
+  const [advertenciasPDF, setAdvertenciasPDF] = useState<string[]>([]);
 
   const cargarDatos = useCallback(async () => {
     if (!empresa?.id) return;
@@ -192,13 +368,41 @@ export default function PresupuestoClientePage() {
 
   function opcionesPrecio(producto: Producto) {
     const opciones: { clave: string; etiqueta: string; tipo: "minorista" | "mayorista"; precio: number }[] = [];
-    if (producto.precio !== null) opciones.push({ clave: "principal:minorista", etiqueta: "Lista principal · Minorista", tipo: "minorista", precio: numeroSeguro(producto.precio) });
-    if (producto.precio_mayorista !== null) opciones.push({ clave: "principal:mayorista", etiqueta: "Lista principal · Mayorista", tipo: "mayorista", precio: numeroSeguro(producto.precio_mayorista) });
+
+    // Si la lista ofrece un solo precio, mostrar "Precio" sin clasificarlo
+    // como minorista o mayorista. Las claves internas no cambian.
+    const agregarPrecios = (
+      listaClave: string,
+      listaNombre: string,
+      minorista: number | null,
+      mayorista: number | null
+    ) => {
+      const tieneMinorista = minorista !== null;
+      const tieneMayorista = mayorista !== null;
+      const dosPrecios = tieneMinorista && tieneMayorista;
+      if (tieneMinorista) {
+        opciones.push({
+          clave: `${listaClave}:minorista`,
+          etiqueta: `${listaNombre} · ${dosPrecios ? "Minorista" : "Precio"}`,
+          tipo: "minorista",
+          precio: numeroSeguro(minorista),
+        });
+      }
+      if (tieneMayorista) {
+        opciones.push({
+          clave: `${listaClave}:mayorista`,
+          etiqueta: `${listaNombre} · ${dosPrecios ? "Mayorista" : "Precio"}`,
+          tipo: "mayorista",
+          precio: numeroSeguro(mayorista),
+        });
+      }
+    };
+
+    agregarPrecios("principal", "Lista principal", producto.precio, producto.precio_mayorista);
     for (const lista of listas) {
       const dato = precios[producto.id]?.[lista.id];
       if (!dato?.visible) continue;
-      if (dato.precio_minorista !== null) opciones.push({ clave: `${lista.id}:minorista`, etiqueta: `${lista.nombre} · Minorista`, tipo: "minorista", precio: numeroSeguro(dato.precio_minorista) });
-      if (dato.precio_mayorista !== null) opciones.push({ clave: `${lista.id}:mayorista`, etiqueta: `${lista.nombre} · Mayorista`, tipo: "mayorista", precio: numeroSeguro(dato.precio_mayorista) });
+      agregarPrecios(String(lista.id), lista.nombre, dato.precio_minorista, dato.precio_mayorista);
     }
     return opciones;
   }
@@ -223,6 +427,85 @@ export default function PresupuestoClientePage() {
   const valorD = numeroSeguro(descuentoValor.replace(",", "."));
   const descuento = descuentoTipo === "porcentaje" ? subtotal * Math.min(100, valorD) / 100 : descuentoTipo === "fijo" ? Math.min(subtotal, valorD) : 0;
   const total = Math.max(0, subtotal - descuento);
+
+  async function importarPDF(archivo: File | undefined) {
+    if (!archivo || !empresa?.id || importandoPDF) return;
+    if (Object.keys(seleccion).length && !window.confirm("Al cargar el PDF se reemplazará la selección actual de productos. ¿Querés continuar?")) return;
+    setImportandoPDF(true);
+    setResultadoPDF("");
+    setAdvertenciasPDF([]);
+    setError("");
+    try {
+      const { filas, clientePDF } = await leerCalculoPDF(archivo);
+      const nuevaSeleccion: Record<number, Seleccion> = {};
+      const advertencias: string[] = [];
+      let importados = 0;
+      for (const fila of filas) {
+        const codigo = normalizarCoincidencia(fila.codigo);
+        let coincidencias = codigo && codigo !== "sin codigo"
+          ? productos.filter(p => normalizarCoincidencia(p.codigo || "") === codigo)
+          : [];
+        if (coincidencias.length === 0) coincidencias = productos.filter(p => normalizarCoincidencia(p.nombre) === normalizarCoincidencia(fila.nombre));
+        if (coincidencias.length !== 1) {
+          advertencias.push(`«${fila.nombre}» (${fila.codigo || "sin código"}): ${coincidencias.length ? "coincidencia ambigua" : "no existe en el catálogo"}. No se importó.`);
+          continue;
+        }
+        const producto = coincidencias[0];
+        if (nuevaSeleccion[producto.id]) {
+          advertencias.push(`«${fila.nombre}»: aparece más de una vez en el PDF; revisalo manualmente.`);
+          continue;
+        }
+        const opciones = opcionesPrecio(producto);
+        // Nunca inventar ni sobrescribir precios: deben coincidir con una lista actual.
+        const coincidentes = opciones.filter(o => Math.abs(o.precio - fila.precio) < 0.011);
+        if (!coincidentes.length) {
+          advertencias.push(`«${fila.nombre}»: el PDF indica ${pesos(fila.precio)} por unidad, pero ese precio no está disponible en las listas actuales. No se importó; revisá el precio antes de presupuestar.`);
+          continue;
+        }
+        let elegida = coincidentes[0];
+        if (coincidentes.length > 1) {
+          // Priorizar la lista principal si los precios coinciden; dejar constancia.
+          elegida = coincidentes.find(o => o.clave.startsWith("principal:")) || elegida;
+          advertencias.push(`«${fila.nombre}»: el mismo precio existe en varias listas. Se seleccionó «${elegida.etiqueta}»; podés cambiarlo.`);
+        }
+        nuevaSeleccion[producto.id] = {
+          cantidad: fila.cantidad,
+          lista: elegida.clave.split(":")[0],
+          tipoPrecio: elegida.tipo,
+        };
+        importados++;
+      }
+      if (!importados) throw new Error(`No se pudieron asociar productos del PDF con los precios actuales.${advertencias.length ? " Revisá los avisos: " + advertencias.slice(0, 3).join(" ") : ""}`);
+      setSeleccion(nuevaSeleccion);
+      setTipoDocumento("presupuesto");
+      setMostrarPrecios(true);
+      setDescuentoTipo("ninguno");
+      setDescuentoValor("0");
+      setBusqueda("");
+      setCategoria("__todas__");
+      if (clientePDF?.nombre) {
+        const nombre = normalizarCoincidencia(clientePDF.nombre);
+        const telefono = clientePDF.telefono.replace(/\D/g, "");
+        const existente = clientes.find(c => telefono && c.telefono.replace(/\D/g, "") === telefono)
+          || clientes.find(c => normalizarCoincidencia(c.nombre) === nombre);
+        if (existente) {
+          elegirCliente(existente);
+        } else {
+          setClienteElegidoId(null);
+          setFormCliente({ ...CLIENTE_VACIO, nombre: clientePDF.nombre, telefono: clientePDF.telefono });
+          setModoCliente("nuevo");
+          advertencias.push("El cliente del PDF no está registrado. Completá sus datos y presioná «Guardar y seleccionar cliente» antes de generar el presupuesto.");
+        }
+      }
+      setAdvertenciasPDF(advertencias);
+      setResultadoPDF(`Se importaron ${importados} de ${filas.length} productos. Revisá precios, listas, cantidades y datos del cliente antes de generar el PDF.`);
+    } catch (errorDesconocido) {
+      setError(errorDesconocido instanceof Error ? errorDesconocido.message : "No se pudo leer el PDF.");
+    } finally {
+      setImportandoPDF(false);
+      if (selectorPDF.current) selectorPDF.current.value = "";
+    }
+  }
 
   function imprimirDocumento() {
     if (!renglones.length) { setError("Seleccioná al menos un producto con un precio válido."); return; }
@@ -305,9 +588,25 @@ export default function PresupuestoClientePage() {
 
   return <main className="min-h-screen bg-[#F8FAFC] p-5 text-slate-800 sm:p-8">
     <div className="mx-auto max-w-7xl space-y-6">
-      <div><Link href="/admin" className="font-semibold text-blue-600">← Volver al panel</Link><h1 className="mt-4 text-3xl font-bold">Presupuestos y Remitos</h1>
-        <p className="mt-2 text-slate-500">Elegí el tipo de documento, buscá por nombre o código y seleccioná la lista y el precio de cada producto.</p></div>
-      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><Link href="/admin" className="font-semibold text-blue-600">← Volver al panel</Link><h1 className="mt-4 text-3xl font-bold">Presupuestos y Remitos</h1>
+          <p className="mt-2 text-slate-500">Elegí el tipo de documento, buscá por nombre o código y seleccioná la lista y el precio de cada producto.</p></div>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <input ref={selectorPDF} type="file" accept=".pdf,application/pdf" className="hidden"
+            aria-label="Elegir PDF de cálculo de compra" onChange={evento => { void importarPDF(evento.target.files?.[0]); }} />
+          <button type="button" disabled={importandoPDF || cargando} onClick={() => selectorPDF.current?.click()}
+            className="rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+            {importandoPDF ? "Leyendo PDF..." : "📄 Cargar PDF"}
+          </button>
+          <p className="max-w-64 text-xs text-slate-500 sm:text-right">Importá el PDF «Mi cálculo de compra» descargado desde tu catálogo o una lista de precios.</p>
+        </div>
+      </div>
+      {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>}
+      {resultadoPDF && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 font-semibold text-emerald-800">{resultadoPDF}</div>}
+      {advertenciasPDF.length > 0 && <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-bold">Revisá estos detalles antes de continuar:</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">{advertenciasPDF.map((aviso, indice) => <li key={indice}>{aviso}</li>)}</ul>
+      </div>}
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Seleccionar productos</h2><span className="text-xs text-slate-500">Cada producto puede tener su propia lista y precio</span></div>

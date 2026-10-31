@@ -279,6 +279,13 @@ export default function CatalogoListaPage() {
 
   const [mensajeCarrito, setMensajeCarrito] = useState("");
 
+  // Lista de cálculo informativo, independiente de los pedidos.
+  const [calculo, setCalculo] = useState<ItemPedido[]>([]);
+  const [calculoAbierto, setCalculoAbierto] = useState(false);
+  const [calculoIniciado, setCalculoIniciado] = useState(false);
+  const [calculoClaveCargada, setCalculoClaveCargada] = useState("");
+  const [mensajeCalculo, setMensajeCalculo] = useState("");
+
 
 
 
@@ -401,6 +408,35 @@ export default function CatalogoListaPage() {
 
 
 
+
+  useEffect(() => {
+    if (!empresa?.id || !listaSlug || cargando) return;
+    try {
+      const clave = `comersys_calculo_${empresa.id}_lista_${listaSlug}`;
+      const guardado = window.localStorage.getItem(clave);
+      const registros = guardado ? JSON.parse(guardado) as Array<{ id: number; cantidad: number }> : [];
+      const recuperados = Array.isArray(registros) ? registros.flatMap((registro) => {
+        const producto = productos.find((p) => p.id === Number(registro.id));
+        const cantidad = Math.floor(Number(registro.cantidad));
+        return producto && Number.isFinite(cantidad) && cantidad > 0
+          ? [{ producto, cantidad }] : [];
+      }) : [];
+      setCalculo(recuperados);
+      setCalculoIniciado(recuperados.length > 0);
+    } catch (error) {
+      console.warn("No se pudo recuperar el cálculo de la lista:", error);
+    } finally {
+      setCalculoClaveCargada(`comersys_calculo_${empresa.id}_lista_${listaSlug}`);
+    }
+  }, [empresa?.id, listaSlug, cargando]);
+
+  useEffect(() => {
+    if (!empresa?.id || !listaSlug || calculoClaveCargada !== `comersys_calculo_${empresa.id}_lista_${listaSlug}`) return;
+    window.localStorage.setItem(
+      `comersys_calculo_${empresa.id}_lista_${listaSlug}`,
+      JSON.stringify(calculo.map((item) => ({ id: item.producto.id, cantidad: item.cantidad })))
+    );
+  }, [empresa?.id, listaSlug, calculo, calculoClaveCargada]);
 
   async function registrarCliente(event: React.FormEvent<HTMLFormElement>) {
 
@@ -630,8 +666,10 @@ export default function CatalogoListaPage() {
 
 
       setCarrito([]);
-
-
+      setCalculoClaveCargada("");
+      setCalculo([]);
+      setCalculoAbierto(false);
+      setCalculoIniciado(false);
 
       setCheckoutAbierto(false);
 
@@ -1327,6 +1365,72 @@ export default function CatalogoListaPage() {
 
 
 
+  function precioAplicado(producto: ProductoLista, cantidad: number) {
+    const minimoConfigurado = Number(producto.cantidad_minima_mayorista ?? 10);
+    const minimo = Number.isFinite(minimoConfigurado) && minimoConfigurado > 0
+      ? minimoConfigurado : 10;
+    return cantidad >= minimo && producto.precio_mayorista != null
+      ? Number(producto.precio_mayorista) : Number(producto.precio);
+  }
+
+  function agregarAlCalculo(producto: ProductoLista) {
+    if (empresa?.mostrar_precios === false) return;
+    setCalculoIniciado(true);
+    setMensajeCalculo("");
+    setCalculo((actual) => {
+      const existente = actual.find((item) => item.producto.id === producto.id);
+      return existente
+        ? actual.map((item) => item.producto.id === producto.id
+          ? { ...item, cantidad: item.cantidad + 1 } : item)
+        : [...actual, { producto, cantidad: 1 }];
+    });
+  }
+
+  function cambiarCantidadCalculo(id: number, cambio: number) {
+    setCalculo((actual) => actual.map((item) => item.producto.id === id
+      ? { ...item, cantidad: Math.max(0, item.cantidad + cambio) } : item
+    ).filter((item) => item.cantidad > 0));
+  }
+
+  function quitarDelCalculo(id: number) {
+    setCalculo((actual) => actual.filter((item) => item.producto.id !== id));
+  }
+
+  function imprimirCalculo() {
+    if (!empresa || calculo.length === 0) return;
+    const escapar = (valor: unknown) => String(valor ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c)
+    );
+    const filas = calculo.map(({ producto, cantidad }) => {
+      const p = producto as ProductoLista;
+      const unitario = precioAplicado(p, cantidad);
+      return `<tr><td>${escapar(p.codigo)}</td><td>${escapar(p.nombre)}</td><td class="num">${cantidad}</td><td class="num">${escapar(dinero(unitario))}</td><td class="num">${escapar(dinero(unitario * cantidad))}</td></tr>`;
+    }).join("");
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"/><title>Mi cálculo de compra</title>
+    <style>body{font-family:Arial,sans-serif;color:#1e293b;padding:28px;font-size:12px}
+    h1{font-size:23px;margin:6px 0}h2{font-size:17px;margin:0}.muted{color:#64748b}
+    .cabecera{border-bottom:2px solid #334155;padding-bottom:18px;margin-bottom:22px}
+    table{width:100%;border-collapse:collapse;margin-top:18px}th,td{padding:10px 7px;border-bottom:1px solid #cbd5e1;text-align:left;vertical-align:top}
+    th{background:#f1f5f9}.num{text-align:right;white-space:nowrap}.total{font-size:21px;text-align:right;margin-top:22px;font-weight:700}
+    .nota{margin-top:24px;color:#64748b;font-size:11px}@page{size:A4;margin:14mm}@media print{body{padding:0}}</style>
+    </head><body><div class="cabecera"><h2>${escapar(empresa.nombre)}</h2><h1>Mi cálculo de compra</h1>
+    <div class="muted">Fecha: ${new Date().toLocaleDateString("es-AR")} · Documento informativo</div>
+    ${clienteRegistrado ? `<div>Cliente: ${escapar(clienteRegistrado.nombre)} · Tel.: ${escapar(clienteRegistrado.telefono)}</div>` : ""}
+    </div><table><thead><tr><th>Código</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th></tr></thead>
+    <tbody>${filas}</tbody></table><div class="total">Total estimado: ${escapar(dinero(totalCalculo))}</div>
+    <p class="nota">Cálculo informativo. No constituye un pedido confirmado. Los precios están sujetos a actualización.</p></body></html>`;
+    const ventana = window.open("", "_blank");
+    if (!ventana) {
+      setMensajeCalculo("El navegador bloqueó la ventana. Permití ventanas emergentes para guardar el PDF.");
+      return;
+    }
+    ventana.document.open();
+    ventana.document.write(html);
+    ventana.document.close();
+    ventana.focus();
+    ventana.setTimeout(() => ventana.print(), 450);
+  }
+
   function precioUnitario(item: ItemPedido) {
 
 
@@ -1366,6 +1470,10 @@ export default function CatalogoListaPage() {
 
 
 
+
+  const cantidadCalculo = calculo.reduce((suma, item) => suma + item.cantidad, 0);
+  const totalCalculo = calculo.reduce((suma, item) =>
+    suma + precioAplicado(item.producto as ProductoLista, item.cantidad) * item.cantidad, 0);
 
   const cantidadCarrito = carrito.reduce((suma, item) => suma + item.cantidad, 0);
 
@@ -1909,334 +2017,80 @@ export default function CatalogoListaPage() {
 
 
 
-                <article
-
-
-
-                  key={producto.id}
-
-
-
-                  className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-
-
-
-                >
-
-
-
-                  {producto.imaguen ? (
-
-
-
-                    <button
-
-
-
-                      type="button"
-
-
-
-                      onClick={() => abrirGaleriaProducto(producto)}
-
-
-
-                      className="h-56 w-full overflow-hidden bg-slate-100"
-
-
-
-                      aria-label={`Ampliar imagen de ${producto.nombre}`}
-
-
-
-                    >
-
-
-
-                      <img
-
-
-
-                        src={producto.imaguen}
-
-
-
-                        alt={producto.nombre}
-
-
-
-                        className="h-full w-full object-cover"
-
-
-
-                      />
-
-
-
-                    </button>
-
-
-
-                  ) : (
-
-
-
-                    <div className="flex h-56 items-center justify-center bg-slate-100 text-slate-400">
-
-
-
-                      Sin imagen
-
-
-
-                    </div>
-
-
-
-                  )}
-
-
-
-                  <div className="flex flex-1 flex-col p-5">
-
-
-
-                    <p className="text-sm font-semibold" style={{ color }}>
-
-
-
-                      {producto.categoria || "Sin categoría"}
-
-
-
-                    </p>
-
-
-
-                    <h2 className="mt-2 text-xl font-bold">{producto.nombre}</h2>
-
-
-
-                    {producto.descripcion && (
-
-
-
-                      <p className="mt-2 text-sm text-slate-500">
-
-
-
-                        {producto.descripcion}
-
-
-
-                      </p>
-
-
-
+                <article key={producto.id}
+                  className="flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+                  <div className="flex w-full flex-col">
+                    {producto.imaguen ? (
+                      <button type="button" onClick={() => abrirGaleriaProducto(producto)}
+                        className="group relative block h-48 w-full cursor-zoom-in overflow-hidden bg-slate-100 text-left"
+                        aria-label={`Ampliar imagen de ${producto.nombre}`}>
+                        <img src={producto.imaguen} alt={producto.nombre}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                        <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-lg">
+                          🔍 Ver completa
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="flex h-48 items-center justify-center bg-slate-100 text-sm text-slate-400">Sin imagen</div>
                     )}
-
-                    {producto.codigo?.trim() && (
-                      <p className="mt-2 break-words text-sm font-medium text-slate-600">
-                        Código: <span className="font-semibold">{producto.codigo}</span>
-                      </p>
-                    )}
-
-                    <div className="mt-auto pt-5">
-
-
-
-                      {empresa.mostrar_precios !== false && (
-
-
-
-                        <>
-
-
-
-                          <p className="text-xs font-semibold uppercase text-slate-400">
-
-
-
-                            {producto.precio_mayorista != null ? "Precio minorista" : "Precio"}
-
-
-
-                          </p>
-
-
-
-                          <p className="mt-1 text-2xl font-bold">
-
-
-
-                            {dinero(producto.precio)}
-
-
-
-                          </p>
-
-
-
-                          {producto.precio_mayorista != null && (
-
-
-
-                            <div className="mt-3 rounded-xl bg-emerald-50 p-3">
-
-
-
-                              <p className="text-xs font-semibold text-emerald-700">
-
-
-
-                                Precio mayorista
-
-
-
-                              </p>
-
-
-
-                              <p className="mt-1 text-xl font-bold text-emerald-700">
-
-
-
-                                {dinero(producto.precio_mayorista)}
-
-
-
-                              </p>
-
-
-
-                              <p className="mt-1 text-xs text-emerald-700">
-
-
-
-                                Desde {minimo} unidades
-
-
-
-                              </p>
-
-
-
-                            </div>
-
-
-
+                    <div className="flex flex-1 flex-col p-4">
+                      <div>
+                        <p className="text-xs font-semibold" style={{ color }}>{producto.categoria || "Sin categoría"}</p>
+                        <h2 className="mt-1.5 text-lg font-bold leading-snug">{producto.nombre}</h2>
+                        <div className="mt-1.5 min-h-[1.5rem]">
+                          {producto.descripcion && (
+                            <p className="line-clamp-2 text-xs leading-5 text-slate-500">{producto.descripcion}</p>
                           )}
-
-
-
-                        </>
-
-
-
-                      )}
-
-
-
-                      <p className={`mt-4 text-sm font-semibold ${
-
-
-
-                        disponible ? "text-emerald-700" : "text-slate-500"
-
-
-
-                      }`}>
-
-
-
-                        {disponible ? "Disponible" : "No disponible"}
-
-
-
-                      </p>
-
-
-
-                      {permitirCarrito && <button
-
-
-
-                        type="button"
-
-
-
-                        disabled={!disponible}
-
-
-
-                        onClick={() => agregarAlCarrito(producto)}
-
-
-
-                        className="mt-4 w-full rounded-xl px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-
-
-
-                        style={{ backgroundColor: color }}
-
-
-
-                      >
-
-
-
-                        Agregar al carrito
-
-
-
-                      </button>}
-
-
-
-                      <a
-
-
-
-                        href={enlace}
-
-
-
-                        target="_blank"
-
-
-
-                        rel="noreferrer"
-
-
-
-                        className="mt-4 block rounded-xl px-4 py-3 text-center font-semibold text-white"
-
-
-
-                        style={{ backgroundColor: secundario }}
-
-
-
-                      >
-
-
-
-                        Consultar por WhatsApp
-
-
-
-                      </a>
-
-
-
+                        </div>
+                        <div className="mt-1 min-h-[1.25rem]">
+                          {producto.codigo?.trim() && (
+                            <p className="text-xs font-medium text-slate-600">Código: <span className="font-semibold break-all">{producto.codigo}</span></p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        {empresa.mostrar_precios !== false && (
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {producto.precio_mayorista != null ? "Precio minorista" : "Precio"}
+                            </p>
+                            <p className="mt-0.5 text-xl font-bold">{dinero(producto.precio)}</p>
+                            {producto.precio_mayorista != null && (
+                              <div className="mt-2.5 rounded-lg bg-emerald-50 px-3 py-2.5">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Precio mayorista</p>
+                                <p className="mt-0.5 text-lg font-bold text-emerald-700">{dinero(producto.precio_mayorista)}</p>
+                                <p className="mt-0.5 text-[11px] font-medium text-emerald-700">Desde {minimo} unidades de este producto</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-3">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${disponible
+                            ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
+                            {disponible ? "Disponible" : "No disponible"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3.5 flex flex-1 flex-col justify-end space-y-2">
+                        {empresa.mostrar_precios !== false && (
+                          <button type="button" onClick={() => agregarAlCalculo(producto)}
+                            className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-center text-[13px] font-bold text-white transition hover:bg-emerald-800">
+                            🧮 {calculoIniciado ? "Agregar al cálculo" : "Calcular mi compra"}
+                          </button>
+                        )}
+                        {permitirCarrito && (
+                          <button type="button" disabled={!disponible} onClick={() => agregarAlCarrito(producto)}
+                            className="w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                            style={{ backgroundColor: color }}>
+                            🛒 Agregar al carrito
+                          </button>
+                        )}
+                        <a href={enlace} target="_blank" rel="noreferrer"
+                          className="block w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95"
+                          style={{ backgroundColor: secundario }}>Consultar por WhatsApp</a>
+                      </div>
                     </div>
-
-
-
                   </div>
-
-
-
                 </article>
 
 
@@ -2260,6 +2114,66 @@ export default function CatalogoListaPage() {
       </section>
 
 
+
+      {empresa.mostrar_precios !== false && cantidadCalculo > 0 && !calculoAbierto && (
+        <button type="button" onClick={() => setCalculoAbierto(true)}
+          className="fixed bottom-20 right-5 z-40 rounded-full bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow-xl">
+          🧮 Mi cálculo ({cantidadCalculo}) · {dinero(totalCalculo)}
+        </button>
+      )}
+
+      {empresa.mostrar_precios !== false && calculoAbierto && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 p-3 sm:p-4">
+          <div role="dialog" aria-modal="true" aria-label="Mi cálculo de compra"
+            className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-2xl bg-white p-5 text-slate-800 shadow-2xl sm:p-6">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-4">
+              <div><h2 className="text-xl font-bold">Mi cálculo de compra</h2>
+                <p className="text-xs text-slate-500">Sin compromiso de compra ni generación de pedidos</p></div>
+              <button type="button" onClick={() => setCalculoAbierto(false)}
+                className="rounded-lg bg-slate-100 px-3 py-2 font-semibold">Cerrar ✕</button>
+            </div>
+            <div className="mt-4 flex-1 space-y-3 overflow-y-auto">
+              {calculo.length === 0 ? <p className="py-8 text-center text-slate-500">El cálculo está vacío. Agregá productos de esta lista.</p> :
+                calculo.map(({ producto, cantidad }) => {
+                  const p = producto as ProductoLista;
+                  const precio = precioAplicado(p, cantidad);
+                  const minimo = Math.max(1, Number(p.cantidad_minima_mayorista || 10));
+                  const mayorista = p.precio_mayorista != null && cantidad >= minimo;
+                  return <div key={p.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex justify-between gap-3"><div className="min-w-0">
+                      <p className="font-bold">{p.nombre}</p>
+                      {p.codigo && <p className="text-xs text-slate-500">Código: {p.codigo}</p>}
+                      <p className="mt-1 text-sm">{dinero(precio)} por unidad {p.precio_mayorista != null ? `· ${mayorista ? "Mayorista" : "Minorista"}` : ""}</p>
+                      {!mayorista && p.precio_mayorista != null && <p className="text-xs text-emerald-700">Mayorista desde {minimo} unidades</p>}
+                    </div><p className="shrink-0 font-bold">{dinero(precio * cantidad)}</p></div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3 rounded-lg bg-slate-100 px-2 py-1">
+                        <button type="button" onClick={() => cambiarCantidadCalculo(p.id, -1)} className="px-2 py-1 font-bold" aria-label="Disminuir cantidad">−</button>
+                        <span className="min-w-6 text-center font-semibold">{cantidad}</span>
+                        <button type="button" onClick={() => cambiarCantidadCalculo(p.id, 1)} className="px-2 py-1 font-bold" aria-label="Aumentar cantidad">+</button>
+                      </div>
+                      <button type="button" onClick={() => quitarDelCalculo(p.id)} className="text-sm font-semibold text-red-600">Eliminar</button>
+                    </div>
+                  </div>;
+                })}
+            </div>
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <div className="flex items-center justify-between text-lg font-bold"><span>Total estimado</span><span>{dinero(totalCalculo)}</span></div>
+              <p className="mt-1 text-xs text-slate-500">{cantidadCalculo} unidades · Los precios pueden cambiar.</p>
+              {mensajeCalculo && <p className="mt-2 text-sm text-red-600">{mensajeCalculo}</p>}
+              <button type="button" onClick={imprimirCalculo} disabled={calculo.length === 0}
+                className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">📄 Descargar cálculo en PDF</button>
+              <p className="mt-1 text-center text-xs text-slate-500">En la ventana de impresión elegí «Guardar como PDF».</p>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={() => setCalculo([])} disabled={calculo.length === 0}
+                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">Vaciar cálculo</button>
+                <button type="button" onClick={() => setCalculoAbierto(false)}
+                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2 font-semibold">Seguir viendo productos</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {permitirCarrito && carritoAbierto && (
 

@@ -39,6 +39,8 @@ type MedioVisible = { tipo: "imagen" | "video"; url: string };
 
 type VistaAmpliada = { nombre: string; medios: MedioVisible[]; indice: number };
 
+type ItemCalculoExterno = { productoId: number; cantidad: number };
+
 type ProductoExterno = {
   id: number;
   catalogo_id: number;
@@ -83,6 +85,11 @@ export default function CatalogoExternoPublicoPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [imagenAmpliada, setImagenAmpliada] = useState<VistaAmpliada | null>(null);
+  const [calculo, setCalculo] = useState<ItemCalculoExterno[]>([]);
+  const [calculoAbierto, setCalculoAbierto] = useState(false);
+  const [calculoIniciado, setCalculoIniciado] = useState(false);
+  const [calculoCargadoId, setCalculoCargadoId] = useState<number | null>(null);
+  const [avisoCalculo, setAvisoCalculo] = useState("");
 
   useEffect(() => {
     let vigente = true;
@@ -95,6 +102,10 @@ export default function CatalogoExternoPublicoPage() {
       setProductos([]);
       setMultimedia([]);
       setCategoriaActual("todos");
+      setCalculoAbierto(false);
+      setCalculoCargadoId(null);
+      setCalculo([]);
+      setCalculoIniciado(false);
 
       if (!slug) {
         setError("El enlace del catálogo no es válido.");
@@ -195,6 +206,135 @@ export default function CatalogoExternoPublicoPage() {
     return () => window.removeEventListener("keydown", manejarTecladoGaleria);
   }, [imagenAmpliada]);
 
+  // Cada catálogo externo conserva únicamente su propio cálculo en este navegador.
+  useEffect(() => {
+    if (!catalogo || cargando || calculoCargadoId === catalogo.id) return;
+    try {
+      const guardado = window.localStorage.getItem(`comersys_calculo_externo_${catalogo.id}`);
+      const valores: unknown = guardado ? JSON.parse(guardado) : [];
+      const recuperados: ItemCalculoExterno[] = Array.isArray(valores)
+        ? valores.flatMap((valor: unknown) => {
+            if (!valor || typeof valor !== "object") return [];
+            const dato = valor as Record<string, unknown>;
+            const productoId = Number(dato.productoId);
+            const cantidad = Math.floor(Number(dato.cantidad));
+            const producto = productos.find((p) => p.id === productoId);
+            return producto && Number.isFinite(cantidad) && cantidad > 0
+              ? [{ productoId, cantidad }] : [];
+          })
+        : [];
+      setCalculo(recuperados);
+      setCalculoIniciado(recuperados.length > 0);
+    } catch (fallo) {
+      console.warn("No se pudo recuperar el cálculo del catálogo externo:", fallo);
+      setCalculo([]);
+    }
+    setCalculoCargadoId(catalogo.id);
+  }, [catalogo, cargando, productos, calculoCargadoId]);
+
+  useEffect(() => {
+    if (!catalogo || calculoCargadoId !== catalogo.id) return;
+    try {
+      window.localStorage.setItem(`comersys_calculo_externo_${catalogo.id}`, JSON.stringify(calculo));
+    } catch (fallo) {
+      console.warn("No se pudo guardar el cálculo:", fallo);
+    }
+  }, [catalogo, calculo, calculoCargadoId]);
+
+  function minimoMayorista(producto: ProductoExterno) {
+    const minimo = Number(producto.cantidad_minima_mayorista ?? 10);
+    return Number.isFinite(minimo) && minimo > 0 ? minimo : 10;
+  }
+
+  function precioAplicado(producto: ProductoExterno, cantidad: number) {
+    return producto.precio_mayorista != null &&
+      Number.isFinite(Number(producto.precio_mayorista)) &&
+      cantidad >= minimoMayorista(producto)
+      ? Number(producto.precio_mayorista)
+      : Number(producto.precio);
+  }
+
+  function agregarAlCalculo(producto: ProductoExterno) {
+    const sinStock = producto.controlar_stock && producto.stock != null && Number(producto.stock) <= 0;
+    if (sinStock) {
+      setAvisoCalculo("Este producto no está disponible.");
+      return;
+    }
+    setCalculoIniciado(true);
+    setAvisoCalculo("");
+    setCalculo((actual) => {
+      const existente = actual.find((item) => item.productoId === producto.id);
+      const siguiente = (existente?.cantidad ?? 0) + 1;
+      if (producto.controlar_stock && producto.stock != null && siguiente > Number(producto.stock)) {
+        setAvisoCalculo("No hay unidades suficientes de este producto.");
+        return actual;
+      }
+      return existente
+        ? actual.map((item) => item.productoId === producto.id ? { ...item, cantidad: siguiente } : item)
+        : [...actual, { productoId: producto.id, cantidad: 1 }];
+    });
+  }
+
+  function cambiarCantidadCalculo(productoId: number, cambio: number) {
+    setAvisoCalculo("");
+    setCalculo((actual) => actual.flatMap((item) => {
+      if (item.productoId !== productoId) return [item];
+      const cantidad = item.cantidad + cambio;
+      if (cantidad <= 0) return [];
+      const producto = productos.find((p) => p.id === productoId);
+      if (!producto) return [];
+      if (producto.controlar_stock && producto.stock != null && cantidad > Number(producto.stock)) {
+        setAvisoCalculo("No hay unidades suficientes de este producto.");
+        return [item];
+      }
+      return [{ ...item, cantidad }];
+    }));
+  }
+
+  function imprimirCalculo() {
+    if (!catalogo || calculo.length === 0) return;
+    const escapar = (valor: unknown) => String(valor ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
+    const filas = calculo.flatMap(({ productoId, cantidad }) => {
+      const producto = productos.find((p) => p.id === productoId);
+      if (!producto) return [];
+      const unitario = precioAplicado(producto, cantidad);
+      return [`<tr><td>${escapar(producto.codigo)}</td><td>${escapar(producto.nombre)}</td><td class="num">${cantidad}</td><td class="num">${escapar(precioARS(unitario))}</td><td class="num">${escapar(precioARS(unitario * cantidad))}</td></tr>`];
+    }).join("");
+    const total = calculo.reduce((suma, item) => {
+      const producto = productos.find((p) => p.id === item.productoId);
+      return producto ? suma + precioAplicado(producto, item.cantidad) * item.cantidad : suma;
+    }, 0);
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"/>
+      <title>Cálculo de compra - ${escapar(catalogo.nombre)}</title><style>
+      body{font-family:Arial,sans-serif;color:#1e293b;padding:28px;font-size:12px}
+      h1{font-size:23px;margin:6px 0} h2{font-size:17px;margin:0}
+      .muted{color:#64748b}.cabecera{border-bottom:2px solid #334155;padding-bottom:18px;margin-bottom:22px}
+      table{width:100%;border-collapse:collapse;margin-top:18px}
+      th,td{padding:10px 7px;border-bottom:1px solid #cbd5e1;text-align:left;vertical-align:top}
+      th{background:#f1f5f9}.num{text-align:right;white-space:nowrap}
+      .total{font-size:21px;text-align:right;margin-top:22px;font-weight:700}
+      .nota{margin-top:24px;color:#64748b;font-size:11px}
+      @page{size:A4;margin:14mm} @media print{body{padding:0}}
+      </style></head><body><div class="cabecera"><h2>${escapar(catalogo.nombre)}</h2>
+      <h1>Mi cálculo de compra</h1><div class="muted">Fecha: ${new Date().toLocaleDateString("es-AR")} · Documento informativo</div>
+      ${catalogo.whatsapp ? `<p>Contacto del negocio: ${escapar(catalogo.whatsapp)}</p>` : ""}
+      </div><table><thead><tr><th>Código</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th></tr></thead>
+      <tbody>${filas}</tbody></table><div class="total">Total estimado: ${escapar(precioARS(total))}</div>
+      <p class="nota">Cálculo informativo, no constituye un pedido confirmado. Precios y disponibilidad sujetos a confirmación del negocio.</p>
+      </body></html>`;
+    const ventana = window.open("", "_blank");
+    if (!ventana) {
+      setAvisoCalculo("El navegador bloqueó la ventana emergente. Permitila para guardar el PDF.");
+      return;
+    }
+    ventana.document.open();
+    ventana.document.write(html);
+    ventana.document.close();
+    ventana.focus();
+    ventana.setTimeout(() => ventana.print(), 450);
+  }
+
   function mediosProducto(producto: ProductoExterno): MedioVisible[] {
     const medios: MedioVisible[] = [];
     if (producto.imagen_url) medios.push({tipo:"imagen",url:producto.imagen_url});
@@ -230,6 +370,14 @@ export default function CatalogoExternoPublicoPage() {
         return b.id - a.id;
       });
   }, [productos, categorias, busqueda, categoriaActual]);
+
+  const itemsCalculo = calculo.flatMap(({ productoId, cantidad }) => {
+    const producto = productos.find((p) => p.id === productoId);
+    return producto ? [{ producto, cantidad }] : [];
+  });
+  const cantidadCalculo = itemsCalculo.reduce((suma, item) => suma + item.cantidad, 0);
+  const totalCalculo = itemsCalculo.reduce((suma, item) =>
+    suma + precioAplicado(item.producto, item.cantidad) * item.cantidad, 0);
 
   if (cargando) {
     return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-8 text-slate-600">Cargando catálogo...</main>;
@@ -328,6 +476,80 @@ export default function CatalogoExternoPublicoPage() {
         </div>
       </header>
 
+      {cantidadCalculo > 0 && !calculoAbierto && (
+        <button type="button" onClick={() => setCalculoAbierto(true)}
+          className="fixed bottom-5 right-5 z-40 max-w-[calc(100vw-2rem)] rounded-full bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow-xl">
+          🧮 Mi cálculo ({cantidadCalculo}) · {precioARS(totalCalculo)}
+        </button>
+      )}
+      {calculoAbierto && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 p-3 sm:p-4">
+          <div role="dialog" aria-modal="true" aria-label="Mi cálculo de compra"
+            className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-2xl bg-white p-5 text-slate-800 shadow-2xl sm:p-6">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-4">
+              <div>
+                <h2 className="text-xl font-bold">Mi cálculo de compra</h2>
+                <p className="text-xs text-slate-500">{catalogo.nombre} · Sin compromiso de compra</p>
+              </div>
+              <button type="button" onClick={() => setCalculoAbierto(false)}
+                className="rounded-lg bg-slate-100 px-3 py-2 font-semibold">Cerrar ✕</button>
+            </div>
+            <div className="mt-4 flex-1 space-y-3 overflow-y-auto">
+              {itemsCalculo.length === 0 ? (
+                <p className="py-8 text-center text-slate-500">El cálculo está vacío. Agregá productos del catálogo.</p>
+              ) : itemsCalculo.map(({ producto, cantidad }) => {
+                const precio = precioAplicado(producto, cantidad);
+                const mayorista = producto.precio_mayorista != null && cantidad >= minimoMayorista(producto);
+                return (
+                  <div key={producto.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold">{producto.nombre}</p>
+                        {producto.codigo?.trim() && <p className="text-xs text-slate-500">Código: {producto.codigo}</p>}
+                        <p className="mt-1 text-sm">{precioARS(precio)} por unidad {producto.precio_mayorista != null ? `· ${mayorista ? "Mayorista" : "Minorista"}` : ""}</p>
+                        {!mayorista && producto.precio_mayorista != null && (
+                          <p className="text-xs text-emerald-700">Mayorista desde {minimoMayorista(producto)} unidades</p>
+                        )}
+                      </div>
+                      <p className="shrink-0 font-bold">{precioARS(precio * cantidad)}</p>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3 rounded-lg bg-slate-100 px-2 py-1">
+                        <button type="button" onClick={() => cambiarCantidadCalculo(producto.id, -1)}
+                          className="px-2 py-1 font-bold" aria-label="Disminuir cantidad">−</button>
+                        <span className="min-w-6 text-center font-semibold">{cantidad}</span>
+                        <button type="button" onClick={() => cambiarCantidadCalculo(producto.id, 1)}
+                          className="px-2 py-1 font-bold" aria-label="Aumentar cantidad">+</button>
+                      </div>
+                      <button type="button" onClick={() => setCalculo((actual) => actual.filter((item) => item.productoId !== producto.id))}
+                        className="text-sm font-semibold text-red-600">Eliminar</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              {avisoCalculo && <p role="alert" className="mb-3 text-sm font-semibold text-red-600">{avisoCalculo}</p>}
+              <div className="flex items-center justify-between text-lg font-bold">
+                <span>Total estimado</span><span>{precioARS(totalCalculo)}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">{cantidadCalculo} unidades · Los precios pueden cambiar.</p>
+              <button type="button" onClick={imprimirCalculo} disabled={itemsCalculo.length === 0}
+                className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">
+                📄 Descargar cálculo en PDF
+              </button>
+              <p className="mt-1 text-center text-xs text-slate-500">En la ventana de impresión elegí «Guardar como PDF».</p>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={() => { setCalculo([]); setAvisoCalculo(""); }} disabled={itemsCalculo.length === 0}
+                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2 font-semibold disabled:opacity-40">Vaciar cálculo</button>
+                <button type="button" onClick={() => setCalculoAbierto(false)}
+                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2 font-semibold">Seguir viendo productos</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className="mx-auto max-w-7xl px-5 py-9 sm:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -369,11 +591,11 @@ export default function CatalogoExternoPublicoPage() {
                      <div className="flex h-56 items-center justify-center bg-slate-100 text-sm text-slate-400">Sin imagen</div>
                   )}
                   <div className="flex flex-1 flex-col p-3.5">
-                    <p className="text-sm font-semibold" style={{ color: principal }}>{nombreCategoria}</p>
+                    <p className="text-xs font-semibold" style={{ color: principal }}>{nombreCategoria}</p>
                     <h3 className="mt-1 text-lg font-bold leading-snug">{producto.nombre}</h3>
-                    {producto.descripcion && <p className="mt-1 whitespace-pre-line text-sm leading-snug text-slate-600">{producto.descripcion}</p>}
+                    {producto.descripcion && <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs leading-5 text-slate-600">{producto.descripcion}</p>}
                     {producto.codigo?.trim() && <p className="mt-1 break-words text-xs text-slate-500">Código: <strong>{producto.codigo}</strong></p>}
-                    <div className="mt-auto pt-2.5">
+                    <div className="mt-3">
                       <p className="text-xs font-semibold uppercase text-slate-400">{producto.precio_mayorista != null ? "Precio minorista" : "Precio"}</p>
                       <p className="mt-0.5 text-xl font-bold">{precioARS(Number(producto.precio))}</p>
                       {producto.precio_mayorista != null && (
@@ -384,7 +606,15 @@ export default function CatalogoExternoPublicoPage() {
                         </div>
                       )}
                       {sinStock && <p className="mt-2 text-xs font-semibold text-slate-500">Sin stock</p>}
-                      <a href={linkConsulta(producto)} target="_blank" rel="noopener noreferrer" className="mx-auto mt-3 block w-fit max-w-full rounded-lg px-4 py-2 text-center text-xs font-semibold text-white transition hover:brightness-95" style={{ backgroundColor: secundario }}>Consultar por WhatsApp</a>
+                    </div>
+                    <div className="mt-3 flex flex-1 flex-col justify-end gap-2">
+                      <button type="button" onClick={() => agregarAlCalculo(producto)} disabled={sinStock}
+                        className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-center text-[13px] font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+                        🧮 {calculoIniciado ? "Agregar al cálculo" : "Calcular mi compra"}
+                      </button>
+                      <a href={linkConsulta(producto)} target="_blank" rel="noopener noreferrer"
+                        className="block w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95"
+                        style={{ backgroundColor: secundario }}>Consultar por WhatsApp</a>
                     </div>
                   </div>
                 </article>
