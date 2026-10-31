@@ -18,6 +18,16 @@ type Categoria = {
   orden?: number | null;
 };
 
+// Evita nombres equivalentes por mayúsculas, tildes o espacios repetidos.
+function normalizarNombreCategoria(nombre: string): string {
+  return nombre
+    .trim()
+    .replace(/\s+/g, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es-AR");
+}
+
 export default function CategoriasPage() {
   const {
     empresa,
@@ -98,17 +108,39 @@ export default function CategoriasPage() {
       return;
     }
 
-    const nombreLimpio = nombre.trim();
+    const nombreLimpio = nombre.trim().replace(/\s+/g, " ");
 
     if (!nombreLimpio) {
-      setError(
-        "Ingresá el nombre de la categoría."
-      );
+      setError("Ingresá el nombre de la categoría.");
       return;
     }
 
+    if (guardando) return;
     setGuardando(true);
     setError("");
+
+    // Consultamos los nombres vigentes para evitar duplicados aunque otra
+    // pantalla haya agregado una categoría desde la última carga.
+    const { data: existentes, error: errorVerificacion } = await supabase
+      .from("categorias")
+      .select("id, nombre")
+      .eq("empresa_id", empresa.id);
+
+    if (errorVerificacion) {
+      setError(`No se pudieron verificar las categorías: ${errorVerificacion.message}`);
+      setGuardando(false);
+      return;
+    }
+
+    const nombreNormalizado = normalizarNombreCategoria(nombreLimpio);
+    const duplicada = (existentes || []).find(
+      (item) => normalizarNombreCategoria(item.nombre) === nombreNormalizado
+    );
+    if (duplicada) {
+      setError(`La categoría "${duplicada.nombre}" ya existe. Podés utilizarla sin crear otra.`);
+      setGuardando(false);
+      return;
+    }
 
     const siguienteOrden =
       categorias.length > 0

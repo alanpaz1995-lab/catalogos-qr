@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export type ProductoListado = {
   id: number;
   empresa_id: number;
   nombre: string;
+  colores?: string[] | null;
   codigo?: string | null;
   categoria?: string | null;
   precio: number;
@@ -47,6 +49,38 @@ export default function TablaProductos({
   productos, listasPrecio, preciosPorProducto, cargando, actualizandoId,
   eliminandoId, onActualizarCampo, onCambiarEstado, onEliminar,
 }: Props) {
+  // Un único listado de colores por empresa, incluidos los colores personalizados.
+  const empresaId = productos[0]?.empresa_id;
+  const [hexPorNombre, setHexPorNombre] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!empresaId) {
+      return;
+    }
+    let vigente = true;
+    // Vaciar el mapa anterior para no mostrar colores de otra empresa.
+    setHexPorNombre({});
+    void (async () => {
+      const { data, error } = await supabase
+        .from("colores_empresa")
+        .select("nombre, codigo_hex")
+        .eq("empresa_id", empresaId);
+      if (!vigente) return;
+      if (error) {
+        console.error("No se pudieron consultar los colores de la empresa:", error);
+        return;
+      }
+      const mapa: Record<string, string> = {};
+      for (const fila of data || []) {
+        if (typeof fila.nombre !== "string" || typeof fila.codigo_hex !== "string") continue;
+        if (!/^#[0-9a-fA-F]{6}$/.test(fila.codigo_hex)) continue;
+        mapa[normalizarNombreColor(fila.nombre)] = fila.codigo_hex;
+      }
+      setHexPorNombre(mapa);
+    })();
+    return () => { vigente = false; };
+  }, [empresaId]);
+
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -60,7 +94,7 @@ export default function TablaProductos({
         : productos.length === 0 ? <div className="p-12 text-center text-slate-500">No se encontraron productos. Probá con otra búsqueda o filtro.</div>
         : <div className="divide-y divide-slate-100">
             {productos.map((producto) => (
-              <FilaProducto key={producto.id} producto={producto} listasPrecio={listasPrecio}
+              <FilaProducto key={producto.id} producto={producto} hexPorNombre={hexPorNombre} listasPrecio={listasPrecio}
                 preciosLista={preciosPorProducto[producto.id] || {}}
                 actualizando={actualizandoId === producto.id}
                 eliminando={eliminandoId === producto.id}
@@ -73,10 +107,11 @@ export default function TablaProductos({
   );
 }
 
-function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, eliminando,
+function FilaProducto({ producto, hexPorNombre, listasPrecio, preciosLista, actualizando, eliminando,
   onActualizarCampo, onCambiarEstado, onEliminar,
 }: {
   producto: ProductoListado;
+  hexPorNombre: Record<string, string>;
   listasPrecio: ListaPrecioCatalogo[];
   preciosLista: Record<number, PrecioProductoLista>;
   actualizando: boolean;
@@ -87,6 +122,9 @@ function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, elim
 }) {
   const [abierto, setAbierto] = useState(false);
   const idOpciones = `opciones-producto-${producto.id}`;
+  const colores = Array.isArray(producto.colores)
+    ? producto.colores.filter((color): color is string => typeof color === "string" && color.trim().length > 0)
+    : [];
   const stock = Number(producto.stock || 0);
   const minimo = Number(producto.stock_minimo || 0);
   const stockTexto = stock <= 0 ? "Sin stock" : stock <= minimo ? "Stock bajo" : "Stock correcto";
@@ -107,7 +145,19 @@ function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, elim
 
   return (
     <article className="px-4 py-3 transition hover:bg-slate-50 sm:px-5">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+      <div
+        className="flex cursor-pointer flex-col gap-3 xl:flex-row xl:items-center"
+        title={abierto ? "Hacé clic para ocultar las opciones" : "Hacé clic para mostrar las opciones"}
+        onClick={(event) => {
+          // Los enlaces y controles conservan su propio comportamiento.
+          // La flecha de desplegar no debe abrir y cerrar dos veces.
+          const objetivo = event.target;
+          if (objetivo instanceof Element && objetivo.closest("a, button, input, select, textarea, [role='button']")) {
+            return;
+          }
+          setAbierto((valor) => !valor);
+        }}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-3 xl:basis-[47%]">
           {producto.imaguen ? (
             <img src={producto.imaguen} alt={producto.nombre} className="h-20 w-20 shrink-0 rounded-2xl border border-slate-200 object-cover sm:h-24 sm:w-24" />
@@ -122,6 +172,28 @@ function FilaProducto({ producto, listasPrecio, preciosLista, actualizando, elim
               {producto.destacado && <Etiqueta texto="Destacado" clases="bg-violet-100 text-violet-700" />}
               {!producto.visible_catalogo && <Etiqueta texto="Oculto" clases="bg-slate-200 text-slate-600" />}
             </div>
+            {colores.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
+                <span className="mr-1 text-xs font-semibold text-slate-600">Colores:</span>
+                {colores.map((color, indice) => {
+                  const hex = hexPorNombre[normalizarNombreColor(color)];
+                  return (
+                    <span
+                      key={`${color}-${indice}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+                      style={{ backgroundColor: "#F8FAFC", borderColor: "#CBD5E1", color: "#0F172A" }}
+                    >
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full border"
+                        style={{ backgroundColor: hex || "#E2E8F0", borderColor: "#94A3B8" }}
+                        aria-hidden="true"
+                      />
+                      <span style={{ color: "#0F172A", opacity: 1 }}>{color}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <p className="mt-1 text-xs font-semibold text-[#2563EB]">{producto.categoria || "Sin categoría"}</p>
             {producto.codigo?.trim() && (
               <p className="mt-1 break-all text-xs font-semibold text-slate-600">
@@ -225,4 +297,9 @@ function BotonEstado({ activo, texto, disabled, onClick }: {
 function dinero(precio: number | null | undefined) {
   return precio == null || !Number.isFinite(Number(precio))
     ? "Sin precio" : new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(Number(precio));
+}
+
+function normalizarNombreColor(nombre: string): string {
+  return nombre.trim().replace(/\s+/g, " ").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
 }

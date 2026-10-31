@@ -56,7 +56,17 @@ type ProductoExterno = {
   imagen_url: string | null;
   activo: boolean;
   visible: boolean;
+  colores?: string[] | null;
 };
+
+type ColorCatalogoExterno = {
+  nombre: string;
+  codigo_hex: string | null;
+};
+
+function claveColor(nombre: string): string {
+  return nombre.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
 
 function precioARS(valor: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -80,6 +90,7 @@ export default function CatalogoExternoPublicoPage() {
   const [categorias, setCategorias] = useState<CategoriaExterna[]>([]);
   const [productos, setProductos] = useState<ProductoExterno[]>([]);
   const [multimedia, setMultimedia] = useState<MultimediaExterna[]>([]);
+  const [coloresCatalogo, setColoresCatalogo] = useState<ColorCatalogoExterno[]>([]);
   const [categoriaActual, setCategoriaActual] = useState<number | "todos">("todos");
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
@@ -101,6 +112,7 @@ export default function CatalogoExternoPublicoPage() {
       setCategorias([]);
       setProductos([]);
       setMultimedia([]);
+      setColoresCatalogo([]);
       setCategoriaActual("todos");
       setCalculoAbierto(false);
       setCalculoCargadoId(null);
@@ -139,13 +151,26 @@ export default function CatalogoExternoPublicoPage() {
 
         const { data: productosData, error: errorProductos } = await supabase
           .from("productos_externos")
-          .select("id, catalogo_id, categoria_id, nombre, codigo, descripcion, precio, precio_mayorista, cantidad_minima_mayorista, stock, controlar_stock, imagen_url, activo, visible")
+          .select("id, catalogo_id, categoria_id, nombre, codigo, descripcion, precio, precio_mayorista, cantidad_minima_mayorista, stock, controlar_stock, imagen_url, activo, visible, colores")
           .eq("catalogo_id", catalogoData.id)
           .eq("activo", true)
           .eq("visible", true);
 
         if (errorProductos) throw errorProductos;
         if (!vigente) return;
+
+        // Los colores visibles pertenecen únicamente a este comercio.
+        // Si falla esta consulta, el catálogo sigue disponible sin círculos.
+        const { data: coloresData, error: errorColores } = await supabase
+          .from("colores_catalogos_externos")
+          .select("nombre, codigo_hex")
+          .eq("catalogo_id", catalogoData.id)
+          .order("nombre", { ascending: true });
+        if (errorColores) {
+          console.warn("No se pudieron consultar los colores del catálogo externo:", errorColores);
+        }
+        if (!vigente) return;
+        setColoresCatalogo(errorColores ? [] : (coloresData || []) as ColorCatalogoExterno[]);
 
         const {data: multimediaData, error: errorMultimedia} = await supabase
           .from("producto_multimedia_externo")
@@ -593,6 +618,21 @@ export default function CatalogoExternoPublicoPage() {
                   <div className="flex flex-1 flex-col p-3.5">
                     <p className="text-xs font-semibold" style={{ color: principal }}>{nombreCategoria}</p>
                     <h3 className="mt-1 text-lg font-bold leading-snug">{producto.nombre}</h3>
+                     {Array.isArray(producto.colores) && producto.colores.filter((nombre) => typeof nombre === "string" && nombre.trim()).length > 0 && (
+                       <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
+                         <span className="mr-0.5 text-xs font-semibold text-slate-700">Colores:</span>
+                         {producto.colores.filter((nombre) => typeof nombre === "string" && nombre.trim()).map((nombre, indice) => {
+                           const registro = coloresCatalogo.find((color) => claveColor(color.nombre) === claveColor(nombre));
+                           const hex = colorSeguro(registro?.codigo_hex, "#D1D5DB");
+                           return (
+                             <span key={`${nombre}-${indice}`} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-900">
+                               <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-slate-400/60" style={{ backgroundColor: hex }} />
+                               {registro?.nombre || nombre}
+                             </span>
+                           );
+                         })}
+                       </div>
+                     )}
                     {producto.descripcion && <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs leading-5 text-slate-600">{producto.descripcion}</p>}
                     {producto.codigo?.trim() && <p className="mt-1 break-words text-xs text-slate-500">Código: <strong>{producto.codigo}</strong></p>}
                     <div className="mt-3">

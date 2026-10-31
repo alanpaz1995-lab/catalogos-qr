@@ -50,6 +50,8 @@ type Producto = {
 
   categoria: string | null;
 
+  colores: string[] | null;
+
   precio: number;
 
   costo: number;
@@ -81,6 +83,17 @@ type Producto = {
   actualizado_at?: string | null;
 
 };
+
+type CategoriaExistente = { id: number; nombre: string; estado: string | null; orden: number | null };
+type ColorEmpresa = { id: number; nombre: string; codigo_hex: string | null };
+
+function claveColor(nombre: string): string {
+  return nombre.trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
+
+function claveCategoria(nombre: string): string {
+  return nombre.trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
 
 type ListaCatalogo = { id: number; nombre: string; activa: boolean };
 
@@ -450,6 +463,24 @@ export default function EditarProductoPage() {
   const [codigo, setCodigo] = useState("");
 
   const [categoria, setCategoria] = useState("");
+  const [categoriasExistentes, setCategoriasExistentes] = useState<CategoriaExistente[]>([]);
+  const [cargandoCategorias, setCargandoCategorias] = useState(true);
+  const [errorCategorias, setErrorCategorias] = useState("");
+  const [agregandoCategoria, setAgregandoCategoria] = useState(false);
+  const [nombreCategoriaNueva, setNombreCategoriaNueva] = useState("");
+  const [guardandoCategoria, setGuardandoCategoria] = useState(false);
+  const [mensajeCategoria, setMensajeCategoria] = useState("");
+
+  // Los colores se guardan en productos.colores y el catálogo se comparte por empresa.
+  const [coloresProducto, setColoresProducto] = useState<string[]>([]);
+  const [coloresEmpresa, setColoresEmpresa] = useState<ColorEmpresa[]>([]);
+  const [cargandoColores, setCargandoColores] = useState(true);
+  const [errorColores, setErrorColores] = useState("");
+  const [mostrarNuevoColor, setMostrarNuevoColor] = useState(false);
+  const [nombreNuevoColor, setNombreNuevoColor] = useState("");
+  const [hexNuevoColor, setHexNuevoColor] = useState("#808080");
+  const [guardandoColor, setGuardandoColor] = useState(false);
+  const [mensajeColores, setMensajeColores] = useState("");
 
   const [precio, setPrecio] = useState("");
 
@@ -505,6 +536,170 @@ export default function EditarProductoPage() {
 
     useState<"exito" | "error" | "">("");
 
+  // Categorías reales de esta empresa, ordenadas como en el módulo Categorías.
+  useEffect(() => {
+    if (!empresa?.id) return;
+    let vigente = true;
+    setCargandoCategorias(true);
+    setErrorCategorias("");
+    supabase.from("categorias")
+      .select("id, nombre, estado, orden")
+      .eq("empresa_id", empresa.id)
+      .order("orden", { ascending: true })
+      .order("nombre", { ascending: true })
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) setErrorCategorias(`No se pudieron cargar las categorías: ${error.message}`);
+        else setCategoriasExistentes((data || []) as CategoriaExistente[]);
+        setCargandoCategorias(false);
+      });
+    return () => { vigente = false; };
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    let vigente = true;
+    setCargandoColores(true);
+    setErrorColores("");
+    supabase.from("colores_empresa")
+      .select("id, nombre, codigo_hex")
+      .eq("empresa_id", empresa.id)
+      .order("nombre", { ascending: true })
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) setErrorColores(`No se pudieron cargar los colores: ${error.message}`);
+        else setColoresEmpresa((data || []) as ColorEmpresa[]);
+        setCargandoColores(false);
+      });
+    return () => { vigente = false; };
+  }, [empresa?.id]);
+
+  function alternarColor(nombre: string) {
+    setColoresProducto(actual => actual.some(c => claveColor(c) === claveColor(nombre))
+      ? actual.filter(c => claveColor(c) !== claveColor(nombre))
+      : [...actual, nombre]);
+    setMensajeColores("");
+  }
+
+  async function crearColorDesdeProducto() {
+    if (!empresa?.id || guardandoColor) return;
+    const nombreNuevo = nombreNuevoColor.trim().replace(/\s+/g, " ");
+    if (!nombreNuevo) {
+      setMensajeColores("Ingresá un nombre para el color.");
+      return;
+    }
+    if (nombreNuevo.length > 80) {
+      setMensajeColores("El nombre del color no puede superar 80 caracteres.");
+      return;
+    }
+    setGuardandoColor(true);
+    setMensajeColores("");
+    try {
+      // Volver a consultar impide crear un duplicado que haya agregado otra pestaña.
+      const { data, error } = await supabase.from("colores_empresa")
+        .select("id, nombre, codigo_hex")
+        .eq("empresa_id", empresa.id)
+        .order("nombre", { ascending: true });
+      if (error) throw error;
+      const lista = (data || []) as ColorEmpresa[];
+      let encontrado = lista.find(item => claveColor(item.nombre) === claveColor(nombreNuevo));
+      if (!encontrado) {
+        const { data: creado, error: errorCreacion } = await supabase.from("colores_empresa")
+          .insert({ empresa_id: empresa.id, nombre: nombreNuevo, codigo_hex: hexNuevoColor })
+          .select("id, nombre, codigo_hex")
+          .single();
+        if (errorCreacion) {
+          if (errorCreacion.code !== "23505") throw errorCreacion;
+          const { data: recarga, error: errorRecarga } = await supabase.from("colores_empresa")
+            .select("id, nombre, codigo_hex").eq("empresa_id", empresa.id);
+          if (errorRecarga) throw errorRecarga;
+          const recargados = (recarga || []) as ColorEmpresa[];
+          encontrado = recargados.find(item => claveColor(item.nombre) === claveColor(nombreNuevo));
+          if (!encontrado) throw new Error("El color ya existe. Actualizá la página para seleccionarlo.");
+          setColoresEmpresa(recargados.sort((a, b) => a.nombre.localeCompare(b.nombre, "es")));
+        } else {
+          encontrado = creado as ColorEmpresa;
+          setColoresEmpresa([...lista, encontrado].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")));
+        }
+      } else {
+        setColoresEmpresa(lista);
+      }
+      const nombreElegido = encontrado.nombre;
+      setColoresProducto(actual => actual.some(c => claveColor(c) === claveColor(nombreElegido))
+        ? actual : [...actual, nombreElegido]);
+      setMostrarNuevoColor(false);
+      setNombreNuevoColor("");
+      setHexNuevoColor("#808080");
+      setMensajeColores(`Color «${nombreElegido}» seleccionado. Guardá el producto para asociarlo.`);
+    } catch (desconocido) {
+      setMensajeColores(desconocido instanceof Error ? desconocido.message : "No se pudo crear el color.");
+    } finally {
+      setGuardandoColor(false);
+    }
+  }
+
+  async function crearCategoriaDesdeProducto() {
+    if (!empresa?.id || guardandoCategoria) return;
+    const nombreNuevo = nombreCategoriaNueva.trim().replace(/\s+/g, " ");
+    if (!nombreNuevo) {
+      setMensajeCategoria("Ingresá el nombre de la categoría.");
+      return;
+    }
+    setGuardandoCategoria(true);
+    setMensajeCategoria("");
+    try {
+      // Reconsultar para evitar duplicados aunque otra pestaña haya creado la categoría.
+      const { data: actuales, error: errorConsulta } = await supabase.from("categorias")
+        .select("id, nombre, estado, orden")
+        .eq("empresa_id", empresa.id)
+        .order("orden", { ascending: true })
+        .order("nombre", { ascending: true });
+      if (errorConsulta) throw errorConsulta;
+      const lista = (actuales || []) as CategoriaExistente[];
+      const existente = lista.find(item => claveCategoria(item.nombre) === claveCategoria(nombreNuevo));
+      if (existente) {
+        setCategoriasExistentes(lista);
+        setCategoria(existente.nombre);
+        setAgregandoCategoria(false);
+        setNombreCategoriaNueva("");
+        setMensajeCategoria(`Ya existía «${existente.nombre}». La seleccionamos para evitar duplicados.`);
+        return;
+      }
+      const siguienteOrden = Math.max(0, ...lista.map(item => Number(item.orden ?? 0))) + 1;
+      const { data: creada, error: errorCreacion } = await supabase.from("categorias")
+        .insert({ empresa_id: empresa.id, nombre: nombreNuevo, descripcion: null, estado: "Activo", orden: siguienteOrden })
+        .select("id, nombre, estado, orden")
+        .single();
+      if (errorCreacion) {
+        if (errorCreacion.code === "23505") {
+          const { data: recargadas } = await supabase.from("categorias")
+            .select("id, nombre, estado, orden").eq("empresa_id", empresa.id);
+          const encontrada = ((recargadas || []) as CategoriaExistente[])
+            .find(item => claveCategoria(item.nombre) === claveCategoria(nombreNuevo));
+          if (encontrada) {
+            setCategoriasExistentes((recargadas || []) as CategoriaExistente[]);
+            setCategoria(encontrada.nombre);
+            setAgregandoCategoria(false);
+            setNombreCategoriaNueva("");
+            setMensajeCategoria(`La categoría «${encontrada.nombre}» ya existía y fue seleccionada.`);
+            return;
+          }
+        }
+        throw errorCreacion;
+      }
+      const nueva = creada as CategoriaExistente;
+      setCategoriasExistentes([...lista, nueva]);
+      setCategoria(nueva.nombre);
+      setAgregandoCategoria(false);
+      setNombreCategoriaNueva("");
+      setMensajeCategoria(`Categoría «${nueva.nombre}» creada y seleccionada.`);
+    } catch (desconocido) {
+      setMensajeCategoria(desconocido instanceof Error ? desconocido.message : "No se pudo crear la categoría.");
+    } finally {
+      setGuardandoCategoria(false);
+    }
+  }
+
   useEffect(() => {
 
     async function cargarProducto() {
@@ -544,6 +739,7 @@ export default function EditarProductoPage() {
             codigo,
 
           categoria,
+          colores,
 
           precio,
 
@@ -634,6 +830,7 @@ export default function EditarProductoPage() {
         setCodigo(producto.codigo || "");
 
       setCategoria(producto.categoria || "");
+      setColoresProducto(Array.isArray(producto.colores) ? producto.colores.filter((c): c is string => typeof c === "string" && Boolean(c.trim())) : []);
 
       setPrecio(String(producto.precio ?? ""));
 
@@ -869,6 +1066,18 @@ export default function EditarProductoPage() {
 
     }
 
+    if (agregandoCategoria || guardandoCategoria || cargandoCategorias || errorCategorias) {
+      setMensaje(errorCategorias || "Elegí o creá una categoría antes de guardar el producto.");
+      setTipoMensaje("error");
+      return;
+    }
+
+    if (cargandoColores || guardandoColor || mostrarNuevoColor || errorColores) {
+      setMensaje(errorColores || "Terminá de cargar o agregar el color antes de guardar el producto.");
+      setTipoMensaje("error");
+      return;
+    }
+
     if (errorListas) {
 
       setMensaje(errorListas + ". Recargá la página antes de guardar.");
@@ -901,7 +1110,10 @@ export default function EditarProductoPage() {
 
     }
 
-    const categoriaLimpia = categoria.trim();
+    const categoriaEncontrada = categoriasExistentes.find(item => claveCategoria(item.nombre) === claveCategoria(categoria));
+    const categoriaAnterior = productoOriginal?.categoria?.trim();
+    const categoriaLimpia = categoriaEncontrada?.nombre ||
+      (categoriaAnterior && claveCategoria(categoriaAnterior) === claveCategoria(categoria) ? categoriaAnterior : "");
 
     const descripcionLimpia = descripcion.trim();
 
@@ -1152,6 +1364,7 @@ export default function EditarProductoPage() {
         codigo: codigoLimpio || null,
 
         categoria: categoriaLimpia,
+        colores: coloresProducto,
 
         precio: precioNumero,
 
@@ -1252,6 +1465,7 @@ export default function EditarProductoPage() {
             codigo: codigoLimpio || null,
 
             categoria: categoriaLimpia,
+            colores: coloresProducto,
 
             precio: precioNumero,
 
@@ -1686,6 +1900,72 @@ export default function EditarProductoPage() {
                 </div>
 
                 <div className="md:col-span-2">
+                  <label className="mb-2 block font-semibold text-slate-800">Colores disponibles (opcional)</label>
+                  <p className="mb-3 text-xs text-slate-500">Seleccioná todos los colores del producto. Si no elegís ninguno, no aparecerá la información de colores en su ficha.</p>
+                  {cargandoColores ? (
+                    <p className="text-sm text-slate-500">Cargando colores...</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {coloresEmpresa.map(color => {
+                        const seleccionado = coloresProducto.some(c => claveColor(c) === claveColor(color.nombre));
+                        return (
+                          <button key={color.id} type="button" onClick={() => alternarColor(color.nombre)}
+                            aria-pressed={seleccionado}
+                            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${seleccionado ? "border-blue-500 bg-blue-50 font-semibold text-blue-800 ring-1 ring-blue-300" : "border-slate-300 bg-white text-slate-700 hover:border-blue-300"}`}>
+                            <span className="h-4 w-4 shrink-0 rounded-full border border-slate-400/60"
+                              style={{ backgroundColor: color.codigo_hex || "#CBD5E1" }} aria-hidden="true" />
+                            {color.nombre}
+                            {seleccionado && <span aria-hidden="true" className="text-blue-600">✓</span>}
+                          </button>
+                        );
+                      })}
+                      {coloresProducto.filter(c => !coloresEmpresa.some(item => claveColor(item.nombre) === claveColor(c))).map(c => (
+                        <button key={c} type="button" onClick={() => alternarColor(c)} aria-pressed="true"
+                          className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                          {c} (color anterior) ×
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3">
+                    {!mostrarNuevoColor ? (
+                      <button type="button" onClick={() => { setMostrarNuevoColor(true); setMensajeColores(""); }}
+                        className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                        ＋ Agregar nuevo color
+                      </button>
+                    ) : (
+                      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                        <label htmlFor="nuevo-color-nombre" className="block text-sm font-semibold text-slate-800">Nombre del nuevo color</label>
+                        <div className="mt-2 flex flex-wrap items-end gap-3">
+                          <input id="nuevo-color-nombre" type="text" value={nombreNuevoColor}
+                            onChange={evento => setNombreNuevoColor(evento.target.value)}
+                            onKeyDown={evento => { if (evento.key === "Enter") { evento.preventDefault(); void crearColorDesdeProducto(); } }}
+                            placeholder="Ej.: Bordó, Suela, Habano" maxLength={80}
+                            className="min-w-44 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500" />
+                          <label htmlFor="nuevo-color-hex" className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            Círculo <input id="nuevo-color-hex" type="color" value={hexNuevoColor}
+                              onChange={evento => setHexNuevoColor(evento.target.value)}
+                              className="h-10 w-12 cursor-pointer rounded-md border border-slate-300 bg-white p-1" />
+                          </label>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" disabled={guardandoColor || !nombreNuevoColor.trim()}
+                            onClick={() => void crearColorDesdeProducto()}
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                            {guardandoColor ? "Guardando..." : "Crear y seleccionar"}
+                          </button>
+                          <button type="button" disabled={guardandoColor}
+                            onClick={() => { setMostrarNuevoColor(false); setNombreNuevoColor(""); setMensajeColores(""); }}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancelar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {errorColores && <p className="mt-2 text-sm text-red-600" role="alert">{errorColores}</p>}
+                  {mensajeColores && <p className="mt-2 text-xs text-slate-600" role="status">{mensajeColores}</p>}
+                </div>
+
+                <div className="md:col-span-2">
 
                   <CampoTexto
 
@@ -1709,19 +1989,65 @@ export default function EditarProductoPage() {
 
                 </div>
 
-                <CampoTexto
-
-                  id="categoria"
-
-                  label="Categoría"
-
-                  value={categoria}
-
-                  onChange={setCategoria}
-
-                  placeholder="Ejemplo: Mates"
-
-                />
+                <div>
+                  <label htmlFor="categoria" className="mb-2 block font-semibold">Categoría</label>
+                  <select
+                    id="categoria"
+                    value={agregandoCategoria ? "__nueva__" : categoria}
+                    disabled={cargandoCategorias || guardandoCategoria}
+                    onChange={(event) => {
+                      const valor = event.target.value;
+                      if (valor === "__nueva__") {
+                        setAgregandoCategoria(true);
+                        setNombreCategoriaNueva("");
+                      } else {
+                        setAgregandoCategoria(false);
+                        setCategoria(valor);
+                        setMensajeCategoria("");
+                      }
+                    }}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                  >
+                    <option value="" disabled>Seleccioná una categoría</option>
+                    {categoriasExistentes.map(item => (
+                      <option key={item.id} value={item.nombre}>
+                        {item.nombre}{item.estado === "Inactivo" ? " (Inactiva)" : ""}
+                      </option>
+                    ))}
+                    {categoria && !categoriasExistentes.some(item => item.nombre === categoria) && (
+                      <option value={categoria}>{categoria} (categoría actual)</option>
+                    )}
+                    <option value="__nueva__">＋ Agregar nueva categoría</option>
+                  </select>
+                  {agregandoCategoria && (
+                    <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                      <label htmlFor="categoria-nueva" className="block text-sm font-semibold text-slate-700">
+                        Nueva categoría
+                      </label>
+                      <input
+                        id="categoria-nueva" type="text" value={nombreCategoriaNueva}
+                        onChange={event => setNombreCategoriaNueva(event.target.value)}
+                        onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void crearCategoriaDesdeProducto(); } }}
+                        placeholder="Ejemplo: Porta termos"
+                        className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                      />
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button type="button" disabled={guardandoCategoria || !nombreCategoriaNueva.trim()}
+                          onClick={() => void crearCategoriaDesdeProducto()}
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                          {guardandoCategoria ? "Creando..." : "Crear y seleccionar"}
+                        </button>
+                        <button type="button" disabled={guardandoCategoria} onClick={() => { setAgregandoCategoria(false); setNombreCategoriaNueva(""); setMensajeCategoria(""); }}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600">
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {cargandoCategorias && <p className="mt-2 text-xs text-slate-500">Cargando categorías...</p>}
+                  {errorCategorias && <p className="mt-2 text-xs text-red-600">{errorCategorias}</p>}
+                  {mensajeCategoria && <p className="mt-2 text-xs text-slate-600" role="status">{mensajeCategoria}</p>}
+                </div>
 
                 <CampoTexto
 
@@ -2259,7 +2585,7 @@ export default function EditarProductoPage() {
 
               type="submit"
 
-              disabled={guardando || Boolean(errorListas)}
+              disabled={guardando || Boolean(errorListas) || guardandoCategoria || agregandoCategoria || cargandoCategorias || Boolean(errorCategorias) || cargandoColores || guardandoColor || mostrarNuevoColor || Boolean(errorColores)}
 
               className="rounded-xl bg-[#2563EB] px-7 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
 

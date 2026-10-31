@@ -13,9 +13,25 @@ type CategoriaExterna = {
   activo: boolean;
 };
 
+type ColorExterno = { id: number; catalogo_id: number; nombre: string; codigo_hex: string | null };
+
+const COLORES_INICIALES = [
+  ["Negro", "#000000"], ["Blanco", "#FFFFFF"], ["Rojo", "#DC2626"],
+  ["Azul", "#2563EB"], ["Verde", "#16A34A"], ["Amarillo", "#FACC15"],
+  ["Gris", "#808080"], ["Marrón", "#795548"], ["Suela", "#C68642"],
+  ["Rosa", "#EC4899"], ["Naranja", "#F97316"], ["Violeta", "#9333EA"],
+  ["Bordó", "#800020"], ["Beige", "#D6C3A5"], ["Natural", "#E8DCC4"],
+  ["Celeste", "#38BDF8"],
+] as const;
+
+function claveColor(valor: string) {
+  return valor.trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
+
 type ProductoExterno = {
   id: number;
   catalogo_id: number;
+  colores?: string[] | null;
   categoria_id: number | null;
   nombre: string;
   codigo: string | null;
@@ -51,6 +67,7 @@ type CatalogoExterno = { id: number; nombre: string; slug: string };
 
 type FormProducto = {
   nombre: string;
+  colores: string[];
   codigo: string;
   categoria_id: string;
   descripcion: string;
@@ -71,6 +88,7 @@ type FormProducto = {
 
 const FORM_VACIO: FormProducto = {
   nombre: "",
+  colores: [],
   codigo: "",
   categoria_id: "",
   descripcion: "",
@@ -104,6 +122,12 @@ export default function ProductosCatalogoExternoPage() {
   const [autorizado, setAutorizado] = useState(false);
   const [catalogo, setCatalogo] = useState<CatalogoExterno | null>(null);
   const [categorias, setCategorias] = useState<CategoriaExterna[]>([]);
+  const [coloresCatalogo, setColoresCatalogo] = useState<ColorExterno[]>([]);
+  const [errorColores, setErrorColores] = useState("");
+  const [agregandoColor, setAgregandoColor] = useState(false);
+  const [nombreColorNuevo, setNombreColorNuevo] = useState("");
+  const [codigoColorNuevo, setCodigoColorNuevo] = useState("#808080");
+  const [guardandoColor, setGuardandoColor] = useState(false);
   const [productos, setProductos] = useState<ProductoExterno[]>([]);
   const [multimedia, setMultimedia] = useState<MultimediaExterna[]>([]);
   const [procesandoGaleria, setProcesandoGaleria] = useState(false);
@@ -176,20 +200,24 @@ export default function ProductosCatalogoExternoPage() {
       }
       setAutorizado(true);
 
-      const [respuestaCatalogo, respuestaCategorias, respuestaProductos, respuestaMultimedia] = await Promise.all([
+      const [respuestaCatalogo, respuestaCategorias, respuestaProductos, respuestaMultimedia, respuestaColores] = await Promise.all([
         supabase.from("catalogos_externos").select("id, nombre, slug").eq("id", catalogoId).maybeSingle(),
         supabase.from("categorias_externas").select("id, catalogo_id, nombre, orden, activo").eq("catalogo_id", catalogoId).order("orden", { ascending: true }).order("nombre", { ascending: true }),
         supabase.from("productos_externos").select("*").eq("catalogo_id", catalogoId).order("id", { ascending: false }),
         supabase.from("producto_multimedia_externo").select("id,catalogo_id,producto_id,tipo,url,nombre_archivo,orden,activo").eq("catalogo_id",catalogoId).order("orden",{ascending:true}).order("id",{ascending:true}),
+        supabase.from("colores_catalogos_externos").select("id,catalogo_id,nombre,codigo_hex").eq("catalogo_id", catalogoId).order("nombre", { ascending: true }),
       ]);
       if (respuestaCatalogo.error) throw respuestaCatalogo.error;
       if (respuestaCategorias.error) throw respuestaCategorias.error;
       if (respuestaProductos.error) throw respuestaProductos.error;
       if (respuestaMultimedia.error) throw respuestaMultimedia.error;
+      if (respuestaColores.error) throw respuestaColores.error;
       if (!respuestaCatalogo.data) throw new Error("No se encontró este catálogo externo.");
 
       setCatalogo(respuestaCatalogo.data as CatalogoExterno);
       setCategorias((respuestaCategorias.data || []) as CategoriaExterna[]);
+      setColoresCatalogo((respuestaColores.data || []) as ColorExterno[]);
+      setErrorColores("");
       setProductos((respuestaProductos.data || []) as ProductoExterno[]);
       setMultimedia((respuestaMultimedia.data || []) as MultimediaExterna[]);
     } catch (e) {
@@ -210,6 +238,8 @@ export default function ProductosCatalogoExternoPage() {
     const vacio = { ...FORM_VACIO };
     formularioInicialRef.current = vacio;
     setForm(vacio);
+    setAgregandoColor(false);
+    setNombreColorNuevo("");
     setMostrarFormulario(true);
     setError("");
     setAviso("");
@@ -232,7 +262,7 @@ export default function ProductosCatalogoExternoPage() {
   useEffect(() => {
     function manejarNuevo(event: KeyboardEvent) {
       if (event.repeat || event.key.toLowerCase() !== "n" || !event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-      if (!autorizado || !catalogo || guardando || subiendoImagen || procesandoGaleria) return;
+      if (!autorizado || !catalogo || guardando || guardandoColor || subiendoImagen || procesandoGaleria) return;
       if (document.querySelector('[role="dialog"], [aria-modal="true"], dialog[open]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -250,6 +280,7 @@ export default function ProductosCatalogoExternoPage() {
     setEditando(producto.id);
     setForm({
       nombre: producto.nombre,
+      colores: Array.isArray(producto.colores) ? [...producto.colores] : [],
       codigo: producto.codigo || "",
       categoria_id: producto.categoria_id == null ? "" : String(producto.categoria_id),
       descripcion: producto.descripcion || "",
@@ -269,6 +300,7 @@ export default function ProductosCatalogoExternoPage() {
     });
     formularioInicialRef.current = {
       nombre: producto.nombre,
+      colores: Array.isArray(producto.colores) ? [...producto.colores] : [],
       codigo: producto.codigo || "",
       categoria_id: producto.categoria_id == null ? "" : String(producto.categoria_id),
       descripcion: producto.descripcion || "",
@@ -287,6 +319,8 @@ export default function ProductosCatalogoExternoPage() {
       visible: producto.visible,
     };
     setMostrarFormulario(true);
+    setAgregandoColor(false);
+    setNombreColorNuevo("");
     setError("");
     setAviso("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -418,9 +452,72 @@ export default function ProductosCatalogoExternoPage() {
     finally {setProcesandoGaleria(false);}
   }
 
+
+  function alternarColor(nombre: string) {
+    setForm((anterior) => ({
+      ...anterior,
+      colores: anterior.colores.some((actual) => claveColor(actual) === claveColor(nombre))
+        ? anterior.colores.filter((actual) => claveColor(actual) !== claveColor(nombre))
+        : [...anterior.colores, nombre],
+    }));
+  }
+
+  async function agregarColorCatalogo() {
+    if (!autorizado || !catalogo || guardandoColor) return;
+    const nombreNuevo = nombreColorNuevo.trim().replace(/\s+/g, " ");
+    if (!nombreNuevo) { setErrorColores("Escribí el nombre del color."); return; }
+    if (nombreNuevo.length > 60) { setErrorColores("El nombre no puede superar los 60 caracteres."); return; }
+    setGuardandoColor(true);
+    setErrorColores("");
+    try {
+      const { data: existentes, error: errConsulta } = await supabase.from("colores_catalogos_externos")
+        .select("id,catalogo_id,nombre,codigo_hex").eq("catalogo_id", catalogoId);
+      if (errConsulta) throw errConsulta;
+      const lista = (existentes || []) as ColorExterno[];
+      const repetido = lista.find((item) => claveColor(item.nombre) === claveColor(nombreNuevo));
+      if (repetido) {
+        setColoresCatalogo(lista);
+        setForm((anterior) => ({ ...anterior, colores: [...new Set([...anterior.colores, repetido.nombre])] }));
+        setAgregandoColor(false);
+        setNombreColorNuevo("");
+        setAviso(`El color «${repetido.nombre}» ya existía. Quedó seleccionado.`);
+        return;
+      }
+      const { data: creado, error: errInsert } = await supabase.from("colores_catalogos_externos")
+        .insert({ catalogo_id: catalogoId, nombre: nombreNuevo, codigo_hex: codigoColorNuevo })
+        .select("id,catalogo_id,nombre,codigo_hex").single();
+      if (errInsert) {
+        if (errInsert.code === "23505") {
+          const { data: recargados } = await supabase.from("colores_catalogos_externos")
+            .select("id,catalogo_id,nombre,codigo_hex").eq("catalogo_id", catalogoId);
+          const encontrado = ((recargados || []) as ColorExterno[]).find((c) => claveColor(c.nombre) === claveColor(nombreNuevo));
+          if (encontrado) {
+            setColoresCatalogo((recargados || []) as ColorExterno[]);
+            setForm((anterior) => ({ ...anterior, colores: [...new Set([...anterior.colores, encontrado.nombre])] }));
+            setAgregandoColor(false);
+            setNombreColorNuevo("");
+            setAviso(`El color «${encontrado.nombre}» ya existía. Quedó seleccionado.`);
+            return;
+          }
+        }
+        throw errInsert;
+      }
+      const nuevo = creado as ColorExterno;
+      setColoresCatalogo((anterior) => [...anterior, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")));
+      setForm((anterior) => ({ ...anterior, colores: [...anterior.colores, nuevo.nombre] }));
+      setAgregandoColor(false);
+      setNombreColorNuevo("");
+      setAviso(`Color «${nuevo.nombre}» agregado y seleccionado.`);
+    } catch (e) {
+      setErrorColores(e instanceof Error ? e.message : "No se pudo crear el color.");
+    } finally {
+      setGuardandoColor(false);
+    }
+  }
+
   async function guardar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!autorizado || !catalogo || guardando || subiendoImagen || procesandoGaleria) return;
+    if (!autorizado || !catalogo || guardando || guardandoColor || subiendoImagen || procesandoGaleria) return;
     setError("");
     setAviso("");
     const nombre = form.nombre.trim();
@@ -452,6 +549,7 @@ export default function ProductosCatalogoExternoPage() {
       catalogo_id: catalogoId,
       categoria_id: categoriaId,
       nombre,
+      colores: form.colores,
       codigo: form.codigo.trim() || null,
       descripcion: form.descripcion.trim() || null,
       precio,
@@ -469,6 +567,10 @@ export default function ProductosCatalogoExternoPage() {
       visible: form.visible,
       actualizado_en: new Date().toISOString(),
     };
+
+    if (form.colores.some((nombreColor) => !coloresCatalogo.some((c) => claveColor(c.nombre) === claveColor(nombreColor)))) {
+      setError("Hay colores que no están registrados en este catálogo. Volvé a seleccionar los colores."); return;
+    }
 
     setGuardando(true);
     try {
@@ -555,6 +657,39 @@ export default function ProductosCatalogoExternoPage() {
                    <label htmlFor="externo-nombre" className="mb-2 block font-semibold">Nombre del producto *</label>
                    <input id="externo-nombre" required maxLength={200} value={form.nombre} onChange={(e) => editarCampo("nombre", e.target.value)} placeholder="Ejemplo: Mate imperial premium" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
                  </div>
+                  <div className="md:col-span-2">
+                    <p className="mb-2 font-semibold">Colores disponibles (opcional)</p>
+                    <p className={`mb-3 text-xs ${temaAyuda}`}>Seleccioná todos los colores que tiene este producto. Si no marcás ninguno, no se mostrará el apartado.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {coloresCatalogo.map((item) => {
+                        const marcado = form.colores.some((nombre) => claveColor(nombre) === claveColor(item.nombre));
+                        return <button key={item.id} type="button" aria-pressed={marcado} onClick={() => alternarColor(item.nombre)}
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${marcado ? "border-blue-500 bg-blue-600 text-white" : modoOscuro ? "border-[#454545] bg-[#252525] text-white" : "border-slate-300 bg-white text-slate-900"}`}>
+                          <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-slate-400" style={{ backgroundColor: item.codigo_hex || "#808080" }} />
+                          {item.nombre}{marcado ? " ✓" : ""}
+                        </button>;
+                      })}
+                    </div>
+                    <button type="button" onClick={() => { setAgregandoColor((v) => !v); setErrorColores(""); }}
+                      className={`mt-3 rounded-xl border px-3 py-2 text-sm font-semibold ${temaBordeBoton}`}>
+                      {agregandoColor ? "Cancelar nuevo color" : "+ Agregar nuevo color"}
+                    </button>
+                    {agregandoColor && <div className={`mt-3 rounded-xl border p-4 ${modoOscuro ? "border-[#454545] bg-[#252525]" : "border-blue-200 bg-blue-50"}`}>
+                      <label htmlFor="externo-nuevo-color" className="block text-sm font-semibold">Nombre del color</label>
+                      <input id="externo-nuevo-color" maxLength={60} value={nombreColorNuevo} onChange={(e) => setNombreColorNuevo(e.target.value)}
+                        placeholder="Ejemplo: Chocolate" className={`mt-2 w-full rounded-xl border px-3 py-2 ${temaCampo}`} />
+                      <label htmlFor="externo-color-hex" className="mt-3 block text-sm font-semibold">Color del círculo</label>
+                      <div className="mt-2 flex items-center gap-3">
+                        <input id="externo-color-hex" type="color" value={codigoColorNuevo} onChange={(e) => setCodigoColorNuevo(e.target.value)} className="h-11 w-14 cursor-pointer rounded border" />
+                        <span className={`text-xs ${temaAyuda}`}>{codigoColorNuevo}</span>
+                      </div>
+                      <button type="button" disabled={!nombreColorNuevo.trim() || guardandoColor} onClick={() => void agregarColorCatalogo()}
+                        className="mt-3 rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                        {guardandoColor ? "Guardando color..." : "Guardar y seleccionar color"}
+                      </button>
+                    </div>}
+                    {errorColores && <p role="alert" className="mt-2 text-sm text-red-500">{errorColores}</p>}
+                  </div>
                  <div className="md:col-span-2">
                    <label htmlFor="externo-codigo" className="mb-2 block font-semibold">Código del producto (opcional)</label>
                    <input id="externo-codigo" maxLength={80} value={form.codigo} onChange={(e) => editarCampo("codigo", e.target.value)} placeholder="Ejemplo: 000125 o MAT-001" className={`w-full rounded-xl border px-4 py-3 ${temaCampo}`} />
@@ -691,7 +826,16 @@ export default function ProductosCatalogoExternoPage() {
                 <article key={p.id} className={`flex flex-col rounded-2xl border p-4 ${modoOscuro ? "border-[#353535] bg-[#202020]" : "border-slate-200 bg-white"}`}>
                   {p.imagen_url ? <img src={p.imagen_url} alt={p.nombre} className="h-40 w-full rounded-xl object-cover" /> : <div className={`flex h-40 items-center justify-center rounded-xl ${modoOscuro ? "bg-[#252525] text-slate-400" : "bg-slate-100 text-slate-400"}`}>Sin imagen</div>}
                   <p className={`mt-3 text-xs font-semibold ${temaLink}`}>{nombreCategoria.get(p.categoria_id ?? -1) || "Sin categoría"}</p>
-                  <h3 className="mt-1 text-lg font-bold">{p.nombre}</h3>
+                   <h3 className="mt-1 text-lg font-bold">{p.nombre}</h3>
+                   {Array.isArray(p.colores) && p.colores.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                     <span className={`mr-1 text-xs font-semibold ${temaSecundario}`}>Colores:</span>
+                     {p.colores.map((nombre) => {
+                       const registro = coloresCatalogo.find((c) => claveColor(c.nombre) === claveColor(nombre));
+                       return <span key={nombre} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900">
+                         <span className="h-3 w-3 rounded-full border border-slate-400" style={{ backgroundColor: registro?.codigo_hex || "#808080" }} />{nombre}
+                       </span>;
+                     })}
+                   </div>}
                   {p.codigo && <p className={`mt-1 break-words text-sm ${temaSecundario}`}>Código: {p.codigo}</p>}
                   <p className="mt-2 font-bold">{dinero(Number(p.precio))}</p>
                   {p.precio_mayorista != null && <p className={`text-sm ${temaSecundario}`}>Mayorista: {dinero(Number(p.precio_mayorista))}</p>}

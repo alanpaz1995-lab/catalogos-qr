@@ -28,6 +28,13 @@ type ImagenGaleria = {
   alt: string;
   tipo: "imagen" | "video";
 };
+// La columna colores es opcional en el tipo compartido hasta actualizar otros módulos.
+type ProductoConColores = Producto & { colores?: string[] | null };
+type ColorEmpresa = { nombre: string; codigo_hex: string | null };
+
+function claveColorCatalogo(nombre: string): string {
+  return nombre.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
 export default function CatalogoEmpresaPage() {
   const params = useParams();
   const slugParametro = Array.isArray(params.slug)
@@ -73,6 +80,8 @@ export default function CatalogoEmpresaPage() {
     window.localStorage.setItem("comersys-catalogo-modo-oscuro", String(siguiente));
   }
   const [productos, setProductos] = useState<Producto[]>([]);
+  // Colores reales del negocio, incluidos los agregados desde Editar producto.
+  const [hexPorColor, setHexPorColor] = useState<Record<string, string>>({});
   const [multimediaPorProducto, setMultimediaPorProducto] = useState<
     Record<number, MultimediaProducto[]>
   >({});
@@ -155,6 +164,7 @@ export default function CatalogoEmpresaPage() {
       const [
         { data: productosData, error: productosError },
         { data: categoriasData, error: categoriasError },
+        { data: coloresData, error: coloresError },
       ] = await Promise.all([
         supabase
           .from("productos")
@@ -169,7 +179,25 @@ export default function CatalogoEmpresaPage() {
           .eq("estado", "Activo")
           .order("orden", { ascending: true })
           .order("nombre", { ascending: true }),
+        supabase
+          .from("colores_empresa")
+          .select("nombre, codigo_hex")
+          .eq("empresa_id", empresaEncontrada.id),
       ]);
+      // Los colores nunca deben impedir que un cliente vea los productos.
+      if (coloresError) {
+        console.warn("No se pudieron cargar los colores del catálogo:", coloresError);
+        setHexPorColor({});
+      } else {
+        const mapa: Record<string, string> = {};
+        for (const color of (coloresData || []) as ColorEmpresa[]) {
+          const hex = color.codigo_hex;
+          if (hex && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+            mapa[claveColorCatalogo(color.nombre)] = hex;
+          }
+        }
+        setHexPorColor(mapa);
+      }
       if (productosError) {
         console.error(
           "Error al cargar los productos:",
@@ -511,6 +539,18 @@ export default function CatalogoEmpresaPage() {
   // Se extiende el tipo localmente sin modificar otros archivos todavía.
   function obtenerCodigo(producto: Producto): string {
     return (producto as Producto & { codigo?: string | null }).codigo?.trim() || "";
+  }
+  function obtenerColoresProducto(producto: Producto): string[] {
+    const colores = (producto as ProductoConColores).colores;
+    if (!Array.isArray(colores)) return [];
+    const nombres = new Set<string>();
+    return colores.filter((nombre): nombre is string => {
+      if (typeof nombre !== "string" || !nombre.trim()) return false;
+      const clave = claveColorCatalogo(nombre);
+      if (nombres.has(clave)) return false;
+      nombres.add(clave);
+      return true;
+    }).map((nombre) => nombre.trim());
   }
   // Mantener SIEMPRE el orden configurado por el administrador, incluso
   // después de INSERT/UPDATE recibidos en tiempo real desde Supabase.
@@ -1310,6 +1350,19 @@ export default function CatalogoEmpresaPage() {
                         <h3 className="mt-1.5 text-lg font-bold leading-snug">
                           {producto.nombre}
                         </h3>
+                        {obtenerColoresProducto(producto).length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
+                            <span className="mr-0.5 text-xs font-semibold text-slate-600">Colores:</span>
+                            {obtenerColoresProducto(producto).map((nombreColor) => (
+                              <span key={claveColorCatalogo(nombreColor)}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">
+                                <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-slate-400/50"
+                                  style={{ backgroundColor: hexPorColor[claveColorCatalogo(nombreColor)] || "#D1D5DB" }} />
+                                {nombreColor}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="mt-1.5 min-h-[1.5rem]">
                           {producto.descripcion && (
                             <p className="line-clamp-2 text-xs leading-5 text-slate-500">

@@ -96,6 +96,7 @@ type PrecioLista = {
 
 type ProductoLista = Producto & {
   codigo?: string | null;
+  colores?: string[] | null;
 
 
 
@@ -108,6 +109,24 @@ type ProductoLista = Producto & {
 
 
 };
+
+type ColorEmpresa = { nombre: string; codigo_hex: string | null };
+
+function claveColorCatalogo(nombre: string): string {
+  return nombre.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
+
+function obtenerColoresProducto(producto: ProductoLista): string[] {
+  if (!Array.isArray(producto.colores)) return [];
+  const vistos = new Set<string>();
+  return producto.colores.filter((nombre): nombre is string => {
+    if (typeof nombre !== "string" || !nombre.trim()) return false;
+    const clave = claveColorCatalogo(nombre);
+    if (vistos.has(clave)) return false;
+    vistos.add(clave);
+    return true;
+  }).map(nombre => nombre.trim());
+}
 
 type MultimediaProducto = {
   id: number;
@@ -237,6 +256,8 @@ export default function CatalogoListaPage() {
 
 
   const [productos, setProductos] = useState<ProductoLista[]>([]);
+  // Códigos visuales de colores, incluidos los creados por cada empresa.
+  const [hexPorColor, setHexPorColor] = useState<Record<string, string>>({});
   const [multimediaPorProducto, setMultimediaPorProducto] = useState<Record<number, MultimediaProducto[]>>({});
 
 
@@ -659,7 +680,8 @@ export default function CatalogoListaPage() {
 
 
 
-      setProductos([]);
+       setProductos([]);
+       setHexPorColor({});
       setMultimediaPorProducto({});
       setImagenAmpliada(null);
 
@@ -827,7 +849,7 @@ export default function CatalogoListaPage() {
 
 
 
-        const [consultaProductos, consultaCategorias] = await Promise.all([
+        const [consultaProductos, consultaCategorias, consultaColores] = await Promise.all([
 
 
 
@@ -881,11 +903,25 @@ export default function CatalogoListaPage() {
 
             .order("nombre", { ascending: true }),
 
-
+          supabase
+            .from("colores_empresa")
+            .select("nombre, codigo_hex")
+            .eq("empresa_id", datosEmpresa.id),
 
         ]);
 
-
+        // Un error de colores no debe bloquear la lista ni sus precios.
+        const mapaColores: Record<string, string> = {};
+        if (consultaColores.error) {
+          console.warn("No se pudieron cargar los colores de esta lista:", consultaColores.error);
+        } else {
+          for (const registro of (consultaColores.data || []) as ColorEmpresa[]) {
+            const codigo = registro.codigo_hex;
+            if (codigo && /^#[0-9a-fA-F]{6}$/.test(codigo)) {
+              mapaColores[claveColorCatalogo(registro.nombre)] = codigo;
+            }
+          }
+        }
 
         if (consultaProductos.error) throw consultaProductos.error;
 
@@ -1083,6 +1119,7 @@ export default function CatalogoListaPage() {
 
 
         setProductos(productosDeLista);
+        setHexPorColor(mapaColores);
 
 
 
@@ -2037,6 +2074,19 @@ export default function CatalogoListaPage() {
                       <div>
                         <p className="text-xs font-semibold" style={{ color }}>{producto.categoria || "Sin categoría"}</p>
                         <h2 className="mt-1.5 text-lg font-bold leading-snug">{producto.nombre}</h2>
+                        {obtenerColoresProducto(producto).length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
+                            <span className="mr-0.5 text-xs font-semibold text-slate-600">Colores:</span>
+                            {obtenerColoresProducto(producto).map((nombreColor) => (
+                              <span key={claveColorCatalogo(nombreColor)}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800">
+                                <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-slate-400/50"
+                                  style={{ backgroundColor: hexPorColor[claveColorCatalogo(nombreColor)] || "#D1D5DB" }} />
+                                {nombreColor}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="mt-1.5 min-h-[1.5rem]">
                           {producto.descripcion && (
                             <p className="line-clamp-2 text-xs leading-5 text-slate-500">{producto.descripcion}</p>
