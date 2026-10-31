@@ -10,6 +10,8 @@ import {
 
   useMemo,
 
+  useRef,
+
   useState,
 
 } from "react";
@@ -124,6 +126,103 @@ export default function EditarProductoPage() {
   const [historialCalculos, setHistorialCalculos] = useState<CalculoGuardado[]>([]);
   const [historialCargadoEmpresa, setHistorialCargadoEmpresa] = useState<number | null>(null);
   const [confirmarBorradoHistorial, setConfirmarBorradoHistorial] = useState(false);
+
+  // Los tamaños se guardan por empresa y dispositivo; el historial sigue siendo compartido.
+  type TamanoPanel = { ancho: number; alto: number };
+  const [tamanosPaneles, setTamanosPaneles] = useState<{
+    calculadora: TamanoPanel;
+    historial: TamanoPanel;
+  }>({ calculadora: { ancho: 340, alto: 510 }, historial: { ancho: 340, alto: 510 } });
+  const [tamanosCargadosEmpresa, setTamanosCargadosEmpresa] = useState<number | null>(null);
+  const calculadoraPanelRef = useRef<HTMLElement | null>(null);
+  const historialPanelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    const idEmpresa = Number(empresa.id);
+    const leerTamano = (panel: "calculadora" | "historial"): TamanoPanel => {
+      const inicial = { ancho: 340, alto: 510 };
+      try {
+        const valor = window.localStorage.getItem(`comersys-calculadora-tamano-${idEmpresa}-${panel}`);
+        if (!valor) return inicial;
+        const dato: unknown = JSON.parse(valor);
+        if (!dato || typeof dato !== "object") return inicial;
+        const tamano = dato as Partial<TamanoPanel>;
+        return {
+          ancho: typeof tamano.ancho === "number" && Number.isFinite(tamano.ancho) ? Math.max(240, Math.min(850, tamano.ancho)) : inicial.ancho,
+          alto: typeof tamano.alto === "number" && Number.isFinite(tamano.alto) ? Math.max(240, Math.min(1200, tamano.alto)) : inicial.alto,
+        };
+      } catch { return inicial; }
+    };
+    setTamanosCargadosEmpresa(null);
+    setTamanosPaneles({ calculadora: leerTamano("calculadora"), historial: leerTamano("historial") });
+    setTamanosCargadosEmpresa(idEmpresa);
+  }, [empresa?.id]);
+
+  function ajustarTamanoPanel(tipo: "calculadora" | "historial", cambio: number) {
+    const elemento = tipo === "calculadora" ? calculadoraPanelRef.current : historialPanelRef.current;
+    const anchoActual = elemento?.getBoundingClientRect().width ?? tamanosPaneles[tipo].ancho;
+    const altoActual = elemento?.getBoundingClientRect().height ?? tamanosPaneles[tipo].alto;
+    const maximoAncho = Math.max(240, (window.innerWidth - 1280) / 2 - 32);
+    const siguiente = {
+      ancho: Math.max(240, Math.min(850, maximoAncho, Math.round(anchoActual + cambio))),
+      alto: Math.max(240, Math.min(1200, window.innerHeight - 80, Math.round(altoActual + cambio))),
+    };
+    // El navegador controla el tamaño de los paneles y guarda cada ajuste.
+    if (elemento) {
+      elemento.style.width = `${siguiente.ancho}px`;
+      elemento.style.height = `${siguiente.alto}px`;
+    }
+    setTamanosPaneles(previo => ({ ...previo, [tipo]: siguiente }));
+    if (empresa?.id) {
+      try {
+        window.localStorage.setItem(`comersys-calculadora-tamano-${empresa.id}-${tipo}`, JSON.stringify(siguiente));
+      } catch { /* Se mantiene durante esta sesión. */ }
+    }
+  }
+
+  function ControlesTamano({ tipo }: { tipo: "calculadora" | "historial" }) {
+    return (
+      <div className="hidden items-center gap-1 min-[1900px]:flex" aria-label={`Cambiar tamaño de ${tipo}`}>
+        <span className="mr-1 text-[10px] text-neutral-400">Tamaño</span>
+        <button type="button" onClick={() => ajustarTamanoPanel(tipo, -70)}
+          className="rounded-md border border-neutral-600 bg-neutral-800 px-2 py-1 text-xs text-white hover:bg-neutral-700"
+          title="Achicar panel" aria-label={`Achicar ${tipo}`}>−</button>
+        <button type="button" onClick={() => ajustarTamanoPanel(tipo, 70)}
+          className="rounded-md border border-neutral-600 bg-neutral-800 px-2 py-1 text-xs text-white hover:bg-neutral-700"
+          title="Agrandar panel" aria-label={`Agrandar ${tipo}`}>+</button>
+      </div>
+    );
+  }
+
+  // El usuario cambia el ancho y alto desde la esquina inferior de cada panel.
+  // ResizeObserver persiste esos cambios sin intervenir en la lógica de la calculadora.
+  useEffect(() => {
+    if (!calculadoraVisible || !empresa?.id || tamanosCargadosEmpresa !== Number(empresa.id)) return;
+    const idEmpresa = Number(empresa.id);
+    const observadores: ResizeObserver[] = [];
+    for (const [tipo, elemento] of ([
+      ["calculadora", calculadoraPanelRef.current],
+      ["historial", historialPanelRef.current],
+    ] as const)) {
+      if (!elemento) continue;
+      const observador = new ResizeObserver(() => {
+        const ancho = Math.round(elemento.getBoundingClientRect().width);
+        const alto = Math.round(elemento.getBoundingClientRect().height);
+        if (ancho < 240 || alto < 240) return;
+        try {
+          window.localStorage.setItem(
+            `comersys-calculadora-tamano-${idEmpresa}-${tipo}`,
+            JSON.stringify({ ancho, alto })
+          );
+        } catch { /* El redimensionamiento sigue funcionando. */ }
+      });
+      observador.observe(elemento);
+      observadores.push(observador);
+    }
+    return () => observadores.forEach(observador => observador.disconnect());
+  }, [calculadoraVisible, empresa?.id, tamanosCargadosEmpresa]);
+
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -1337,6 +1436,7 @@ export default function EditarProductoPage() {
         </div>
         <div className="flex flex-col items-end gap-1">
           {botonCalculadora}
+          <ControlesTamano tipo="calculadora" />
           <span className="text-[10px] text-neutral-400" title="Atajo de teclado para mostrar u ocultar ambos paneles">
             Ctrl + Alt + (+)
           </span>
@@ -1374,6 +1474,7 @@ export default function EditarProductoPage() {
             ))}
           </div>
           <p className="mt-3 text-[11px] leading-4 text-neutral-400">Usá el teclado o el teclado numérico: 0–9, +, −, *, /, punto o coma, %, Enter (=), Backspace (⌫) y Escape (C). No interfiere al escribir en los formularios.</p>
+          <p className="mt-2 hidden text-[11px] leading-4 text-blue-300 min-[1900px]:block">↘ Arrastrá la esquina inferior derecha del panel para cambiar su tamaño.</p>
           <p className="mt-2 text-[11px] leading-4 text-neutral-400">Descuentos: ingresá el importe, presioná −, el porcentaje, % y =. Por ejemplo, 15000 − 10 % = 13500.</p>
       </div>
     </section>
@@ -1386,14 +1487,18 @@ export default function EditarProductoPage() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Resultados guardados</p>
           <h2 className="mt-1 text-base font-bold">🕘 Historial de cálculos</h2>
         </div>
+        <div className="flex flex-col items-end gap-2">
+          <ControlesTamano tipo="historial" />
         {historialCalculos.length > 0 && (
           <button type="button" onClick={() => setConfirmarBorradoHistorial(true)}
             className="rounded-lg border border-neutral-600 px-2 py-1.5 text-[11px] font-semibold text-neutral-300 hover:bg-neutral-800">
             Borrar
           </button>
         )}
+        </div>
       </div>
       <p className="mt-2 text-[11px] text-neutral-400">Se guarda en este navegador, separado por empresa. Tocá un resultado para reutilizarlo.</p>
+      <p className="mt-1 hidden text-[11px] text-blue-300 min-[1900px]:block">↘ Arrastrá la esquina inferior derecha para agrandar o achicar el historial.</p>
       {confirmarBorradoHistorial && (
         <div className="mt-3 rounded-lg border border-rose-800 bg-rose-950/50 p-3 text-xs">
           <p>¿Borrar todos los cálculos guardados de esta empresa?</p>
@@ -1428,12 +1533,28 @@ export default function EditarProductoPage() {
       {/* Ambos paneles se muestran y se ocultan juntos. */}
       {calculadoraVisible && (
         <>
-          <aside className="fixed left-4 top-16 z-20 hidden max-h-[calc(100vh-5rem)] overflow-y-auto min-[1900px]:block"
-            style={{ width: "min(340px, calc((100vw - 1280px) / 2 - 32px))" }} aria-label="Calculadora comercial">
+          <aside ref={calculadoraPanelRef}
+            className="fixed left-4 top-16 z-20 hidden resize overflow-auto rounded-2xl min-[1900px]:block"
+            style={{
+              width: `min(${tamanosPaneles.calculadora.ancho}px, calc((100vw - 1280px) / 2 - 32px))`,
+              height: `min(${tamanosPaneles.calculadora.alto}px, calc(100vh - 5rem))`,
+              minWidth: 240,
+              maxWidth: "calc((100vw - 1280px) / 2 - 32px)",
+              minHeight: 240,
+              maxHeight: "calc(100vh - 5rem)",
+            }} aria-label="Calculadora comercial redimensionable">
             {panelCalculadora}
           </aside>
-          <aside className="fixed right-4 top-16 z-20 hidden max-h-[calc(100vh-5rem)] overflow-y-auto min-[1900px]:block"
-            style={{ width: "min(340px, calc((100vw - 1280px) / 2 - 32px))" }} aria-label="Historial de cálculos">
+          <aside ref={historialPanelRef}
+            className="fixed right-4 top-16 z-20 hidden resize overflow-auto rounded-2xl min-[1900px]:block"
+            style={{
+              width: `min(${tamanosPaneles.historial.ancho}px, calc((100vw - 1280px) / 2 - 32px))`,
+              height: `min(${tamanosPaneles.historial.alto}px, calc(100vh - 5rem))`,
+              minWidth: 240,
+              maxWidth: "calc((100vw - 1280px) / 2 - 32px)",
+              minHeight: 240,
+              maxHeight: "calc(100vh - 5rem)",
+            }} aria-label="Historial de cálculos redimensionable">
             {panelHistorial}
           </aside>
         </>
