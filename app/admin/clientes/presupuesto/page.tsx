@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { crearCliente } from "@/services/clientes";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type Producto = {
   id: number;
   nombre: string;
+  codigo: string | null;
   categoria: string | null;
   descripcion: string | null;
   precio: number | null;
@@ -18,8 +20,22 @@ type Producto = {
 
 type Lista = { id: number; nombre: string; activa: boolean };
 type PrecioLista = { producto_id: number; lista_id: number; precio_minorista: number | null; precio_mayorista: number | null; visible: boolean };
-type Seleccion = { cantidad: number; lista: string; tipoPrecio: "minorista" | "mayorista" };
+type Seleccion = { cantidad: number | ""; lista: string; tipoPrecio: "minorista" | "mayorista" };
 type DescuentoTipo = "ninguno" | "porcentaje" | "fijo";
+type TipoDocumento = "presupuesto" | "remito";
+type Cliente = {
+  id: number;
+  empresa_id: number;
+  nombre: string;
+  telefono: string;
+  email: string | null;
+  direccion: string | null;
+  observaciones: string | null;
+  activo: boolean;
+};
+type FormCliente = { nombre: string; telefono: string; email: string; direccion: string; observaciones: string };
+const CLIENTE_VACIO: FormCliente = { nombre: "", telefono: "", email: "", direccion: "", observaciones: "" };
+const inputCliente = "mt-1.5 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-500";
 
 const MONEDA = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
 const pesos = (n: number) => MONEDA.format(n);
@@ -33,8 +49,21 @@ export default function PresupuestoClientePage() {
   const [precios, setPrecios] = useState<Record<number, Record<number, PrecioLista>>>({});
   const [seleccion, setSeleccion] = useState<Record<number, Seleccion>>({});
   const [busqueda, setBusqueda] = useState("");
+  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>("presupuesto");
+  const [fotosOcultas, setFotosOcultas] = useState<Record<number, boolean>>({});
+  const [incluirFotos, setIncluirFotos] = useState(true);
+  const [mostrarPrecios, setMostrarPrecios] = useState(true);
   const [categoria, setCategoria] = useState("__todas__");
-  const [cliente, setCliente] = useState("");
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clienteElegidoId, setClienteElegidoId] = useState<number | null>(null);
+  const [busquedaCliente, setBusquedaCliente] = useState("");
+  const [modoCliente, setModoCliente] = useState<"buscar" | "nuevo">("buscar");
+  const [formCliente, setFormCliente] = useState<FormCliente>({ ...CLIENTE_VACIO });
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
+  const [errorCliente, setErrorCliente] = useState("");
+  const [avisoCliente, setAvisoCliente] = useState("");
+  const clienteElegido = clientes.find(c => c.id === clienteElegidoId) || null;
+  const cliente = clienteElegido?.nombre || "";
   const [mensaje, setMensaje] = useState("");
   const [descuentoTipo, setDescuentoTipo] = useState<DescuentoTipo>("ninguno");
   const [descuentoValor, setDescuentoValor] = useState("0");
@@ -46,12 +75,15 @@ export default function PresupuestoClientePage() {
     setCargando(true);
     setError("");
     try {
-      const [rProductos, rListas] = await Promise.all([
-        supabase.from("productos").select("id,nombre,categoria,descripcion,precio,precio_mayorista,imaguen,estado").eq("empresa_id", empresa.id).order("nombre"),
+      const [rProductos, rListas, rClientes] = await Promise.all([
+        supabase.from("productos").select("id,nombre,codigo,categoria,descripcion,precio,precio_mayorista,imaguen,estado").eq("empresa_id", empresa.id).order("nombre"),
         supabase.from("listas_catalogos").select("id,nombre,activa").eq("empresa_id", empresa.id).eq("activa", true).order("created_at"),
+        supabase.from("clientes").select("id,empresa_id,nombre,telefono,email,direccion,observaciones,activo").eq("empresa_id", empresa.id).eq("activo", true).order("nombre"),
       ]);
       if (rProductos.error) throw rProductos.error;
       if (rListas.error) throw rListas.error;
+      if (rClientes.error) throw rClientes.error;
+      setClientes((rClientes.data || []) as Cliente[]);
       const items = (rProductos.data || []) as Producto[];
       const listasActivas = (rListas.data || []) as Lista[];
       setProductos(items);
@@ -80,10 +112,82 @@ export default function PresupuestoClientePage() {
 
   useEffect(() => { void cargarDatos(); }, [cargarDatos]);
 
+  const clientesFiltrados = useMemo(() => {
+    const termino = busquedaCliente.trim().toLocaleLowerCase("es");
+    if (!termino) return clientes.slice(0, 15);
+    return clientes.filter(c => [c.nombre, c.telefono, c.email || "", c.direccion || ""]
+      .some(v => v.toLocaleLowerCase("es").includes(termino))).slice(0, 25);
+  }, [clientes, busquedaCliente]);
+
+  function actualizarFormCliente(campo: keyof FormCliente, valor: string) {
+    setFormCliente(prev => ({ ...prev, [campo]: valor }));
+    setErrorCliente("");
+    setAvisoCliente("");
+  }
+
+  function elegirCliente(item: Cliente) {
+    setClienteElegidoId(item.id);
+    setModoCliente("buscar");
+    setBusquedaCliente("");
+    setErrorCliente("");
+    setAvisoCliente("");
+  }
+
+  async function guardarClienteNuevo(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!empresa?.id || guardandoCliente) return;
+    const nombre = formCliente.nombre.trim();
+    const telefono = formCliente.telefono.trim();
+    const email = formCliente.email.trim();
+    const direccion = formCliente.direccion.trim();
+    const observaciones = formCliente.observaciones.trim();
+    if (!nombre || !telefono) {
+      setErrorCliente("Nombre y teléfono son obligatorios.");
+      return;
+    }
+    const telefonoNormalizado = telefono.replace(/\D/g, "");
+    const repetido = clientes.find(c =>
+      (telefonoNormalizado && c.telefono.replace(/\D/g, "") === telefonoNormalizado) ||
+      (email && c.email?.toLocaleLowerCase("es") === email.toLocaleLowerCase("es"))
+    );
+    if (repetido) {
+      setErrorCliente(`Ya hay un cliente registrado con ese teléfono o correo: ${repetido.nombre}. Seleccionalo en «Buscar cliente» para evitar duplicados.`);
+      return;
+    }
+    setGuardandoCliente(true);
+    setErrorCliente("");
+    setAvisoCliente("");
+    try {
+      const creado = await crearCliente({
+        empresa_id: empresa.id,
+        nombre,
+        telefono,
+        email: email || null,
+        direccion: direccion || null,
+        observaciones: observaciones || null,
+        activo: true,
+      });
+      const nuevo: Cliente = {
+        id: creado.id, empresa_id: empresa.id, nombre, telefono,
+        email: email || null, direccion: direccion || null, observaciones: observaciones || null, activo: true,
+      };
+      setClientes(prev => [...prev, nuevo].sort((a,b) => a.nombre.localeCompare(b.nombre, "es")));
+      setClienteElegidoId(nuevo.id);
+      setFormCliente({ ...CLIENTE_VACIO });
+      setModoCliente("buscar");
+      setBusquedaCliente("");
+      setAvisoCliente("Cliente creado, guardado en Clientes PRO y seleccionado para este documento.");
+    } catch (e) {
+      setErrorCliente(e instanceof Error ? e.message : "No se pudo crear el cliente.");
+    } finally {
+      setGuardandoCliente(false);
+    }
+  }
+
   const categorias = useMemo(() => [...new Set(productos.map(p => (p.categoria || "").trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"es")), [productos]);
   const visibles = useMemo(() => productos.filter(p =>
     (categoria === "__todas__" || p.categoria?.trim() === categoria) &&
-    [p.nombre, p.categoria || "", p.descripcion || ""].join(" ").toLocaleLowerCase("es").includes(busqueda.trim().toLocaleLowerCase("es"))
+    [p.nombre, p.codigo || "", p.categoria || "", p.descripcion || ""].join(" ").toLocaleLowerCase("es").includes(busqueda.trim().toLocaleLowerCase("es"))
   ), [productos, categoria, busqueda]);
 
   function opcionesPrecio(producto: Producto) {
@@ -113,63 +217,82 @@ export default function PresupuestoClientePage() {
     if (!sel) return [];
     const opcion = opcionesPrecio(producto).find(item => item.clave === `${sel.lista}:${sel.tipoPrecio}`);
     if (!opcion) return [];
-    return [{ producto, seleccion: sel, opcion, subtotal: opcion.precio * sel.cantidad }];
+    return [{ producto, seleccion: sel, opcion, subtotal: opcion.precio * Number(sel.cantidad) }];
   }), [productos, seleccion, listas, precios]);
   const subtotal = renglones.reduce((total, renglon) => total + renglon.subtotal, 0);
   const valorD = numeroSeguro(descuentoValor.replace(",", "."));
   const descuento = descuentoTipo === "porcentaje" ? subtotal * Math.min(100, valorD) / 100 : descuentoTipo === "fijo" ? Math.min(subtotal, valorD) : 0;
   const total = Math.max(0, subtotal - descuento);
 
-  function imprimirPresupuesto() {
+  function imprimirDocumento() {
     if (!renglones.length) { setError("Seleccioná al menos un producto con un precio válido."); return; }
+    if (renglones.some(({ seleccion: item }) => item.cantidad === "")) { setError("Completá las cantidades antes de generar el documento."); return; }
     setError("");
     const ventana = window.open("", "_blank");
-    if (!ventana) { setError("El navegador bloqueó la ventana del presupuesto. Habilitá las ventanas emergentes y volvé a intentar."); return; }
+    if (!ventana) { setError("El navegador bloqueó la vista de impresión. Habilitá las ventanas emergentes y volvé a intentar."); return; }
+    const esRemito = tipoDocumento === "remito";
+    const titulo = esRemito ? "REMITO" : "PRESUPUESTO";
     const hoy = new Intl.DateTimeFormat("es-AR", { dateStyle: "long" }).format(new Date());
     const logo = (empresa as { logo?: string | null })?.logo;
-    const empresaNombre = (empresa as { nombre?: string })?.nombre || "Presupuesto";
+    const empresaNombre = (empresa as { nombre?: string })?.nombre || "ComerSys";
     const descuentoNombre = descuentoTipo === "porcentaje" ? `Descuento (${valorD}%)` : "Descuento ($)";
-    const filas = renglones.map(({ producto, seleccion: item, opcion, subtotal: parcial }) => `
-      <article class="producto">
-        ${producto.imaguen ? `<img src="${escapar(producto.imaguen)}" alt=""/>` : '<div class="sin-imagen">Sin imagen</div>'}
-        <div class="datos"><h3>${escapar(producto.nombre)}</h3><p>${escapar(producto.descripcion || "")}</p>
-        <small>${escapar(opcion.etiqueta)} · Cantidad: ${item.cantidad} · Unitario: ${pesos(opcion.precio)}</small></div>
-        <strong>${pesos(parcial)}</strong>
-      </article>`).join("");
+    const conFotos = incluirFotos && renglones.some(({ producto }) => !!producto.imaguen && !fotosOcultas[producto.id]);
+    const conPrecios = mostrarPrecios;
+    const datosCliente = clienteElegido ? [
+      `<strong>Cliente:</strong> ${escapar(clienteElegido.nombre)}`,
+      `<strong>Teléfono:</strong> ${escapar(clienteElegido.telefono)}`,
+      clienteElegido.email ? `<strong>Email:</strong> ${escapar(clienteElegido.email)}` : "",
+      clienteElegido.direccion ? `<strong>Dirección:</strong> ${escapar(clienteElegido.direccion)}` : "",
+      clienteElegido.observaciones ? `<strong>Observaciones:</strong> ${escapar(clienteElegido.observaciones)}` : "",
+    ].filter(Boolean).map(c => `<span>${c}</span>`).join("") : "";
+    const filas = renglones.map(({ producto, seleccion: item, opcion, subtotal: parcial }) => {
+      const foto = conFotos ? `<td class="foto">${producto.imaguen && !fotosOcultas[producto.id] ? `<img src="${escapar(producto.imaguen)}" alt=""/>` : ""}</td>` : "";
+      return `<tr>${foto}<td class="producto"><strong>${escapar(producto.nombre)}</strong><div class="codigo">Código: ${escapar(producto.codigo?.trim() || "Sin código")}</div></td><td class="cantidad">${item.cantidad}</td>${conPrecios ? `<td class="dinero">${pesos(opcion.precio)}</td><td class="dinero">${pesos(parcial)}</td>` : ""}</tr>`;
+    }).join("");
     const datosImportacion = {
       formato: "COMERSYS_PRESUPUESTO_V1", fecha: new Date().toISOString(), empresa_id: empresa?.id,
-      cliente, mensaje, subtotal, descuento_tipo: descuentoTipo, descuento_valor: valorD, descuento, total,
+      cliente, cliente_id: clienteElegidoId, mensaje, subtotal, descuento_tipo: descuentoTipo, descuento_valor: valorD, descuento, total,
       productos: renglones.map(({ producto, seleccion: item, opcion }) => ({ id: producto.id, nombre: producto.nombre, cantidad: item.cantidad, lista: item.lista, tipo_precio: item.tipoPrecio, precio_unitario: opcion.precio }))
     };
-    // La información estructurada también viaja en el PDF para facilitar una futura importación a Pedidos.
-    const referencia = btoa(unescape(encodeURIComponent(JSON.stringify(datosImportacion))));
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Presupuesto - ${escapar(cliente || empresaNombre)}</title>
+    // Mantener el marcador de importación original solamente en presupuestos.
+    const referencia = !esRemito ? btoa(unescape(encodeURIComponent(JSON.stringify(datosImportacion)))) : "";
+    const totales = conPrecios ? `<div class="totales"><div class="linea"><span>Subtotal</span><b>${pesos(subtotal)}</b></div>${descuentoTipo !== "ninguno" ? `<div class="linea"><span>${escapar(descuentoNombre)}</span><b>− ${pesos(descuento)}</b></div>` : ""}<div class="linea final"><span>Total</span><b>${pesos(total)}</b></div></div>` : `<div class="unidades">Total de unidades: ${renglones.reduce((acumulado, renglon) => acumulado + Number(renglon.seleccion.cantidad), 0)}</div>`;
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo} - ${escapar(cliente || empresaNombre)}</title>
       <style>
-        @page { size: A4; margin: 15mm; } * { box-sizing:border-box; } body { font-family:Arial,sans-serif; color:#1e293b; margin:0; }
-        header { display:flex; align-items:center; gap:18px; border-bottom:3px solid #2563eb; padding-bottom:18px; margin-bottom:22px; }
-        header img { width:75px; height:75px; object-fit:contain; } h1 { font-size:24px; margin:0; } h2 { font-size:20px; margin:0 0 12px; }
-        .fecha { color:#64748b; font-size:12px; margin-top:6px; } .intro { background:#f1f5f9; padding:15px; border-radius:9px; margin-bottom:18px; white-space:pre-wrap; }
-        .producto { display:flex; gap:16px; padding:15px 0; border-bottom:1px solid #e2e8f0; break-inside:avoid; align-items:flex-start; }
-        .producto img,.sin-imagen { width:95px; height:95px; object-fit:contain; border:1px solid #e2e8f0; border-radius:8px; flex-shrink:0; }
-        .sin-imagen { display:grid;place-items:center;color:#94a3b8;font-size:11px; } .datos { flex:1; } h3 {margin:0 0 7px;font-size:15px;}
-        .datos p { font-size:12px; margin:0 0 10px; white-space:pre-wrap; color:#475569; } small { font-size:11px; color:#64748b; }
-        .producto strong { white-space:nowrap; font-size:14px; } .totales { margin:24px 0 0 auto; max-width:300px; }
-        .linea {display:flex;justify-content:space-between;padding:9px 0; border-bottom:1px solid #e2e8f0;}
-        .final {font-size:19px;font-weight:700;color:#1d4ed8;border-bottom:0;} .nota {font-size:10px;color:#64748b;margin-top:25px;}
-        .datos-importacion { font-size:1px; color:#fff; overflow-wrap:anywhere; line-height:1px; }
-        @media screen { body {padding:35px;max-width:850px;margin:auto;} .acciones{position:sticky;top:0;background:white;padding:12px 0;display:flex;gap:10px;} button{background:#2563eb;color:white;padding:12px 18px;border:0;border-radius:8px;cursor:pointer;} }
-        @media print {.acciones{display:none;} }
+        @page { size:A4; margin:10mm; } * { box-sizing:border-box; }
+        body { font-family:Arial,Helvetica,sans-serif; color:#243247; margin:0; font-size:10px; }
+        .acciones { display:flex; gap:10px; margin-bottom:14px; }
+        .acciones button { background:#2563eb; color:#fff; padding:10px 16px; border:0; border-radius:7px; cursor:pointer; }
+        header { display:flex; justify-content:space-between; align-items:center; gap:14px; padding-bottom:10px; border-bottom:2px solid #2563eb; margin-bottom:10px; }
+        .empresa { display:flex; align-items:center; gap:10px; min-width:0; }
+        header img { width:46px; height:46px; object-fit:contain; }
+        .empresa strong { font-size:17px; } h1 { font-size:20px; margin:0; text-align:right; letter-spacing:.06em; }
+        .fecha { text-align:right; color:#64748b; margin-top:4px; }
+        .datos { display:flex; flex-wrap:wrap; gap:7px 20px; margin:0 0 12px; font-size:13px; line-height:1.4; }
+        .mensaje { white-space:pre-wrap; margin-bottom:9px; padding:6px 9px; background:#f1f5f9; border-radius:5px; }
+        table { border-collapse:collapse; width:100%; table-layout:fixed; }
+        thead { display:table-header-group; } th { background:#eaf0f8; text-align:left; padding:6px 5px; border:1px solid #bac5d3; font-size:9px; }
+        td { border:1px solid #cbd5e1; padding:5px; vertical-align:middle; line-height:1.3; }
+        tr { break-inside:avoid; page-break-inside:avoid; }
+        th.foto,td.foto { width:45px; } .foto img { width:34px; height:34px; object-fit:contain; display:block; margin:auto; }
+        .producto strong { font-size:10px; } .codigo { font-size:9px; margin-top:2px; color:#475569; }
+        th.cantidad,td.cantidad { width:48px; text-align:center; } th.dinero,td.dinero { width:83px; text-align:right; white-space:nowrap; }
+        .totales { width:240px; max-width:100%; margin:12px 0 0 auto; break-inside:avoid; }
+        .linea { display:flex; justify-content:space-between; gap:14px; padding:5px 2px; border-bottom:1px solid #d8e0e9; }
+        .final { color:#1d4ed8; font-size:13px; font-weight:bold; } .unidades { margin-top:10px; text-align:right; font-weight:bold; }
+        .firma { display:flex; justify-content:flex-end; margin-top:35px; font-size:10px; break-inside:avoid; }
+        .nota { margin-top:14px; font-size:14px; font-weight:600; color:#334155; } .datos-importacion { font-size:1px; color:#fff; overflow-wrap:anywhere; line-height:1px; }
+        @media screen { body { padding:20px; max-width:790px; margin:auto; background:white; } }
+        @media print { .acciones { display:none; } }
       </style></head><body>
       <div class="acciones"><button onclick="window.print()">Guardar / imprimir PDF</button><button onclick="window.close()">Cerrar</button></div>
-      <header>${logo ? `<img src="${escapar(logo)}" alt="Logo"/>` : ""}<div><h1>${escapar(empresaNombre)}</h1><div class="fecha">Presupuesto · ${escapar(hoy)}</div></div></header>
-      ${cliente.trim() ? `<h2>Para: ${escapar(cliente)}</h2>` : ""}
-      ${mensaje.trim() ? `<div class="intro">${escapar(mensaje)}</div>` : ""}
-      <h2>Productos seleccionados</h2>${filas}
-      <div class="totales"><div class="linea"><span>Subtotal</span><b>${pesos(subtotal)}</b></div>
-      ${descuentoTipo !== "ninguno" ? `<div class="linea"><span>${escapar(descuentoNombre)}</span><b>− ${pesos(descuento)}</b></div>` : ""}
-      <div class="linea final"><span>Total final</span><span>${pesos(total)}</span></div></div>
-      <p class="nota">Presupuesto informativo. La disponibilidad y las condiciones de venta se confirman al realizar el pedido.</p>
-      <div class="datos-importacion">COMERSYS_PRESUPUESTO_V1:${referencia}:FIN_COMERSYS_PRESUPUESTO</div>
+      <header><div class="empresa">${logo ? `<img src="${escapar(logo)}" alt="Logo"/>` : ""}<strong>${escapar(empresaNombre)}</strong></div><div><h1>${titulo}</h1><div class="fecha">${escapar(hoy)}</div></div></header>
+      ${datosCliente ? `<div class="datos">${datosCliente}</div>` : ""}
+      ${mensaje.trim() ? `<div class="mensaje">${escapar(mensaje)}</div>` : ""}
+      <table><thead><tr>${conFotos ? '<th class="foto">Foto</th>' : ""}<th>Producto / código</th><th class="cantidad">Cant.</th>${conPrecios ? '<th class="dinero">Unitario</th><th class="dinero">Subtotal</th>' : ""}</tr></thead><tbody>${filas}</tbody></table>
+      ${totales}
+      ${esRemito ? '<div class="firma">Firma y aclaración de recepción: __________________________</div>' : '<p class="nota">Presupuesto válido por 10 días.</p>'}
+      ${!esRemito ? `<div class="datos-importacion">COMERSYS_PRESUPUESTO_V1:${referencia}:FIN_COMERSYS_PRESUPUESTO</div>` : ""}
       </body></html>`;
     ventana.document.open();
     ventana.document.write(html);
@@ -182,14 +305,14 @@ export default function PresupuestoClientePage() {
 
   return <main className="min-h-screen bg-[#F8FAFC] p-5 text-slate-800 sm:p-8">
     <div className="mx-auto max-w-7xl space-y-6">
-      <div><Link href="/admin" className="font-semibold text-blue-600">← Volver al panel</Link><h1 className="mt-4 text-3xl font-bold">Presupuesto para cliente</h1>
-        <p className="mt-2 text-slate-500">Elegí productos y precios por lista, calculá descuentos y guardá el presupuesto como PDF.</p></div>
+      <div><Link href="/admin" className="font-semibold text-blue-600">← Volver al panel</Link><h1 className="mt-4 text-3xl font-bold">Presupuestos y Remitos</h1>
+        <p className="mt-2 text-slate-500">Elegí el tipo de documento, buscá por nombre o código y seleccioná la lista y el precio de cada producto.</p></div>
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>}
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-bold">Seleccionar productos</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Seleccionar productos</h2><span className="text-xs text-slate-500">Cada producto puede tener su propia lista y precio</span></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold">Buscar producto
-            <input className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Nombre o descripción" /></label>
+            <input className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Nombre, código o descripción" /></label>
             <label className="text-sm font-semibold">Categoría<select className="mt-2 w-full rounded-xl border border-slate-300 p-3 font-normal" value={categoria} onChange={e=>setCategoria(e.target.value)}><option value="__todas__">Todas las categorías</option>{categorias.map(c=><option key={c} value={c}>{c}</option>)}</select></label></div>
           <div className="mt-4 space-y-3">{visibles.map(producto=>{
             const opciones = opcionesPrecio(producto);
@@ -197,21 +320,65 @@ export default function PresupuestoClientePage() {
             const elegido = actual ? `${actual.lista}:${actual.tipoPrecio}` : opciones[0]?.clave || "";
             return <article key={producto.id} className="rounded-xl border border-slate-200 p-4">
               <div className="flex items-start gap-3"><input aria-label={`Seleccionar ${producto.nombre}`} type="checkbox" className="mt-2 h-5 w-5 shrink-0" checked={Boolean(actual)} disabled={!opciones.length} onChange={e=>cambiarSeleccion(producto,e.target.checked)} />
-                {producto.imaguen ? <img src={producto.imaguen} alt="" className="h-20 w-20 shrink-0 rounded-lg border object-contain"/> : <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">Sin foto</div>}
-                <div className="min-w-0 flex-1"><h3 className="font-bold">{producto.nombre}</h3><p className="text-xs text-slate-500">{producto.categoria || "Sin categoría"}{producto.estado !== "Activo" ? " · Inactivo" : ""}</p>
+                {producto.imaguen ? <div className="relative h-20 w-20 shrink-0">{!fotosOcultas[producto.id] ? <img src={producto.imaguen} alt="" className="h-full w-full rounded-lg border object-contain" /> : <div className="flex h-full items-center justify-center rounded-lg border bg-slate-50 text-center text-[10px] text-slate-500">Foto excluida</div>}{actual && <button type="button" title={fotosOcultas[producto.id] ? "Volver a incluir foto" : "Quitar foto del documento"} aria-label={fotosOcultas[producto.id] ? `Incluir foto de ${producto.nombre}` : `Quitar foto de ${producto.nombre}`} onClick={() => setFotosOcultas(prev => ({ ...prev, [producto.id]: !prev[producto.id] }))} className="absolute -right-2 -top-2 rounded-full bg-slate-900 px-1.5 py-0.5 text-xs font-bold text-white shadow">{fotosOcultas[producto.id] ? "+" : "×"}</button>}</div> : <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">Sin foto</div>}
+                <div className="min-w-0 flex-1"><h3 className="font-bold">{producto.nombre}</h3>{producto.codigo?.trim() && <p className="mt-1 text-xs font-semibold text-slate-600">Código: {producto.codigo}</p>}<p className="text-xs text-slate-500">{producto.categoria || "Sin categoría"}{producto.estado !== "Activo" ? " · Inactivo" : ""}</p>
                 {!opciones.length && <p className="mt-1 text-xs text-amber-700">Sin precio disponible para presupuestar</p>}</div></div>
               {actual && <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_100px]">
                 <label className="text-sm font-semibold">Lista y precio<select value={elegido} className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal" onChange={e=>{ const [lista,tipoPrecio]=e.target.value.split(":");setSeleccion(prev=>({...prev,[producto.id]:{...prev[producto.id],lista,tipoPrecio:tipoPrecio as Seleccion["tipoPrecio"]}})); }}>
                   {opciones.map(o=><option key={o.clave} value={o.clave}>{o.etiqueta} — {pesos(o.precio)}</option>)}
                 </select></label>
-                <label className="text-sm font-semibold">Cantidad<input className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal" type="number" min="1" step="1" value={actual.cantidad} onChange={e=>{const n=Number(e.target.value);setSeleccion(prev=>({...prev,[producto.id]:{...prev[producto.id],cantidad:Number.isFinite(n)?Math.max(1,Math.floor(n)):1}}));}} /></label>
-                <div className="text-sm font-semibold sm:col-span-2">Subtotal: {pesos((opciones.find(o=>o.clave===elegido)?.precio||0)*actual.cantidad)}</div>
+                <label className="text-sm font-semibold">Cantidad<input className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal" type="number" min="1" step="1" value={actual.cantidad} onChange={e=>{const valor=e.target.value;setSeleccion(prev=>({...prev,[producto.id]:{...prev[producto.id],cantidad:valor==="" ? "" : Number.isFinite(Number(valor)) ? Math.max(1,Math.floor(Number(valor))) : 1}}));}} onBlur={()=>setSeleccion(prev=>{const actual=prev[producto.id];return actual && actual.cantidad==="" ? {...prev,[producto.id]:{...actual,cantidad:1}} : prev;})} /></label>
+                <div className="text-sm font-semibold sm:col-span-2">Subtotal: {pesos((opciones.find(o=>o.clave===elegido)?.precio||0)*Number(actual.cantidad))}</div>
               </div>}</article>;
           })}{!visibles.length && <p className="py-8 text-center text-slate-500">No hay productos para esta búsqueda.</p>}</div>
         </section>
         <aside className="space-y-4 xl:sticky xl:top-5">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Datos del presupuesto</h2>
-            <label className="mt-4 block text-sm font-semibold">Cliente (opcional)<input value={cliente} onChange={e=>setCliente(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3 font-normal" placeholder="Nombre del cliente" /></label>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-xl font-bold">Tipo de documento</h2>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { setTipoDocumento("presupuesto"); setIncluirFotos(true); setMostrarPrecios(true); }} className={`rounded-xl border px-3 py-3 text-sm font-bold ${tipoDocumento === "presupuesto" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-slate-700"}`}>Presupuesto</button>
+              <button type="button" onClick={() => { setTipoDocumento("remito"); setIncluirFotos(false); setMostrarPrecios(true); }} className={`rounded-xl border px-3 py-3 text-sm font-bold ${tipoDocumento === "remito" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-slate-700"}`}>Remito</button>
+            </div>
+            <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={incluirFotos} onChange={e=>setIncluirFotos(e.target.checked)} /> Incluir fotos en el PDF</label>
+            <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={mostrarPrecios} onChange={e=>setMostrarPrecios(e.target.checked)} /> Mostrar precios y totales en el PDF</label>
+            <p className="mt-3 text-xs text-slate-500">La X de cada foto la excluye solo del documento. No borra la fotografía del catálogo.</p>
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Datos del {tipoDocumento === "remito" ? "remito" : "presupuesto"}</h2>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { setModoCliente("buscar"); setErrorCliente(""); }} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${modoCliente === "buscar" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300"}`}>Buscar cliente</button>
+              <button type="button" onClick={() => { setModoCliente("nuevo"); setErrorCliente(""); setAvisoCliente(""); }} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${modoCliente === "nuevo" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300"}`}>+ Nuevo cliente</button>
+            </div>
+            {modoCliente === "buscar" ? <div className="mt-4 space-y-3">
+              {clienteElegido ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                <div className="flex items-start justify-between gap-2"><strong className="text-emerald-800">{clienteElegido.nombre}</strong><button type="button" onClick={() => setClienteElegidoId(null)} className="text-xs font-bold text-blue-700 underline">Cambiar</button></div>
+                <p className="mt-1">Teléfono: {clienteElegido.telefono}</p>
+                {clienteElegido.email && <p className="break-all">Email: {clienteElegido.email}</p>}
+                {clienteElegido.direccion && <p>Dirección: {clienteElegido.direccion}</p>}
+                {clienteElegido.observaciones && <p className="whitespace-pre-wrap">Observaciones: {clienteElegido.observaciones}</p>}
+              </div> : <>
+                <label className="block text-sm font-semibold">Buscar por nombre, teléfono o email
+                  <input type="search" value={busquedaCliente} onChange={e => setBusquedaCliente(e.target.value)} className={inputCliente} placeholder="Escribí para encontrar un cliente" />
+                </label>
+                <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-1">
+                  {clientesFiltrados.map(c => <button key={c.id} type="button" onClick={() => elegirCliente(c)} className="block w-full rounded-lg p-2 text-left text-sm hover:bg-blue-50">
+                    <span className="block font-bold">{c.nombre}</span>
+                    <span className="block text-xs text-slate-500">{c.telefono}{c.email ? ` · ${c.email}` : ""}</span>
+                  </button>)}
+                  {!clientesFiltrados.length && <p className="p-3 text-sm text-slate-500">No encontramos clientes. Podés crear uno nuevo.</p>}
+                </div>
+              </>}
+            </div> : <form id="form-nuevo-cliente-documento" onSubmit={guardarClienteNuevo} className="mt-4 space-y-3">
+              <p className="text-xs text-slate-500">Los mismos datos de Nuevo cliente. Al guardar, quedará registrado y seleccionado.</p>
+              <label className="block text-sm font-semibold">Nombre *<input required maxLength={200} value={formCliente.nombre} onChange={e => actualizarFormCliente("nombre", e.target.value)} className={inputCliente} placeholder="Nombre y apellido" /></label>
+              <label className="block text-sm font-semibold">Teléfono *<input required type="tel" value={formCliente.telefono} onChange={e => actualizarFormCliente("telefono", e.target.value)} className={inputCliente} placeholder="Ej.: 11 5555-5555" /></label>
+              <label className="block text-sm font-semibold">Email<input type="email" value={formCliente.email} onChange={e => actualizarFormCliente("email", e.target.value)} className={inputCliente} placeholder="cliente@email.com" /></label>
+              <label className="block text-sm font-semibold">Dirección<input value={formCliente.direccion} onChange={e => actualizarFormCliente("direccion", e.target.value)} className={inputCliente} placeholder="Calle, número y localidad" /></label>
+              <label className="block text-sm font-semibold">Observaciones<textarea rows={3} value={formCliente.observaciones} onChange={e => actualizarFormCliente("observaciones", e.target.value)} className={inputCliente + " resize-y"} placeholder="Notas del cliente" /></label>
+              <button type="submit" disabled={guardandoCliente} className="w-full rounded-lg bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{guardandoCliente ? "Guardando cliente..." : "Guardar y seleccionar cliente"}</button>
+            </form>}
+            {errorCliente && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{errorCliente}</p>}
+            {avisoCliente && <p role="status" className="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-700">{avisoCliente}</p>}
+            {!clienteElegido && <p className="mt-3 text-xs text-amber-700">Seleccioná o creá un cliente para incluir sus datos en el documento.</p>}
             <label className="mt-4 block text-sm font-semibold">Mensaje para el cliente<textarea value={mensaje} onChange={e=>setMensaje(e.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-slate-300 p-3 font-normal" placeholder="Te compartimos estas opciones..." /></label></section>
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Resumen y descuento</h2>
             <p className="mt-2 text-sm text-slate-500">{renglones.length} producto(s) seleccionado(s)</p>
@@ -220,8 +387,8 @@ export default function PresupuestoClientePage() {
             {descuentoTipo !== "ninguno" && <label className="mt-3 block text-sm font-semibold">Valor<input type="number" min="0" max={descuentoTipo==="porcentaje"?100:undefined} step="any" value={descuentoValor} onChange={e=>setDescuentoValor(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-300 p-3 font-normal" /></label>}
             {descuentoTipo !== "ninguno" && <div className="mt-4 flex justify-between text-green-700"><span>Descuento</span><strong>− {pesos(descuento)}</strong></div>}
             <div className="mt-4 flex justify-between border-t pt-4 text-xl font-bold"><span>Total</span><span>{pesos(total)}</span></div>
-            <button type="button" onClick={imprimirPresupuesto} disabled={!renglones.length} className="mt-5 w-full rounded-xl bg-blue-600 px-5 py-4 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Generar / descargar PDF</button>
-            <p className="mt-3 text-xs leading-5 text-slate-500">Se abrirá una vista lista para imprimir. En Chrome, elegí «Guardar como PDF». No se genera un pedido ni se descuenta stock.</p>
+            <button type="button" onClick={imprimirDocumento} disabled={!renglones.length || guardandoCliente} className="mt-5 w-full rounded-xl bg-blue-600 px-5 py-4 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Generar / descargar PDF</button>
+            <p className="mt-3 text-xs leading-5 text-slate-500">Se abrirá una vista A4 lista para imprimir o guardar como PDF. No se genera un pedido ni se descuenta stock.</p>
           </section>
         </aside>
       </div>
