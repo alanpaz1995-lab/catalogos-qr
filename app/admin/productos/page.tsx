@@ -46,6 +46,21 @@ import TarjetaProducto from "@/components/productos/TarjetaProducto";
 
 
 
+type OperacionCalculadora = "+" | "−" | "×" | "÷";
+type CalculoGuardado = { id: string; operacion: string; resultado: number; fecha: string };
+
+function formatearNumeroCalculadora(valor: number): string {
+  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 10 }).format(valor);
+}
+
+function calcularOperacion(a: number, b: number, operacion: OperacionCalculadora): number | null {
+  if (operacion === "+") return a + b;
+  if (operacion === "−") return a - b;
+  if (operacion === "×") return a * b;
+  if (b === 0) return null;
+  return a / b;
+}
+
 type VistaProductos =
 
   | "lista"
@@ -67,6 +82,224 @@ export default function ProductosPage() {
   } = useEmpresa();
 
 
+
+  // Calculadora comercial local: cada empresa conserva únicamente su propio historial.
+  const [calculadoraVisible, setCalculadoraVisible] = useState(true);
+  const [pantallaCalculadora, setPantallaCalculadora] = useState("0");
+  const [valorAnterior, setValorAnterior] = useState<number | null>(null);
+  const [operacionPendiente, setOperacionPendiente] = useState<OperacionCalculadora | null>(null);
+  const [iniciarNuevaCifra, setIniciarNuevaCifra] = useState(true);
+  const [detallePorcentaje, setDetallePorcentaje] = useState<string | null>(null);
+  const [historialCalculos, setHistorialCalculos] = useState<CalculoGuardado[]>([]);
+  const [historialCargadoEmpresa, setHistorialCargadoEmpresa] = useState<number | null>(null);
+  const [confirmarBorradoHistorial, setConfirmarBorradoHistorial] = useState(false);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    const idEmpresa = Number(empresa.id);
+    setHistorialCargadoEmpresa(null);
+    try {
+      const guardado = window.localStorage.getItem(`comersys-calculadora-historial-${idEmpresa}`);
+      const leido: unknown = guardado ? JSON.parse(guardado) : [];
+      setHistorialCalculos(Array.isArray(leido) ? leido.filter((entrada): entrada is CalculoGuardado =>
+        entrada != null && typeof entrada === "object" &&
+        typeof entrada.operacion === "string" && typeof entrada.resultado === "number" &&
+        Number.isFinite(entrada.resultado) && typeof entrada.fecha === "string" &&
+        typeof entrada.id === "string").slice(0, 60) : []);
+      setCalculadoraVisible(window.localStorage.getItem(`comersys-calculadora-visible-${idEmpresa}`) !== "false");
+    } catch {
+      setHistorialCalculos([]);
+    }
+    setPantallaCalculadora("0");
+    setValorAnterior(null);
+    setOperacionPendiente(null);
+    setIniciarNuevaCifra(true);
+    setDetallePorcentaje(null);
+    setHistorialCargadoEmpresa(idEmpresa);
+  }, [empresa?.id]);
+
+  useEffect(() => {
+    if (!empresa?.id || historialCargadoEmpresa !== Number(empresa.id)) return;
+    try {
+      window.localStorage.setItem(`comersys-calculadora-historial-${empresa.id}`, JSON.stringify(historialCalculos));
+    } catch { /* El cálculo sigue funcionando aunque el navegador limite el almacenamiento. */ }
+  }, [empresa?.id, historialCargadoEmpresa, historialCalculos]);
+
+  function alternarCalculadora() {
+    const siguiente = !calculadoraVisible;
+    setCalculadoraVisible(siguiente);
+    if (empresa?.id) {
+      try { window.localStorage.setItem(`comersys-calculadora-visible-${empresa.id}`, String(siguiente)); }
+      catch { /* Preferencia solo durante esta sesión. */ }
+    }
+  }
+
+  // Atajo global: Ctrl + Alt + signo + (incluye el + del teclado numérico).
+  // Se mantiene activo aunque la calculadora y el historial estén ocultos.
+  useEffect(() => {
+    function manejarAtajoCalculadora(evento: KeyboardEvent) {
+      const esMas = evento.key === "+" || evento.code === "NumpadAdd";
+      if (!evento.ctrlKey || !evento.altKey || evento.metaKey || !esMas) return;
+      evento.preventDefault();
+      alternarCalculadora();
+    }
+
+    window.addEventListener("keydown", manejarAtajoCalculadora);
+    return () => window.removeEventListener("keydown", manejarAtajoCalculadora);
+  });
+
+  function ingresarDigito(digito: string) {
+    setDetallePorcentaje(null);
+    if (iniciarNuevaCifra || pantallaCalculadora === "Error") {
+      setPantallaCalculadora(digito === "." ? "0." : digito);
+      setIniciarNuevaCifra(false);
+      return;
+    }
+    if (digito === "." && pantallaCalculadora.includes(".")) return;
+    if (pantallaCalculadora.replace(/[^0-9]/g, "").length >= 13) return;
+    setPantallaCalculadora(actual => actual === "0" && digito !== "." ? digito : actual + digito);
+  }
+
+  function limpiarCalculadora() {
+    setPantallaCalculadora("0");
+    setValorAnterior(null);
+    setOperacionPendiente(null);
+    setIniciarNuevaCifra(true);
+    setDetallePorcentaje(null);
+  }
+
+  function retrocederCalculadora() {
+    if (iniciarNuevaCifra || pantallaCalculadora === "Error") return;
+    setDetallePorcentaje(null);
+    setPantallaCalculadora(actual => actual.length <= 1 || (actual.length === 2 && actual.startsWith("-")) ? "0" : actual.slice(0, -1));
+  }
+
+  function invertirSigno() {
+    if (pantallaCalculadora === "0" || pantallaCalculadora === "Error") return;
+    setDetallePorcentaje(null);
+    setPantallaCalculadora(actual => actual.startsWith("-") ? actual.slice(1) : "-" + actual);
+  }
+
+  function porcentajeCalculadora() {
+    const actual = Number(pantallaCalculadora);
+    if (!Number.isFinite(actual)) return;
+    const base = valorAnterior;
+    const esDescuentoOSuma = base !== null && (operacionPendiente === "−" || operacionPendiente === "+");
+    const porcentaje = esDescuentoOSuma ? base * actual / 100 : actual / 100;
+    setPantallaCalculadora(String(Number(porcentaje.toFixed(10))));
+    setDetallePorcentaje(esDescuentoOSuma ? `${formatearNumeroCalculadora(actual)}%` : null);
+    setIniciarNuevaCifra(false);
+  }
+
+  function elegirOperacion(operacion: OperacionCalculadora) {
+    const actual = Number(pantallaCalculadora);
+    if (!Number.isFinite(actual)) return;
+    let siguiente = actual;
+    if (valorAnterior !== null && operacionPendiente !== null && !iniciarNuevaCifra) {
+      const resultado = calcularOperacion(valorAnterior, actual, operacionPendiente);
+      if (resultado === null || !Number.isFinite(resultado)) {
+        setPantallaCalculadora("Error"); setValorAnterior(null); setOperacionPendiente(null);
+        setIniciarNuevaCifra(true); return;
+      }
+      siguiente = Number(resultado.toFixed(10));
+      setPantallaCalculadora(String(siguiente));
+    } else if (valorAnterior !== null && iniciarNuevaCifra) {
+      siguiente = valorAnterior;
+    }
+    setValorAnterior(siguiente);
+    setOperacionPendiente(operacion);
+    setIniciarNuevaCifra(true);
+    setDetallePorcentaje(null);
+  }
+
+  function confirmarResultado() {
+    if (valorAnterior === null || operacionPendiente === null) return;
+    const actual = Number(pantallaCalculadora);
+    if (!Number.isFinite(actual)) return;
+    const resultado = calcularOperacion(valorAnterior, actual, operacionPendiente);
+    if (resultado === null || !Number.isFinite(resultado)) {
+      setPantallaCalculadora("Error"); setValorAnterior(null); setOperacionPendiente(null);
+      setIniciarNuevaCifra(true); setDetallePorcentaje(null); return;
+    }
+    const redondeado = Number(resultado.toFixed(10));
+    const expresion = `${formatearNumeroCalculadora(valorAnterior)} ${operacionPendiente} ${detallePorcentaje ?? formatearNumeroCalculadora(actual)}`;
+    setHistorialCalculos(anterior => [{ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, operacion: expresion, resultado: redondeado, fecha: new Date().toISOString() }, ...anterior].slice(0, 60));
+    setPantallaCalculadora(String(redondeado));
+    setValorAnterior(null);
+    setOperacionPendiente(null);
+    setIniciarNuevaCifra(true);
+    setDetallePorcentaje(null);
+  }
+
+  function reutilizarResultado(resultado: number) {
+    setPantallaCalculadora(String(resultado));
+    setValorAnterior(null);
+    setOperacionPendiente(null);
+    setIniciarNuevaCifra(true);
+    setDetallePorcentaje(null);
+    setCalculadoraVisible(true);
+    if (empresa?.id) {
+      try { window.localStorage.setItem(`comersys-calculadora-visible-${empresa.id}`, "true"); } catch { /* opcional */ }
+    }
+  }
+
+  function borrarHistorial() {
+    setHistorialCalculos([]);
+    setConfirmarBorradoHistorial(false);
+  }
+
+  // Teclado físico y teclado numérico. No capturar teclas mientras se escriben
+  // búsquedas, formularios o contenidos editables del resto de ComerSys.
+  useEffect(() => {
+    if (!calculadoraVisible) return;
+
+    function manejarTecladoCalculadora(evento: KeyboardEvent) {
+      if (evento.ctrlKey || evento.altKey || evento.metaKey) return;
+      const destino = evento.target;
+      if (destino instanceof HTMLElement) {
+        if (destino.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+        // Enter sobre otro botón debe seguir activando ese botón normalmente.
+        if (evento.key === "Enter" && destino.closest("button, a")) return;
+      }
+
+      const tecla = evento.key;
+      if (/^[0-9]$/.test(tecla)) {
+        evento.preventDefault();
+        ingresarDigito(tecla);
+      } else if (tecla === "." || tecla === "," || evento.code === "NumpadDecimal") {
+        evento.preventDefault();
+        ingresarDigito(".");
+      } else if (tecla === "+") {
+        evento.preventDefault();
+        elegirOperacion("+");
+      } else if (tecla === "-") {
+        evento.preventDefault();
+        elegirOperacion("−");
+      } else if (tecla === "*" || tecla.toLowerCase() === "x") {
+        evento.preventDefault();
+        elegirOperacion("×");
+      } else if (tecla === "/") {
+        evento.preventDefault();
+        elegirOperacion("÷");
+      } else if (tecla === "Enter" || tecla === "=") {
+        evento.preventDefault();
+        confirmarResultado();
+      } else if (tecla === "Backspace") {
+        evento.preventDefault();
+        retrocederCalculadora();
+      } else if (tecla === "Escape" || tecla === "Delete") {
+        evento.preventDefault();
+        limpiarCalculadora();
+      } else if (tecla === "%") {
+        evento.preventDefault();
+        porcentajeCalculadora();
+      }
+    }
+
+    window.addEventListener("keydown", manejarTecladoCalculadora);
+    return () => window.removeEventListener("keydown", manejarTecladoCalculadora);
+  // El controlador se renueva al cambiar los valores para usar el estado actual.
+  });
 
   const [listasPrecio, setListasPrecio] = useState<ListaPrecioCatalogo[]>([]);
   const [preciosPorProducto, setPreciosPorProducto] = useState<Record<number, Record<number, PrecioProductoLista>>>({});
@@ -842,29 +1075,145 @@ export default function ProductosPage() {
 
 
 
+  const botonCalculadora = (
+    <button type="button" onClick={alternarCalculadora}
+      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+      aria-expanded={calculadoraVisible} aria-controls="panel-calculadora-comersys">
+      {calculadoraVisible ? "Ocultar" : "Mostrar"}
+    </button>
+  );
+
+  const panelCalculadora = (
+    <section id="panel-calculadora-comersys" className="rounded-2xl border border-neutral-700 bg-[#171717] p-4 text-white shadow-xl">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Herramientas</p>
+          <h2 className="mt-1 text-base font-bold">🧮 Calculadora</h2>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          {botonCalculadora}
+          <span className="text-[10px] text-neutral-400" title="Atajo de teclado para mostrar u ocultar ambos paneles">
+            Ctrl + Alt + (+)
+          </span>
+        </div>
+      </div>
+      <div className="mt-4">
+          <div className="rounded-xl border border-neutral-600 bg-neutral-950 px-3 py-3 text-right">
+            <p className="min-h-4 truncate text-[11px] text-neutral-400">
+              {valorAnterior !== null && operacionPendiente ? `${formatearNumeroCalculadora(valorAnterior)} ${operacionPendiente} ${detallePorcentaje ?? ""}` : "Calculadora comercial"}
+            </p>
+            <p className="mt-1 break-all text-2xl font-bold tabular-nums" aria-live="polite">
+              {pantallaCalculadora === "Error" ? "Error" : formatearNumeroCalculadora(Number(pantallaCalculadora)) + (pantallaCalculadora.endsWith(".") ? "," : "")}
+            </p>
+          </div>
+          <div className="mt-3 grid grid-cols-4 gap-1.5">
+            {(["C", "⌫", "%", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "±", "0", ".", "="] as const).map(tecla => (
+              <button key={tecla} type="button"
+                onClick={() => {
+                  if (tecla === "C") limpiarCalculadora();
+                  else if (tecla === "⌫") retrocederCalculadora();
+                  else if (tecla === "%") porcentajeCalculadora();
+                  else if (tecla === "±") invertirSigno();
+                  else if (tecla === "=") confirmarResultado();
+                  else if (tecla === "+" || tecla === "−" || tecla === "×" || tecla === "÷") elegirOperacion(tecla);
+                  else ingresarDigito(tecla);
+                }}
+                className={`min-h-10 rounded-lg px-1 py-2 text-sm font-bold transition hover:brightness-125 ${
+                  tecla === "=" ? "bg-blue-600 text-white" :
+                  ["+", "−", "×", "÷", "%"].includes(tecla) ? "bg-[#303e5c] text-blue-100" :
+                  tecla === "C" ? "bg-rose-950 text-rose-200" : "bg-neutral-800 text-white"
+                }`}
+                aria-label={tecla === "⌫" ? "Borrar último dígito" : tecla === "C" ? "Limpiar calculadora" : tecla}>
+                {tecla}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] leading-4 text-neutral-400">Usá el teclado o el teclado numérico: 0–9, +, −, *, /, punto o coma, %, Enter (=), Backspace (⌫) y Escape (C). No interfiere al escribir en los formularios.</p>
+          <p className="mt-2 text-[11px] leading-4 text-neutral-400">Descuentos: ingresá el importe, presioná −, el porcentaje, % y =. Por ejemplo, 15000 − 10 % = 13500.</p>
+      </div>
+    </section>
+  );
+
+  const panelHistorial = (
+    <section className="rounded-2xl border border-neutral-700 bg-[#171717] p-4 text-white shadow-xl">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Resultados guardados</p>
+          <h2 className="mt-1 text-base font-bold">🕘 Historial de cálculos</h2>
+        </div>
+        {historialCalculos.length > 0 && (
+          <button type="button" onClick={() => setConfirmarBorradoHistorial(true)}
+            className="rounded-lg border border-neutral-600 px-2 py-1.5 text-[11px] font-semibold text-neutral-300 hover:bg-neutral-800">
+            Borrar
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-[11px] text-neutral-400">Se guarda en este navegador, separado por empresa. Tocá un resultado para reutilizarlo.</p>
+      {confirmarBorradoHistorial && (
+        <div className="mt-3 rounded-lg border border-rose-800 bg-rose-950/50 p-3 text-xs">
+          <p>¿Borrar todos los cálculos guardados de esta empresa?</p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={borrarHistorial} className="rounded-md bg-rose-700 px-3 py-1.5 font-bold text-white">Sí, borrar</button>
+            <button type="button" onClick={() => setConfirmarBorradoHistorial(false)} className="rounded-md bg-neutral-700 px-3 py-1.5 font-bold">Cancelar</button>
+          </div>
+        </div>
+      )}
+      {historialCalculos.length === 0 ? (
+        <p className="mt-4 rounded-lg bg-neutral-800 p-3 text-center text-xs text-neutral-400">Todavía no hay cálculos. Los resultados aparecerán acá al presionar =.</p>
+      ) : (
+        <div className="mt-3 max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+          {historialCalculos.map(entrada => (
+            <button type="button" key={entrada.id} onClick={() => reutilizarResultado(entrada.resultado)}
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-900 p-3 text-left transition hover:border-blue-500 hover:bg-neutral-800"
+              title="Usar este resultado en la calculadora">
+              <span className="block break-words text-[11px] text-neutral-300">{entrada.operacion} =</span>
+              <span className="mt-1 block break-all text-lg font-bold tabular-nums text-emerald-400">{formatearNumeroCalculadora(entrada.resultado)}</span>
+              <span className="mt-1 block text-[10px] text-neutral-500">{new Date(entrada.fecha).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
   return (
 
     <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8">
 
+      {/* Ambos paneles se muestran y se ocultan juntos. */}
+      {calculadoraVisible && (
+        <>
+          <aside className="fixed left-4 top-16 z-20 hidden max-h-[calc(100vh-5rem)] overflow-y-auto min-[1900px]:block"
+            style={{ width: "min(340px, calc((100vw - 1280px) / 2 - 32px))" }} aria-label="Calculadora comercial">
+            {panelCalculadora}
+          </aside>
+          <aside className="fixed right-4 top-16 z-20 hidden max-h-[calc(100vh-5rem)] overflow-y-auto min-[1900px]:block"
+            style={{ width: "min(340px, calc((100vw - 1280px) / 2 - 32px))" }} aria-label="Historial de cálculos">
+            {panelHistorial}
+          </aside>
+        </>
+      )}
       <div className="mx-auto max-w-7xl space-y-8">
 
-        <HeaderProductos
-
-          totalProductos={
-
-            productos.length
-
-          }
-
-          cargando={cargandoEmpresa || cargando}
-
-          onActualizar={
-
-            cargarProductos
-
-          }
-
-        />
+        <div className="relative">
+          <HeaderProductos
+            totalProductos={productos.length}
+            cargando={cargandoEmpresa || cargando}
+            onActualizar={cargarProductos}
+          />
+          {!calculadoraVisible && (
+            <div className="mt-3 flex flex-col items-end gap-1 min-[900px]:absolute min-[900px]:bottom-4 min-[900px]:right-4 min-[900px]:mt-0">
+              <button type="button" onClick={alternarCalculadora}
+                aria-expanded={false} aria-controls="panel-calculadora-comersys"
+                className="rounded-lg border border-blue-500/40 bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-md transition hover:bg-blue-700">
+                🧮 Mostrar calculadora e historial
+              </button>
+              <span className="text-[10px] text-slate-500" title="Atajo de teclado para mostrar u ocultar ambos paneles">
+                Ctrl + Alt + (+)
+              </span>
+            </div>
+          )}
+        </div>
 
 
 
@@ -873,6 +1222,14 @@ export default function ProductosPage() {
           items={resumenItems}
 
         />
+
+        {/* En pantallas medianas y pequeñas, no se tapan los productos. */}
+        {calculadoraVisible && (
+          <div className="grid gap-4 md:grid-cols-2 min-[1900px]:hidden">
+            {panelCalculadora}
+            {panelHistorial}
+          </div>
+        )}
 
 
 
