@@ -68,7 +68,7 @@ let promesaPDFJS: Promise<PDFJsMinimo> | null = null;
 function obtenerPDFJS(): Promise<PDFJsMinimo> {
   if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
   if (!promesaPDFJS) {
-    promesaPDFJS = new Promise((resolve, reject) => {
+    promesaPDFJS = new Promise<PDFJsMinimo>((resolve, reject) => {
       const script = document.createElement("script");
       script.src = PDF_JS_CDN;
       script.async = true;
