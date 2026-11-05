@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChangeEvent,
+  DragEvent,
   FormEvent,
   useEffect,
   useRef,
@@ -75,6 +76,8 @@ type ImagenSubida = {
 export default function NuevoProductoManualPage() {
   const router = useRouter();
   const inputImagenRef = useRef<HTMLInputElement>(null);
+  const contadorArrastreRef = useRef(0);
+  const [arrastrandoImagen, setArrastrandoImagen] = useState(false);
   const [empresaId, setEmpresaId] =
     useState<number | null>(null);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -675,17 +678,16 @@ export default function NuevoProductoManualPage() {
     }
   }
 
-  function seleccionarImagen(event: ChangeEvent<HTMLInputElement>) {
-    const archivoSeleccionado = event.target.files?.[0];
+  function prepararImagen(archivoSeleccionado: File) {
+    if (guardando || productoGuardado) return;
     setError("");
     setMensaje("");
-    if (!archivoSeleccionado) return;
     try {
       validarImagen(archivoSeleccionado);
       setArchivo(archivoSeleccionado);
       setImagenSubida(null);
     } catch (errorDesconocido) {
-      setArchivo(null);
+      // Un archivo inválido no reemplaza una imagen válida ya seleccionada.
       setError(
         errorDesconocido instanceof Error
           ? errorDesconocido.message
@@ -693,6 +695,57 @@ export default function NuevoProductoManualPage() {
       );
     }
   }
+
+  function seleccionarImagen(event: ChangeEvent<HTMLInputElement>) {
+    const archivoSeleccionado = event.target.files?.[0];
+    if (archivoSeleccionado) prepararImagen(archivoSeleccionado);
+    // Permite volver a elegir el mismo archivo si es necesario.
+    event.target.value = "";
+  }
+
+  function comenzarArrastreImagen(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (guardando || productoGuardado) return;
+    contadorArrastreRef.current += 1;
+    setArrastrandoImagen(true);
+  }
+
+  function continuarArrastreImagen(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (guardando || productoGuardado) {
+      event.dataTransfer.dropEffect = "none";
+    } else {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }
+
+  function salirArrastreImagen(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    contadorArrastreRef.current = Math.max(0, contadorArrastreRef.current - 1);
+    if (contadorArrastreRef.current === 0) setArrastrandoImagen(false);
+  }
+
+  function soltarImagen(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    contadorArrastreRef.current = 0;
+    setArrastrandoImagen(false);
+    if (guardando || productoGuardado) return;
+    const archivos = event.dataTransfer.files;
+    if (!archivos.length) {
+      setError("Arrastrá un archivo de imagen desde una carpeta de tu computadora.");
+      return;
+    }
+    if (archivos.length > 1) {
+      setError("Soltá una sola imagen para usarla como foto principal del producto.");
+      return;
+    }
+    prepararImagen(archivos[0]);
+  }
+
   async function quitarImagen() {
     if (guardando) return;
     setError("");
@@ -1330,47 +1383,72 @@ export default function NuevoProductoManualPage() {
                   onChange={seleccionarImagen}
                   className="hidden"
                 />
-                {vistaPrevia ? (
-                  <>
-                    <img
-                      src={vistaPrevia}
-                      alt="Vista previa del producto"
-                      className="mt-5 h-72 w-full rounded-2xl border border-slate-200 object-contain"
-                    />
-                    <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-                      <p className="truncate font-semibold">{archivo?.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {archivo
-                          ? (archivo.size / 1024 / 1024).toFixed(2)
-                          : "0"}{" "}
-                        MB
+                <div
+                  onDragEnter={comenzarArrastreImagen}
+                  onDragOver={continuarArrastreImagen}
+                  onDragLeave={salirArrastreImagen}
+                  onDrop={soltarImagen}
+                  className={`relative mt-5 rounded-2xl border-2 border-dashed transition-colors ${
+                    arrastrandoImagen
+                      ? "border-blue-600 bg-blue-100 ring-4 ring-blue-200"
+                      : "border-slate-300 bg-slate-50"
+                  }`}
+                  aria-label="Zona para arrastrar y soltar la imagen principal"
+                >
+                  {vistaPrevia ? (
+                    <div className="p-3">
+                      <img
+                        src={vistaPrevia}
+                        alt="Vista previa del producto"
+                        className="h-72 w-full rounded-xl bg-white object-contain"
+                      />
+                      <div className="mt-3 rounded-xl bg-white p-3">
+                        <p className="truncate font-semibold">{archivo?.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {archivo ? (archivo.size / 1024 / 1024).toFixed(2) : "0"} MB
+                        </p>
+                      </div>
+                      <p className="mt-3 text-center text-xs text-slate-600">
+                        Podés arrastrar otra imagen acá para reemplazarla.
                       </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={guardando || productoGuardado}
+                          onClick={() => inputImagenRef.current?.click()}
+                          className="flex-1 rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-semibold text-blue-700 disabled:opacity-50"
+                        >
+                          Elegir otra imagen
+                        </button>
+                        <button
+                          type="button"
+                          disabled={guardando || productoGuardado}
+                          onClick={quitarImagen}
+                          className="flex-1 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-600 disabled:opacity-50"
+                        >
+                          Quitar imagen
+                        </button>
+                      </div>
                     </div>
+                  ) : (
                     <button
                       type="button"
-                      disabled={guardando}
-                      onClick={quitarImagen}
-                      className="mt-4 w-full rounded-xl border border-red-200 bg-red-50 px-5 py-3 font-semibold text-red-600 disabled:opacity-50"
+                      disabled={guardando || productoGuardado}
+                      onClick={() => inputImagenRef.current?.click()}
+                      className="flex h-72 w-full flex-col items-center justify-center rounded-2xl p-6 text-center transition hover:bg-blue-50 disabled:opacity-50"
                     >
-                      Quitar o cambiar imagen
+                      <span className="text-5xl" aria-hidden="true">🖼️</span>
+                      <span className="mt-4 font-semibold">Arrastrá y soltá una imagen acá</span>
+                      <span className="mt-2 text-sm text-slate-600">O hacé clic para buscarla</span>
+                      <span className="mt-2 text-xs text-slate-500">JPG, PNG o WEBP · Máximo 10 MB</span>
                     </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={guardando}
-                    onClick={() => inputImagenRef.current?.click()}
-                    className="mt-5 flex h-72 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-[#2563EB] hover:bg-blue-50 disabled:opacity-50"
-                  >
-                    <span className="text-5xl">🖼️</span>
-                    <span className="mt-4 font-semibold">
-                      Seleccionar imagen
-                    </span>
-                    <span className="mt-2 text-xs text-slate-400">
-                      JPG, PNG o WEBP · Máximo 10 MB
-                    </span>
-                  </button>
-                )}
+                  )}
+                  {arrastrandoImagen && (
+                    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-blue-100/95 p-6 text-center">
+                      <span className="text-lg font-bold text-blue-800">Soltá la imagen para cargarla</span>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
                   <p className="font-semibold text-slate-800">✨ Mejorar foto con ChatGPT</p>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
