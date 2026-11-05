@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export type ProductoListado = {
@@ -52,6 +52,65 @@ export default function TablaProductos({
   // Un único listado de colores por empresa, incluidos los colores personalizados.
   const empresaId = productos[0]?.empresa_id;
   const [hexPorNombre, setHexPorNombre] = useState<Record<string, string>>({});
+  // Comparamos todos los productos de la empresa, no solo los visibles tras un filtro.
+  // Así se detectan duplicados aunque el otro producto esté en otra página o categoría.
+  const firmaProductos = useMemo(
+    () => productos.map((producto) => `${producto.id}:${producto.codigo ?? ""}`).join("|"),
+    [productos]
+  );
+  const repetidosEnListado = useMemo(
+    () => buscarCodigosRepetidos(productos.map((producto) => producto.codigo)),
+    [productos]
+  );
+  const [consultaCodigos, setConsultaCodigos] = useState<{
+    empresaId: number;
+    firma: string;
+    codigos: Set<string>;
+  } | null>(null);
+  // Un resultado remoto nunca debe ocultar los duplicados ya comprobados
+  // entre las filas cargadas (por ejemplo, dos productos con código 446).
+  // Sumamos ambas detecciones en vez de sustituir una por la otra.
+  const codigosRepetidos = useMemo(() => {
+    const resultado = new Set(repetidosEnListado);
+    if (consultaCodigos !== null && consultaCodigos.empresaId === empresaId && consultaCodigos.firma === firmaProductos) {
+      for (const codigo of consultaCodigos.codigos) resultado.add(codigo);
+    }
+    return resultado;
+  }, [repetidosEnListado, consultaCodigos, empresaId, firmaProductos]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    let vigente = true;
+    void (async () => {
+      try {
+        // Supabase limita la cantidad de registros por consulta: paginamos para
+        // detectar coincidencias incluso en empresas con más de 1.000 productos.
+        const codigos: (string | null)[] = [];
+        const porPagina = 1000;
+        for (let desde = 0; ; desde += porPagina) {
+          const { data, error } = await supabase
+            .from("productos")
+            .select("codigo")
+            .eq("empresa_id", empresaId)
+            .order("id", { ascending: true })
+            .range(desde, desde + porPagina - 1);
+          if (error) throw error;
+          if (!vigente) return;
+          for (const fila of data || []) codigos.push(fila.codigo);
+          if (!data || data.length < porPagina) break;
+        }
+        if (vigente) setConsultaCodigos({
+          empresaId,
+          firma: firmaProductos,
+          codigos: buscarCodigosRepetidos(codigos),
+        });
+      } catch (error) {
+        console.warn("No se pudieron verificar todos los códigos de la empresa:", error);
+        // Si falla la consulta, conservamos la detección entre productos cargados.
+      }
+    })();
+    return () => { vigente = false; };
+  }, [empresaId, firmaProductos]);
 
   useEffect(() => {
     if (!empresaId) {
@@ -94,7 +153,7 @@ export default function TablaProductos({
         : productos.length === 0 ? <div className="p-12 text-center text-slate-500">No se encontraron productos. Probá con otra búsqueda o filtro.</div>
         : <div className="divide-y divide-slate-100">
             {productos.map((producto) => (
-              <FilaProducto key={producto.id} producto={producto} hexPorNombre={hexPorNombre} listasPrecio={listasPrecio}
+              <FilaProducto key={producto.id} producto={producto} hexPorNombre={hexPorNombre} codigoRepetido={codigosRepetidos.has(normalizarCodigo(producto.codigo))} listasPrecio={listasPrecio}
                 preciosLista={preciosPorProducto[producto.id] || {}}
                 actualizando={actualizandoId === producto.id}
                 eliminando={eliminandoId === producto.id}
@@ -107,11 +166,12 @@ export default function TablaProductos({
   );
 }
 
-function FilaProducto({ producto, hexPorNombre, listasPrecio, preciosLista, actualizando, eliminando,
+function FilaProducto({ producto, hexPorNombre, codigoRepetido, listasPrecio, preciosLista, actualizando, eliminando,
   onActualizarCampo, onCambiarEstado, onEliminar,
 }: {
   producto: ProductoListado;
   hexPorNombre: Record<string, string>;
+  codigoRepetido: boolean;
   listasPrecio: ListaPrecioCatalogo[];
   preciosLista: Record<number, PrecioProductoLista>;
   actualizando: boolean;
@@ -198,6 +258,11 @@ function FilaProducto({ producto, hexPorNombre, listasPrecio, preciosLista, actu
             {producto.codigo?.trim() && (
               <p className="mt-1 break-all text-xs font-semibold text-slate-600">
                 Código: <span className="text-slate-900">{producto.codigo}</span>
+                {codigoRepetido && (
+                  <span className="ml-1 font-bold text-red-600" role="status" title="Hay otro producto de esta empresa con el mismo código">
+                    (Código Repetido)
+                  </span>
+                )}
               </p>
             )}
             {producto.descripcion && <p className="mt-1 line-clamp-1 text-xs text-slate-500">{producto.descripcion}</p>}
@@ -302,4 +367,19 @@ function dinero(precio: number | null | undefined) {
 function normalizarNombreColor(nombre: string): string {
   return nombre.trim().replace(/\s+/g, " ").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
+
+// Los espacios externos y las diferencias entre mayúsculas/minúsculas no
+// generan códigos diferentes. Los códigos vacíos nunca cuentan como duplicados.
+function normalizarCodigo(codigo: string | null | undefined): string {
+  return typeof codigo === "string" ? codigo.trim().toLocaleLowerCase("es-AR") : "";
+}
+
+function buscarCodigosRepetidos(codigos: (string | null | undefined)[]): Set<string> {
+  const cantidades = new Map<string, number>();
+  for (const codigo of codigos) {
+    const clave = normalizarCodigo(codigo);
+    if (clave) cantidades.set(clave, (cantidades.get(clave) ?? 0) + 1);
+  }
+  return new Set([...cantidades].filter(([, cantidad]) => cantidad > 1).map(([codigo]) => codigo));
 }
