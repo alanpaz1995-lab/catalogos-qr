@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
@@ -180,6 +181,7 @@ function FilaProducto({ producto, hexPorNombre, codigoRepetido, listasPrecio, pr
   onCambiarEstado: Props["onCambiarEstado"];
   onEliminar: Props["onEliminar"];
 }) {
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const idOpciones = `opciones-producto-${producto.id}`;
   const colores = Array.isArray(producto.colores)
@@ -207,7 +209,7 @@ function FilaProducto({ producto, hexPorNombre, codigoRepetido, listasPrecio, pr
     <article className="px-4 py-3 transition hover:bg-slate-50 sm:px-5">
       <div
         className="flex cursor-pointer flex-col gap-3 xl:flex-row xl:items-center"
-        title={abierto ? "Hacé clic para ocultar las opciones" : "Hacé clic para mostrar las opciones"}
+        title="Un clic para mostrar u ocultar opciones · Doble clic para editar el producto"
         onClick={(event) => {
           // Los enlaces y controles conservan su propio comportamiento.
           // La flecha de desplegar no debe abrir y cerrar dos veces.
@@ -215,7 +217,18 @@ function FilaProducto({ producto, hexPorNombre, codigoRepetido, listasPrecio, pr
           if (objetivo instanceof Element && objetivo.closest("a, button, input, select, textarea, [role='button']")) {
             return;
           }
+          // El segundo clic de un doble clic no vuelve a cerrar la fila.
+          if (event.detail > 1) return;
           setAbierto((valor) => !valor);
+        }}
+        onDoubleClick={(event) => {
+          // Los controles interactivos conservan su acción original.
+          const objetivo = event.target;
+          if (objetivo instanceof Element && objetivo.closest("a, button, input, select, textarea, [role='button']")) {
+            return;
+          }
+          event.preventDefault();
+          router.push(`/admin/productos/editar/${producto.id}`);
         }}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3 xl:basis-[47%]">
