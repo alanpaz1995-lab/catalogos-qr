@@ -376,6 +376,12 @@ export default function CatalogoExternoPublicoPage() {
     return categorias.filter((c) => existentes.has(c.id));
   }, [categorias, productos]);
 
+  // Orden natural: 9 antes de 10 y CU-2 antes de CU-10.
+  const comparadorCodigos = useMemo(
+    () => new Intl.Collator("es-AR", { numeric: true, sensitivity: "base" }),
+    []
+  );
+
   const productosVisibles = useMemo(() => {
     const posiciones = new Map(categorias.map((cat, index) => [cat.id, index]));
     const term = busqueda.trim().toLocaleLowerCase("es");
@@ -392,9 +398,23 @@ export default function CatalogoExternoPublicoPage() {
         const posA = posiciones.get(a.categoria_id ?? -1) ?? Number.MAX_SAFE_INTEGER;
         const posB = posiciones.get(b.categoria_id ?? -1) ?? Number.MAX_SAFE_INTEGER;
         if (posA !== posB) return posA - posB;
+        // Las categorías que no figuran en el listado también permanecen agrupadas.
+        if (a.categoria_id !== b.categoria_id) {
+          if (a.categoria_id == null) return 1;
+          if (b.categoria_id == null) return -1;
+          return a.categoria_id - b.categoria_id;
+        }
+        const codigoA = a.codigo?.trim() || "";
+        const codigoB = b.codigo?.trim() || "";
+        if (!codigoA && codigoB) return 1;
+        if (codigoA && !codigoB) return -1;
+        if (codigoA && codigoB) {
+          const diferencia = comparadorCodigos.compare(codigoA, codigoB);
+          if (diferencia !== 0) return diferencia;
+        }
         return b.id - a.id;
       });
-  }, [productos, categorias, busqueda, categoriaActual]);
+  }, [productos, categorias, busqueda, categoriaActual, comparadorCodigos]);
 
   const itemsCalculo = calculo.flatMap(({ productoId, cantidad }) => {
     const producto = productos.find((p) => p.id === productoId);

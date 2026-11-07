@@ -35,6 +35,40 @@ type ColorEmpresa = { nombre: string; codigo_hex: string | null };
 function claveColorCatalogo(nombre: string): string {
   return nombre.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
 }
+// Orden natural: 9 antes que 10, CU-2 antes que CU-10.
+// Las categorías mantienen su orden configurado y los productos sin código
+// se muestran al final de cada una de ellas.
+const comparadorCodigoCatalogo = new Intl.Collator("es-AR", {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function ordenarProductosCatalogo(
+  a: Producto,
+  b: Producto,
+  posicionCategoria: Map<string, number>
+): number {
+  const categoriaA = (a.categoria || "").trim();
+  const categoriaB = (b.categoria || "").trim();
+  const ordenA = posicionCategoria.get(categoriaA) ?? Number.MAX_SAFE_INTEGER;
+  const ordenB = posicionCategoria.get(categoriaB) ?? Number.MAX_SAFE_INTEGER;
+  if (ordenA !== ordenB) return ordenA - ordenB;
+  // También agrupamos las categorías que todavía no tienen un orden asignado.
+  if (categoriaA !== categoriaB) {
+    const diferenciaCategoria = comparadorCodigoCatalogo.compare(categoriaA, categoriaB);
+    if (diferenciaCategoria !== 0) return diferenciaCategoria;
+  }
+  const codigoA = ((a as Producto & { codigo?: string | null }).codigo || "").trim();
+  const codigoB = ((b as Producto & { codigo?: string | null }).codigo || "").trim();
+  if (!codigoA && codigoB) return 1;
+  if (codigoA && !codigoB) return -1;
+  if (codigoA && codigoB) {
+    const diferenciaCodigo = comparadorCodigoCatalogo.compare(codigoA, codigoB);
+    if (diferenciaCodigo !== 0) return diferenciaCodigo;
+  }
+  return b.id - a.id;
+}
+
 export default function CatalogoEmpresaPage() {
   const params = useParams();
   const slugParametro = Array.isArray(params.slug)
@@ -275,18 +309,9 @@ export default function CatalogoEmpresaPage() {
         ])
       );
       setProductos(
-        [...productosCargados].sort((a, b) => {
-          const ordenA =
-            posicionCategoria.get(a.categoria || "") ??
-            Number.MAX_SAFE_INTEGER;
-          const ordenB =
-            posicionCategoria.get(b.categoria || "") ??
-            Number.MAX_SAFE_INTEGER;
-          if (ordenA !== ordenB) {
-            return ordenA - ordenB;
-          }
-          return b.id - a.id;
-        })
+        [...productosCargados].sort((a, b) =>
+          ordenarProductosCatalogo(a, b, posicionCategoria)
+        )
       );
       setCargando(false);
     }
@@ -557,11 +582,9 @@ export default function CatalogoEmpresaPage() {
   const posicionCategoriaActual = new Map(
     categoriasOrdenadas.map((nombre, indice) => [nombre, indice])
   );
-  const productosOrdenados = [...productos].sort((a, b) => {
-    const ordenA = posicionCategoriaActual.get(a.categoria || "") ?? Number.MAX_SAFE_INTEGER;
-    const ordenB = posicionCategoriaActual.get(b.categoria || "") ?? Number.MAX_SAFE_INTEGER;
-    return ordenA !== ordenB ? ordenA - ordenB : b.id - a.id;
-  });
+  const productosOrdenados = [...productos].sort((a, b) =>
+    ordenarProductosCatalogo(a, b, posicionCategoriaActual)
+  );
   const productosFiltrados = productosOrdenados.filter((producto) => {
     const textoBuscado = busqueda.trim().toLowerCase();
     const nombre = producto.nombre?.toLowerCase() || "";

@@ -543,10 +543,31 @@ export default function ProductosPage() {
       const categoriasUsadas = productosCargados.map((p) => p.categoria || "");
       setCategorias(Array.from(new Set([...nombresCategoria, ...categoriasUsadas].map((c) => c.trim()).filter(Boolean)))
         .sort((a, b) => (ordenCategorias.get(a) ?? Number.MAX_SAFE_INTEGER) - (ordenCategorias.get(b) ?? Number.MAX_SAFE_INTEGER) || a.localeCompare(b, "es")));
+      // Primero respetamos el orden configurado de las categorías.
+      // Dentro de cada categoría, orden natural ascendente por código:
+      // 9, 10, 11, 100 y CU-2 antes de CU-10. Sin código va al final.
+      const comparadorCodigos = new Intl.Collator("es-AR", {
+        numeric: true,
+        sensitivity: "base",
+      });
       setProductos([...productosCargados].sort((a, b) => {
-        const ordenA = ordenCategorias.get(a.categoria || "") ?? Number.MAX_SAFE_INTEGER;
-        const ordenB = ordenCategorias.get(b.categoria || "") ?? Number.MAX_SAFE_INTEGER;
-        return ordenA !== ordenB ? ordenA - ordenB : b.id - a.id;
+        const categoriaA = (a.categoria || "").trim();
+        const categoriaB = (b.categoria || "").trim();
+        const ordenA = ordenCategorias.get(categoriaA) ?? Number.MAX_SAFE_INTEGER;
+        const ordenB = ordenCategorias.get(categoriaB) ?? Number.MAX_SAFE_INTEGER;
+        if (ordenA !== ordenB) return ordenA - ordenB;
+        // Mantener juntas las categorías no incluidas en la tabla de categorías.
+        const comparacionCategoria = categoriaA.localeCompare(categoriaB, "es-AR", { sensitivity: "base" });
+        if (comparacionCategoria !== 0) return comparacionCategoria;
+        const codigoA = (a.codigo || "").trim();
+        const codigoB = (b.codigo || "").trim();
+        if (!codigoA && codigoB) return 1;
+        if (codigoA && !codigoB) return -1;
+        if (codigoA && codigoB) {
+          const comparacionCodigo = comparadorCodigos.compare(codigoA, codigoB);
+          if (comparacionCodigo !== 0) return comparacionCodigo;
+        }
+        return b.id - a.id;
       }));
       setListasPrecio(listasActivas.map(({ id, nombre }) => ({ id, nombre })));
       setPreciosPorProducto(precios);

@@ -116,6 +116,9 @@ function claveColorCatalogo(nombre: string): string {
   return nombre.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
 }
 
+// Compara los códigos de forma natural: 9, 10, 11; CU-2 antes que CU-10.
+const comparadorCodigosLista = new Intl.Collator("es-AR", { numeric: true, sensitivity: "base" });
+
 function obtenerColoresProducto(producto: ProductoLista): string[] {
   if (!Array.isArray(producto.colores)) return [];
   const vistos = new Set<string>();
@@ -1067,7 +1070,24 @@ export default function CatalogoListaPage() {
 
 
 
-            return posA - posB || Number(b.id) - Number(a.id);
+            // Mantener las categorías en el orden configurado por el administrador.
+            if (posA !== posB) return posA - posB;
+
+            // Agrupar también las categorías no configuradas sin mezclarlas entre sí.
+            const categoriaA = (a.categoria || "").trim();
+            const categoriaB = (b.categoria || "").trim();
+            if (categoriaA !== categoriaB) {
+              return categoriaA.localeCompare(categoriaB, "es-AR");
+            }
+
+            // Dentro de cada categoría, ordenar por código ascendente.
+            // Los productos sin código se muestran al final de su categoría.
+            const codigoA = a.codigo?.trim() || "";
+            const codigoB = b.codigo?.trim() || "";
+            if (!codigoA && codigoB) return 1;
+            if (codigoA && !codigoB) return -1;
+            const resultadoCodigo = comparadorCodigosLista.compare(codigoA, codigoB);
+            return resultadoCodigo !== 0 ? resultadoCodigo : Number(a.id) - Number(b.id);
 
 
 
