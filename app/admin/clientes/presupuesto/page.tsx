@@ -284,15 +284,21 @@ function extraerFilasCalculo(lineas: LineaPDF[]): FilaCalculoPDF[] {
 
     }
 
+    // Los importes y la cantidad se alinean a la DERECHA en el PDF
+    // (a diferencia de los encabezados, alineados a la izquierda).
+    // Usar el punto medio entre títulos mezclaba Cantidad con Precio
+    // y hacía que un PDF válido pareciera no contener productos.
+    // El margen anterior a cada encabezado respeta el ancho disponible
+    // y permite reconocer también importes con distintas cifras.
     const limites = [
 
       (columnas[0] + columnas[1]) / 2,
 
-      (columnas[1] + columnas[2]) / 2,
+      columnas[2] - Math.min(14, (columnas[2] - columnas[1]) / 3),
 
-      (columnas[2] + columnas[3]) / 2,
+      columnas[3] - Math.min(14, (columnas[3] - columnas[2]) / 3),
 
-      (columnas[3] + columnas[4]) / 2,
+      columnas[4] - Math.min(14, (columnas[4] - columnas[3]) / 3),
 
     ];
 
@@ -314,9 +320,13 @@ function extraerFilasCalculo(lineas: LineaPDF[]): FilaCalculoPDF[] {
 
     const subtotal = precioExtraido(c[4]);
 
-    const esRenglon = Number.isInteger(cantidad) && cantidad > 0 && c[2] !== "" &&
+    // No aceptar filas ajenas a la tabla ni importes incoherentes.
+    // El margen de dos centavos contempla redondeos de impresión.
+    const esRenglon = Boolean(c[1]) && Number.isSafeInteger(cantidad) && cantidad > 0 && c[2] !== "" &&
 
-      Number.isFinite(precio) && Number.isFinite(subtotal);
+      Number.isFinite(precio) && precio >= 0 && Number.isFinite(subtotal) && subtotal >= 0 &&
+
+      Math.abs(precio * cantidad - subtotal) <= 0.02;
 
     if (esRenglon) {
 
