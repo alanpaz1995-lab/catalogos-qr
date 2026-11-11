@@ -100,6 +100,75 @@ type FilaCalculoPDF = { codigo: string; nombre: string; cantidad: number; precio
 
 type CoincidenciaPendientePDF = { fila: FilaCalculoPDF; candidatos: number[] };
 
+// Los presupuestos generados en este módulo incluyen un marcador de datos
+// que permite reabrirlos sin depender de las posiciones visuales de la tabla.
+type PresupuestoReeditablePDF = {
+  formato: "COMERSYS_PRESUPUESTO_V1";
+  empresa_id: number;
+  cliente: string;
+  cliente_id?: number | null;
+  mensaje?: string;
+  subtotal: number;
+  descuento_tipo: DescuentoTipo;
+  descuento_valor: number;
+  total: number;
+  productos: {
+    id: number;
+    nombre: string;
+    cantidad: number;
+    lista: string;
+    tipo_precio: "minorista" | "mayorista";
+    precio_unitario: number;
+  }[];
+};
+
+function extraerPresupuestoReeditable(texto: string): PresupuestoReeditablePDF | null {
+  const match = texto.match(/COMERSYS_PRESUPUESTO_V1\s*:\s*([A-Za-z0-9+/=\s]+?)\s*:\s*FIN_COMERSYS_PRESUPUESTO/);
+  if (!match) return null;
+  let dato: unknown;
+  try {
+    const codificado = match[1].replace(/\s/g, "");
+    dato = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(codificado), c => c.charCodeAt(0))));
+  } catch {
+    throw new Error("El presupuesto tiene datos internos dañados y no se puede reabrir.");
+  }
+  if (!dato || typeof dato !== "object") throw new Error("Los datos del presupuesto no son válidos.");
+  const v = dato as PresupuestoReeditablePDF;
+  if (v.formato !== "COMERSYS_PRESUPUESTO_V1" || !Number.isSafeInteger(v.empresa_id) || v.empresa_id < 1) {
+    throw new Error("El presupuesto no tiene un identificador de empresa válido.");
+  }
+  if (!Array.isArray(v.productos) || !v.productos.length || v.productos.length > 5000) {
+    throw new Error("El presupuesto no contiene productos válidos.");
+  }
+  const ids = new Set<number>();
+  for (const item of v.productos) {
+    if (!item || !Number.isSafeInteger(item.id) || item.id < 1 || ids.has(item.id) ||
+        typeof item.nombre !== "string" || !Number.isSafeInteger(item.cantidad) || item.cantidad < 1 ||
+        !Number.isFinite(item.precio_unitario) || item.precio_unitario < 0 ||
+        !["minorista", "mayorista"].includes(item.tipo_precio) ||
+        !(item.lista === "principal" || (/^[0-9]+$/.test(item.lista) && Number(item.lista) > 0))) {
+      throw new Error("El presupuesto contiene un producto con datos inválidos.");
+    }
+    ids.add(item.id);
+  }
+  if (!["ninguno", "porcentaje", "fijo"].includes(v.descuento_tipo) ||
+      !Number.isFinite(v.descuento_valor) || v.descuento_valor < 0 ||
+      (v.descuento_tipo === "porcentaje" && v.descuento_valor > 100) ||
+      !Number.isFinite(v.subtotal) || !Number.isFinite(v.total) || v.total < 0) {
+    throw new Error("El presupuesto contiene totales o descuentos inválidos.");
+  }
+  const subtotalCalculado = v.productos.reduce((ac, item) => ac + item.cantidad * item.precio_unitario, 0);
+  const descuentoCalculado = v.descuento_tipo === "porcentaje"
+    ? subtotalCalculado * v.descuento_valor / 100
+    : v.descuento_tipo === "fijo" ? Math.min(subtotalCalculado, v.descuento_valor) : 0;
+  if (Math.abs(subtotalCalculado - v.subtotal) > 0.03 ||
+      Math.abs(Math.max(0, subtotalCalculado - descuentoCalculado) - v.total) > 0.03) {
+    throw new Error("Los importes internos del presupuesto no coinciden. No se modificó la selección.");
+  }
+  return v;
+}
+
+
 
 
 type PDFJsMinimo = {
@@ -377,6 +446,7 @@ async function leerCalculoPDF(archivo: File) {
   const lineas: LineaPDF[] = [];
 
   let clientePDF: { nombre: string; telefono: string } | null = null;
+  let textoMarcador = "";
 
   try {
 
@@ -385,6 +455,7 @@ async function leerCalculoPDF(archivo: File) {
       const pagina = await pdf.getPage(numero);
 
       const contenido = await pagina.getTextContent();
+      textoMarcador += "\n" + contenido.items.map(item => (item && typeof item === "object" && "str" in item) ? String(item.str) : "").join("");
 
       const agrupadas: LineaPDF[] = [];
 
@@ -430,11 +501,14 @@ async function leerCalculoPDF(archivo: File) {
 
   } finally { pdf.cleanup(); }
 
+  const presupuesto = extraerPresupuestoReeditable(textoMarcador);
+  if (presupuesto) return { tipo: "presupuesto" as const, presupuesto };
+
   const filas = extraerFilasCalculo(lineas);
 
   if (!filas.length) throw new Error("No encontré la tabla de «Mi cálculo de compra». Usá el PDF generado desde el catálogo y no una fotografía o un PDF escaneado.");
 
-  return { filas, clientePDF };
+  return { tipo: "calculo" as const, filas, clientePDF };
 
 }
 
@@ -888,7 +962,66 @@ export default function PresupuestoClientePage() {
 
     try {
 
-      const { filas, clientePDF } = await leerCalculoPDF(archivo);
+      const lectura = await leerCalculoPDF(archivo);
+      if (lectura.tipo === "presupuesto") {
+        const anterior = lectura.presupuesto;
+        if (Number(anterior.empresa_id) !== Number(empresa.id)) {
+          throw new Error("Este presupuesto pertenece a otra empresa. No se puede importar en la cuenta actual.");
+        }
+        const nuevaSeleccion: Record<number, Seleccion> = {};
+        const avisos: string[] = [];
+        for (const item of anterior.productos) {
+          const producto = productos.find(p => p.id === item.id);
+          if (!producto || normalizarCoincidencia(producto.nombre) !== normalizarCoincidencia(item.nombre)) {
+            avisos.push(`«${item.nombre}»: ya no se encuentra con el mismo identificador y nombre en esta empresa. No se importó.`);
+            continue;
+          }
+          const clave = `${item.lista}:${item.tipo_precio}`;
+          const opcion = opcionesPrecio(producto).find(o => o.clave === clave);
+          if (!opcion) {
+            avisos.push(`«${item.nombre}»: la lista o el tipo de precio original ya no está disponible. No se importó.`);
+            continue;
+          }
+          if (Math.abs(opcion.precio - item.precio_unitario) > 0.011) {
+            avisos.push(`«${item.nombre}»: el precio cambió de ${pesos(item.precio_unitario)} a ${pesos(opcion.precio)}. No se importó automáticamente para evitar cambiar el presupuesto sin avisarte.`);
+            continue;
+          }
+          nuevaSeleccion[producto.id] = { cantidad: item.cantidad, lista: item.lista, tipoPrecio: item.tipo_precio };
+        }
+        const cantidadImportada = Object.keys(nuevaSeleccion).length;
+        if (!cantidadImportada) {
+          throw new Error(`Ninguno de los productos del presupuesto coincide con sus precios actuales. ${avisos.slice(0, 3).join(" ")}`);
+        }
+        const completo = cantidadImportada === anterior.productos.length;
+        setSeleccion(nuevaSeleccion);
+        setTipoDocumento("presupuesto");
+        setMostrarPrecios(true);
+        setBusqueda("");
+        setCategoria("__todas__");
+        setMensaje(typeof anterior.mensaje === "string" ? anterior.mensaje : "");
+        setDescuentoTipo(completo ? anterior.descuento_tipo : "ninguno");
+        setDescuentoValor(completo ? String(anterior.descuento_valor) : "0");
+        if (!completo) avisos.push("Como algunos productos no pudieron importarse, se quitó temporalmente el descuento para que lo revises antes de guardar.");
+        const clientePorId = Number.isSafeInteger(anterior.cliente_id) && anterior.cliente_id
+          ? clientes.find(c => c.id === anterior.cliente_id) : null;
+        const clientePorNombre = clientes.find(c => normalizarCoincidencia(c.nombre) === normalizarCoincidencia(anterior.cliente || ""));
+        const clienteEncontrado = clientePorId || clientePorNombre;
+        if (clienteEncontrado) {
+          elegirCliente(clienteEncontrado);
+        } else if (anterior.cliente?.trim()) {
+          setClienteElegidoId(null);
+          setFormCliente({ ...CLIENTE_VACIO, nombre: anterior.cliente.trim() });
+          setModoCliente("nuevo");
+          avisos.push("No se encontró al cliente original. Seleccionalo o completá sus datos antes de generar el nuevo presupuesto.");
+        } else {
+          setClienteElegidoId(null);
+        }
+        setAdvertenciasPDF(avisos);
+        setPendientesPDF([]);
+        setResultadoPDF(`Presupuesto abierto para editar: ${cantidadImportada} de ${anterior.productos.length} productos recuperados. Revisá los datos y generá un nuevo PDF cuando termines.`);
+        return;
+      }
+      const { filas, clientePDF } = lectura;
 
       const nuevaSeleccion: Record<number, Seleccion> = {};
 
@@ -1298,7 +1431,7 @@ export default function PresupuestoClientePage() {
 
           </button>
 
-          <p className="max-w-64 text-xs text-slate-500 sm:text-right">Importá el PDF «Mi cálculo de compra» descargado desde tu catálogo o una lista de precios.</p>
+          <p className="max-w-64 text-xs text-slate-500 sm:text-right">Importá «Mi cálculo de compra» o volvé a abrir un presupuesto PDF generado en esta pantalla para corregirlo.</p>
 
         </div>
 
