@@ -1,7 +1,5 @@
 "use client";
 
-
-
 import Link from "next/link";
 
 import {
@@ -23,8 +21,6 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
-
-
 
 type Pedido = {
 
@@ -68,8 +64,6 @@ type Pedido = {
 
 };
 
-
-
 type DetallePedido = {
 
   id: number;
@@ -89,8 +83,6 @@ type DetallePedido = {
   subtotal: number;
 
 };
-
-
 
 type PagoPedido = {
 
@@ -114,10 +106,6 @@ type PagoPedido = {
 
 };
 
-
-
-
-
 const ESTADOS_PEDIDO = [
 
   "Pendiente",
@@ -136,8 +124,6 @@ const ESTADOS_PEDIDO = [
 
 ];
 
-
-
 const METODOS_PAGO = [
 
   "Efectivo",
@@ -154,17 +140,11 @@ const METODOS_PAGO = [
 
 ];
 
-
-
 export default function DetallePedidoPage() {
 
   const params = useParams();
 
-
-
   const { empresa, cargandoEmpresa, errorEmpresa } = useEmpresa();
-
-
 
   const idParametro = Array.isArray(params.id)
 
@@ -172,11 +152,7 @@ export default function DetallePedidoPage() {
 
     : params.id;
 
-
-
   const pedidoId = Number(idParametro);
-
-
 
   const [pedido, setPedido] = useState<Pedido | null>(null);
 
@@ -184,15 +160,11 @@ export default function DetallePedidoPage() {
 
   const [pagos, setPagos] = useState<PagoPedido[]>([]);
 
-
-
   const [importePago, setImportePago] = useState("");
 
   const [metodoPago, setMetodoPago] = useState("Transferencia");
 
   const [observacionesPago, setObservacionesPago] = useState("");
-
-
 
   const [cargando, setCargando] = useState(true);
 
@@ -206,21 +178,15 @@ export default function DetallePedidoPage() {
 
   );
 
-
-
   const [mensajeAccion, setMensajeAccion] = useState("");
 
   const [error, setError] = useState("");
-
-
 
   const cargarDetallePedido = useCallback(async () => {
 
     setCargando(true);
 
     setError("");
-
-
 
     if (!pedidoId || Number.isNaN(pedidoId)) {
 
@@ -232,8 +198,6 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     if (!empresa?.id) {
 
       if (cargandoEmpresa) {
@@ -241,8 +205,6 @@ export default function DetallePedidoPage() {
         return;
 
       }
-
-
 
       setError(errorEmpresa || "No encontramos la empresa actual.");
 
@@ -252,11 +214,7 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     const empresaId = empresa.id;
-
-
 
     const [
 
@@ -280,8 +238,6 @@ export default function DetallePedidoPage() {
 
         .maybeSingle(),
 
-
-
       supabase
 
         .from("pedido_detalles")
@@ -291,8 +247,6 @@ export default function DetallePedidoPage() {
         .eq("pedido_id", pedidoId)
 
         .order("id", { ascending: true }),
-
-
 
       supabase
 
@@ -307,8 +261,6 @@ export default function DetallePedidoPage() {
         .order("created_at", { ascending: false }),
 
     ]);
-
-
 
     if (pedidoError) {
 
@@ -326,8 +278,6 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     if (!pedidoData) {
 
       setError("No encontramos ese pedido.");
@@ -337,8 +287,6 @@ export default function DetallePedidoPage() {
       return;
 
     }
-
-
 
     if (detallesError) {
 
@@ -362,8 +310,6 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     if (pagosError) {
 
       console.error(
@@ -386,11 +332,7 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     const pedidoCargado = pedidoData as Pedido;
-
-
 
     if (pedidoCargado.visto_admin === false) {
 
@@ -410,8 +352,6 @@ export default function DetallePedidoPage() {
 
         .eq("empresa_id", empresaId);
 
-
-
       if (errorVisto) {
 
         console.error(
@@ -430,8 +370,6 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     setPedido(pedidoCargado);
 
     setDetalles((detallesData as DetallePedido[]) || []);
@@ -442,15 +380,11 @@ export default function DetallePedidoPage() {
 
   }, [pedidoId, empresa?.id, cargandoEmpresa, errorEmpresa]);
 
-
-
   useEffect(() => {
 
     cargarDetallePedido();
 
   }, [cargarDetallePedido]);
-
-
 
   const pagosActivos = useMemo(
 
@@ -460,11 +394,7 @@ export default function DetallePedidoPage() {
 
   );
 
-
-
   const totalPedido = Number(pedido?.total || 0);
-
-
 
   const totalCobrado = useMemo(
 
@@ -482,11 +412,7 @@ export default function DetallePedidoPage() {
 
   );
 
-
-
   const saldoPendiente = Math.max(totalPedido - totalCobrado, 0);
-
-
 
   const porcentajeCobrado =
 
@@ -495,8 +421,6 @@ export default function DetallePedidoPage() {
       ? Math.min((totalCobrado / totalPedido) * 100, 100)
 
       : 0;
-
-
 
   const cantidadTotal = useMemo(
 
@@ -514,8 +438,6 @@ export default function DetallePedidoPage() {
 
   );
 
-
-
   const metodosUtilizados = useMemo(
 
     () =>
@@ -529,8 +451,6 @@ export default function DetallePedidoPage() {
     [pagosActivos]
 
   );
-
-
 
   function calcularEstadoPago(
 
@@ -548,8 +468,6 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   async function actualizarEstadoPagoAutomatico(
 
     nuevoTotalCobrado: number,
@@ -560,8 +478,6 @@ export default function DetallePedidoPage() {
 
     if (!pedido || !empresa?.id) return false;
 
-
-
     const nuevoEstado = calcularEstadoPago(
 
       nuevoTotalCobrado,
@@ -569,8 +485,6 @@ export default function DetallePedidoPage() {
       Number(pedido.total)
 
     );
-
-
 
     const cambios: {
 
@@ -588,15 +502,11 @@ export default function DetallePedidoPage() {
 
     };
 
-
-
     if (metodoUltimoPago) {
 
       cambios.metodo_pago = metodoUltimoPago;
 
     }
-
-
 
     const { error: errorActualizacion } = await supabase
 
@@ -607,8 +517,6 @@ export default function DetallePedidoPage() {
       .eq("id", pedido.id)
 
       .eq("empresa_id", pedido.empresa_id);
-
-
 
     if (errorActualizacion) {
 
@@ -623,8 +531,6 @@ export default function DetallePedidoPage() {
       return false;
 
     }
-
-
 
     setPedido((pedidoActual) =>
 
@@ -646,23 +552,15 @@ export default function DetallePedidoPage() {
 
     );
 
-
-
     return true;
 
   }
-
-
 
   async function cambiarEstado(nuevoEstado: string) {
 
     if (!pedido || guardandoEstado) return;
 
-
-
     const pedidoAnterior = pedido;
-
-
 
     setPedido({
 
@@ -675,8 +573,6 @@ export default function DetallePedidoPage() {
     setGuardandoEstado(true);
 
     setMensajeAccion("");
-
-
 
     const { error: errorActualizacion } = await supabase
 
@@ -693,8 +589,6 @@ export default function DetallePedidoPage() {
       .eq("id", pedido.id)
 
       .eq("empresa_id", pedido.empresa_id);
-
-
 
     if (errorActualizacion) {
 
@@ -720,13 +614,9 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     setGuardandoEstado(false);
 
   }
-
-
 
   async function registrarPago(
 
@@ -736,19 +626,13 @@ export default function DetallePedidoPage() {
 
     event.preventDefault();
 
-
-
     if (!pedido || registrandoPago) return;
-
-
 
     const importe = Number(
 
       importePago.replace(/\./g, "").replace(",", ".")
 
     );
-
-
 
     if (!Number.isFinite(importe) || importe <= 0) {
 
@@ -757,8 +641,6 @@ export default function DetallePedidoPage() {
       return;
 
     }
-
-
 
     if (importe > saldoPendiente + 0.009) {
 
@@ -776,13 +658,9 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     setRegistrandoPago(true);
 
     setMensajeAccion("");
-
-
 
     const { data: pagoCreado, error: errorPago } = await supabase
 
@@ -806,8 +684,6 @@ export default function DetallePedidoPage() {
 
       .single();
 
-
-
     if (errorPago || !pagoCreado) {
 
       console.error("Error al registrar pago:", errorPago);
@@ -828,11 +704,7 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     const nuevoTotalCobrado = totalCobrado + importe;
-
-
 
     const estadoActualizado =
 
@@ -843,8 +715,6 @@ export default function DetallePedidoPage() {
         metodoPago
 
       );
-
-
 
     if (!estadoActualizado) {
 
@@ -864,8 +734,6 @@ export default function DetallePedidoPage() {
 
         .eq("empresa_id", pedido.empresa_id);
 
-
-
       alert(
 
         "El pago no pudo sincronizarse con el pedido y fue anulado automáticamente."
@@ -880,8 +748,6 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     setPagos((pagosActuales) => [
 
       pagoCreado as PagoPedido,
@@ -889,8 +755,6 @@ export default function DetallePedidoPage() {
       ...pagosActuales,
 
     ]);
-
-
 
     setImportePago("");
 
@@ -902,13 +766,9 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   async function anularPago(pago: PagoPedido) {
 
     if (!pedido || pago.anulado || pagoAnulandoId !== null) return;
-
-
 
     const confirmar = window.confirm(
 
@@ -920,17 +780,11 @@ export default function DetallePedidoPage() {
 
     );
 
-
-
     if (!confirmar) return;
-
-
 
     setPagoAnulandoId(pago.id);
 
     setMensajeAccion("");
-
-
 
     const { error: errorAnulacion } = await supabase
 
@@ -950,8 +804,6 @@ export default function DetallePedidoPage() {
 
       .eq("empresa_id", pedido.empresa_id);
 
-
-
     if (errorAnulacion) {
 
       console.error("Error al anular pago:", errorAnulacion);
@@ -968,8 +820,6 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     const nuevoTotalCobrado = Math.max(
 
       totalCobrado - Number(pago.importe),
@@ -978,13 +828,9 @@ export default function DetallePedidoPage() {
 
     );
 
-
-
     const estadoActualizado =
 
       await actualizarEstadoPagoAutomatico(nuevoTotalCobrado);
-
-
 
     if (!estadoActualizado) {
 
@@ -1004,8 +850,6 @@ export default function DetallePedidoPage() {
 
         .eq("empresa_id", pedido.empresa_id);
 
-
-
       alert(
 
         "No se pudo sincronizar el estado del pedido. La anulación fue revertida."
@@ -1019,8 +863,6 @@ export default function DetallePedidoPage() {
       return;
 
     }
-
-
 
     setPagos((pagosActuales) =>
 
@@ -1044,21 +886,15 @@ export default function DetallePedidoPage() {
 
     );
 
-
-
     setMensajeAccion("Pago anulado correctamente.");
 
     setPagoAnulandoId(null);
 
   }
 
-
-
   async function copiarDireccion() {
 
     if (!pedido?.cliente_direccion) return;
-
-
 
     try {
 
@@ -1080,37 +916,25 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   function limpiarNumero(numero: string) {
 
     return numero.replace(/\D/g, "");
 
   }
 
-
-
   function obtenerNumeroPedido() {
 
     if (!pedido) return "";
-
-
 
     return String(pedido.numero ?? pedido.id).padStart(6, "0");
 
   }
 
-
-
   function abrirWhatsApp() {
 
     if (!pedido) return;
 
-
-
     const numero = limpiarNumero(pedido.cliente_telefono);
-
-
 
     if (!numero) {
 
@@ -1119,8 +943,6 @@ export default function DetallePedidoPage() {
       return;
 
     }
-
-
 
     const mensaje = encodeURIComponent(
 
@@ -1131,8 +953,6 @@ export default function DetallePedidoPage() {
       )}.`
 
     );
-
-
 
     window.open(
 
@@ -1146,17 +966,11 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   function llamarCliente() {
 
     if (!pedido) return;
 
-
-
     const numero = limpiarNumero(pedido.cliente_telefono);
-
-
 
     if (!numero) {
 
@@ -1166,21 +980,15 @@ export default function DetallePedidoPage() {
 
     }
 
-
-
     window.location.href = `tel:${numero}`;
 
   }
-
-
 
   function imprimirPedido() {
 
     window.print();
 
   }
-
-
 
   function formatearPrecio(precio: number) {
 
@@ -1198,8 +1006,6 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   function formatearFecha(fecha: string) {
 
     return new Intl.DateTimeFormat("es-AR", {
@@ -1212,8 +1018,6 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   function formatearFechaCorta(fecha: string) {
 
     return new Intl.DateTimeFormat("es-AR", {
@@ -1225,8 +1029,6 @@ export default function DetallePedidoPage() {
     }).format(new Date(fecha));
 
   }
-
-
 
   function clasesEstadoPedido(estado: string) {
 
@@ -1268,8 +1070,6 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   function clasesEstadoPago(estado: string) {
 
     switch (estado) {
@@ -1296,8 +1096,6 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   if (cargandoEmpresa || cargando) {
 
     return (
@@ -1307,8 +1105,6 @@ export default function DetallePedidoPage() {
         <div className="text-center">
 
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#2563EB]" />
-
-
 
           <p className="mt-4 text-slate-500">
 
@@ -1324,8 +1120,6 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   if (error || !pedido) {
 
     return (
@@ -1340,15 +1134,11 @@ export default function DetallePedidoPage() {
 
           </h1>
 
-
-
           <p className="mt-3 text-red-600">
 
             {error || "No se pudo cargar el pedido."}
 
           </p>
-
-
 
           <Link
 
@@ -1370,156 +1160,319 @@ export default function DetallePedidoPage() {
 
   }
 
-
-
   return (
 
     <main className="min-h-screen bg-[#F8FAFC] p-5 text-[#1E293B] sm:p-8 print:min-h-0 print:bg-white print:p-0">
 
       <div className="mx-auto max-w-7xl print:max-w-none">
+
         <style>{`
+
           @media print {
-            @page { size: A4 portrait; margin: 8mm; }
-            html, body { background: #fff !important; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A4 portrait; margin: 10mm; }
+            :root, html, body, #__next {
+              background: #ffffff !important;
+              color: #111827 !important;
+              color-scheme: light !important;
+              -webkit-print-color-adjust: economy !important;
+              print-color-adjust: economy !important;
+            }
+            main, main > div {
+              background: #ffffff !important;
+              color: #111827 !important;
+              box-shadow: none !important;
+              min-height: 0 !important;
+            }
+            /* Impresión independiente del tema oscuro del navegador o del sistema. */
+            #comersys-pedido-impresion {
+              display: block !important;
+              position: static !important;
+              visibility: visible !important;
+              background: #ffffff !important;
+              color: #111827 !important;
+              color-scheme: light !important;
+              -webkit-print-color-adjust: economy !important;
+              print-color-adjust: economy !important;
+              width: 100% !important;
+              font-size: 10px !important;
+              line-height: 1.35 !important;
+            }
+            #comersys-pedido-impresion *,
+            #comersys-pedido-impresion *::before,
+            #comersys-pedido-impresion *::after {
+              background-color: #ffffff !important;
+              color: #111827 !important;
+              border-color: #9ca3af !important;
+              box-shadow: none !important;
+              text-shadow: none !important;
+              color-scheme: light !important;
+            }
+            #comersys-pedido-impresion table { display: table !important; width: 100% !important; border-collapse: collapse !important; }
+            #comersys-pedido-impresion thead { display: table-header-group !important; }
+            #comersys-pedido-impresion tbody { display: table-row-group !important; }
+            #comersys-pedido-impresion tr { display: table-row !important; break-inside: avoid; }
+            #comersys-pedido-impresion th, #comersys-pedido-impresion td { display: table-cell !important; }
+            #comersys-pedido-impresion img { background: transparent !important; }
           }
+
         `}</style>
 
-        <section className="hidden print:block print:text-[10px] print:leading-tight print:text-black">
+        <section id="comersys-pedido-impresion" className="hidden print:block print:text-[10px] print:leading-tight print:text-black">
+
           <div className="border-2 border-black">
+
             <div className="flex items-start justify-between gap-6 border-b-2 border-black px-4 py-3">
+
               <div className="flex min-w-0 items-center gap-3">
+
                 {empresa?.logo ? (
+
                   <img
+
                     src={empresa.logo}
+
                     alt={`Logo de ${empresa.nombre || "la empresa"}`}
+
                     className="h-[48px] w-[150px] shrink-0 object-contain object-left"
+
                   />
+
                 ) : (
+
                   <div className="flex h-[48px] max-w-[180px] items-center">
+
                     <p className="text-[16px] font-black leading-tight tracking-tight">
+
                       {empresa?.nombre || "Empresa"}
+
                     </p>
+
                   </div>
+
                 )}
 
                 <div className="min-w-0">
+
                   {empresa?.logo && (
+
                     <p className="max-w-[190px] truncate text-[11px] font-black leading-tight">
+
                       {empresa.nombre}
+
                     </p>
+
                   )}
+
                   <p className="mt-1 text-[8px] font-bold uppercase tracking-[0.18em] text-slate-500">
+
                     Resumen de cuenta
+
                   </p>
+
                 </div>
+
               </div>
+
               <div className="max-w-[55%] text-right">
+
                 <p className="text-[8px] font-bold uppercase tracking-wide text-slate-500">Cliente</p>
+
                 <p className="text-[14px] font-black">{pedido.cliente_nombre}</p>
+
                 <p className="mt-0.5 text-[9px]">{pedido.cliente_telefono}</p>
+
                 {pedido.cliente_direccion && (
+
                   <p className="mt-0.5 text-[9px]">{pedido.cliente_direccion}</p>
+
                 )}
+
               </div>
+
             </div>
 
             <div className="grid grid-cols-[1.35fr_1fr] border-b border-black">
+
               <div className="border-r border-black px-4 py-2.5">
+
                 <p className="text-[8px] font-bold uppercase tracking-wide text-blue-700">Centro de gestión del pedido</p>
+
                 <div className="mt-1 flex items-center gap-3">
+
                   <h1 className="text-[17px] font-black">Pedido #{obtenerNumeroPedido()}</h1>
+
                   <span className="font-bold">{pedido.estado}</span>
+
                   <span className="font-bold">Pago: {pedido.estado_pago}</span>
+
                 </div>
+
                 <p className="mt-1 text-[9px] text-slate-600">{formatearFecha(pedido.created_at)}</p>
+
               </div>
+
               <div className="grid grid-cols-3 divide-x divide-black">
+
                 <div className="px-2 py-2.5 text-center">
+
                   <p className="text-[7px] uppercase text-slate-500">Total</p>
+
                   <p className="mt-1 text-[12px] font-black">{formatearPrecio(totalPedido)}</p>
+
                 </div>
+
                 <div className="px-2 py-2.5 text-center">
+
                   <p className="text-[7px] uppercase text-slate-500">Cobrado</p>
+
                   <p className="mt-1 text-[12px] font-black">{formatearPrecio(totalCobrado)}</p>
+
                 </div>
+
                 <div className="px-2 py-2.5 text-center">
+
                   <p className="text-[7px] uppercase text-slate-500">Saldo</p>
+
                   <p className="mt-1 text-[12px] font-black">{formatearPrecio(saldoPendiente)}</p>
+
                 </div>
+
               </div>
+
             </div>
 
             <div className="px-4 py-2.5">
+
               <div className="mb-1.5 flex items-end justify-between">
+
                 <div>
+
                   <h2 className="text-[12px] font-black">Productos</h2>
+
                   <p className="text-[8px] text-slate-500">{detalles.length} producto(s) · {cantidadTotal} unidad(es)</p>
+
                 </div>
+
                 <p className="text-[8px] font-semibold">Cobrado {porcentajeCobrado.toFixed(0)}%</p>
+
               </div>
 
               <table className="w-full border-collapse">
+
                 <thead>
+
                   <tr className="border-y border-black text-left text-[8px] uppercase">
+
                     <th className="py-1.5 pr-2">Producto</th>
+
                     <th className="w-[12%] py-1.5 text-center">Cant.</th>
+
                     <th className="w-[20%] py-1.5 text-right">Precio</th>
+
                     <th className="w-[20%] py-1.5 text-right">Subtotal</th>
+
                   </tr>
+
                 </thead>
+
                 <tbody>
+
                   {detalles.map((detalle) => (
+
                     <tr key={detalle.id} className="border-b border-slate-300 break-inside-avoid">
+
                       <td className="py-1.5 pr-2 font-semibold">{detalle.producto_nombre}</td>
+
                       <td className="py-1.5 text-center font-bold">{detalle.cantidad}</td>
+
                       <td className="py-1.5 text-right">{formatearPrecio(Number(detalle.precio_unitario))}</td>
+
                       <td className="py-1.5 text-right font-bold">{formatearPrecio(Number(detalle.subtotal))}</td>
+
                     </tr>
+
                   ))}
+
                 </tbody>
+
               </table>
+
             </div>
 
             <div className="grid grid-cols-2 border-t border-black">
+
               <div className="border-r border-black px-4 py-2.5">
+
                 <h2 className="text-[10px] font-black">Pagos</h2>
+
                 {pagosActivos.length === 0 ? (
+
                   <p className="mt-1 text-[8px] text-slate-500">Sin pagos registrados.</p>
+
                 ) : (
+
                   <div className="mt-1 space-y-1">
+
                     {pagosActivos.map((pago) => (
+
                       <div key={pago.id} className="flex justify-between gap-3 text-[8px]">
+
                         <span>{formatearFechaCorta(pago.created_at)} · {pago.metodo_pago}</span>
+
                         <span className="font-bold">{formatearPrecio(Number(pago.importe))}</span>
+
                       </div>
+
                     ))}
+
                   </div>
+
                 )}
+
               </div>
+
               <div className="px-4 py-2.5">
+
                 <div className="flex justify-between"><span>Subtotal</span><b>{formatearPrecio(Number(pedido.subtotal))}</b></div>
+
                 {Number(pedido.costo_envio || 0) > 0 && (
+
                   <div className="mt-1 flex justify-between"><span>Envío</span><b>{formatearPrecio(Number(pedido.costo_envio || 0))}</b></div>
+
                 )}
+
                 {Number(pedido.descuento || 0) > 0 && (
+
                   <div className="mt-1 flex justify-between"><span>Descuento</span><b>- {formatearPrecio(Number(pedido.descuento || 0))}</b></div>
+
                 )}
+
                 <div className="mt-1.5 flex justify-between border-t border-black pt-1.5 text-[12px] font-black"><span>Total</span><span>{formatearPrecio(totalPedido)}</span></div>
+
                 <div className="mt-1 flex justify-between font-bold"><span>Saldo pendiente</span><span>{formatearPrecio(saldoPendiente)}</span></div>
+
               </div>
+
             </div>
 
             {(pedido.observaciones || pedido.metodo_entrega) && (
+
               <div className="border-t border-black px-4 py-2 text-[8px]">
+
                 {pedido.metodo_entrega && <p><b>Entrega:</b> {pedido.metodo_entrega}</p>}
+
                 {pedido.observaciones && <p className="mt-1"><b>Observaciones:</b> {pedido.observaciones}</p>}
+
               </div>
+
             )}
+
           </div>
+
         </section>
 
         <div className="print:hidden">
+
           <div className="print:hidden">
 
           <Link
@@ -1536,8 +1489,6 @@ export default function DetallePedidoPage() {
 
         </div>
 
-
-
         <header className="mt-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
 
           <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
@@ -1550,8 +1501,6 @@ export default function DetallePedidoPage() {
 
               </p>
 
-
-
               <div className="mt-2 flex flex-wrap items-center gap-3">
 
                 <h1 className="text-3xl font-bold sm:text-4xl">
@@ -1559,8 +1508,6 @@ export default function DetallePedidoPage() {
                   Pedido #{obtenerNumeroPedido()}
 
                 </h1>
-
-
 
                 <span
 
@@ -1575,8 +1522,6 @@ export default function DetallePedidoPage() {
                   {pedido.estado}
 
                 </span>
-
-
 
                 <span
 
@@ -1594,15 +1539,11 @@ export default function DetallePedidoPage() {
 
               </div>
 
-
-
               <p className="mt-3 text-sm text-slate-500">
 
                 {formatearFecha(pedido.created_at)}
 
               </p>
-
-
 
               {mensajeAccion && (
 
@@ -1615,8 +1556,6 @@ export default function DetallePedidoPage() {
               )}
 
             </div>
-
-
 
             <div className="w-full xl:max-w-xs print:hidden">
 
@@ -1631,8 +1570,6 @@ export default function DetallePedidoPage() {
                 Estado del pedido
 
               </label>
-
-
 
               <select
 
@@ -1664,8 +1601,6 @@ export default function DetallePedidoPage() {
 
               </select>
 
-
-
               <p className="mt-2 text-xs text-slate-500">
 
                 El estado del pago se calcula automáticamente.
@@ -1677,8 +1612,6 @@ export default function DetallePedidoPage() {
           </div>
 
         </header>
-
-
 
         <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
 
@@ -1696,8 +1629,6 @@ export default function DetallePedidoPage() {
 
           </button>
 
-
-
           <button
 
             type="button"
@@ -1711,8 +1642,6 @@ export default function DetallePedidoPage() {
             📞 Llamar
 
           </button>
-
-
 
           <button
 
@@ -1730,8 +1659,6 @@ export default function DetallePedidoPage() {
 
           </button>
 
-
-
           <button
 
             type="button"
@@ -1748,8 +1675,6 @@ export default function DetallePedidoPage() {
 
         </section>
 
-
-
         <section className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
 
           <div className="border-b border-slate-200 p-6">
@@ -1764,8 +1689,6 @@ export default function DetallePedidoPage() {
 
                 </h2>
 
-
-
                 <p className="mt-1 text-sm text-slate-500">
 
                   Registrá pagos parciales y consultá el saldo en tiempo real.
@@ -1773,8 +1696,6 @@ export default function DetallePedidoPage() {
                 </p>
 
               </div>
-
-
 
               <span
 
@@ -1794,8 +1715,6 @@ export default function DetallePedidoPage() {
 
           </div>
 
-
-
           <div className="grid gap-6 p-6 xl:grid-cols-[1fr_420px]">
 
             <div>
@@ -1810,8 +1729,6 @@ export default function DetallePedidoPage() {
 
                   </p>
 
-
-
                   <p className="mt-2 text-2xl font-bold">
 
                     {formatearPrecio(totalPedido)}
@@ -1819,8 +1736,6 @@ export default function DetallePedidoPage() {
                   </p>
 
                 </div>
-
-
 
                 <div className="rounded-2xl bg-green-50 p-5">
 
@@ -1830,8 +1745,6 @@ export default function DetallePedidoPage() {
 
                   </p>
 
-
-
                   <p className="mt-2 text-2xl font-bold text-green-700">
 
                     {formatearPrecio(totalCobrado)}
@@ -1840,8 +1753,6 @@ export default function DetallePedidoPage() {
 
                 </div>
 
-
-
                 <div className="rounded-2xl bg-amber-50 p-5">
 
                   <p className="text-sm text-amber-700">
@@ -1849,8 +1760,6 @@ export default function DetallePedidoPage() {
                     Saldo pendiente
 
                   </p>
-
-
 
                   <p className="mt-2 text-2xl font-bold text-amber-700">
 
@@ -1862,8 +1771,6 @@ export default function DetallePedidoPage() {
 
               </div>
 
-
-
               <div className="mt-5">
 
                 <div className="flex items-center justify-between text-sm">
@@ -1874,8 +1781,6 @@ export default function DetallePedidoPage() {
 
                   </span>
 
-
-
                   <span className="font-bold">
 
                     {porcentajeCobrado.toFixed(0)}%
@@ -1883,8 +1788,6 @@ export default function DetallePedidoPage() {
                   </span>
 
                 </div>
-
-
 
                 <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
 
@@ -1904,8 +1807,6 @@ export default function DetallePedidoPage() {
 
               </div>
 
-
-
               {metodosUtilizados.length > 0 && (
 
                 <div className="mt-5">
@@ -1915,8 +1816,6 @@ export default function DetallePedidoPage() {
                     Métodos utilizados
 
                   </p>
-
-
 
                   <div className="mt-2 flex flex-wrap gap-2">
 
@@ -1942,8 +1841,6 @@ export default function DetallePedidoPage() {
 
               )}
 
-
-
               <div className="mt-6">
 
                 <h3 className="font-bold">
@@ -1951,8 +1848,6 @@ export default function DetallePedidoPage() {
                   Historial de pagos
 
                 </h3>
-
-
 
                 {pagos.length === 0 ? (
 
@@ -1996,8 +1891,6 @@ export default function DetallePedidoPage() {
 
                               </p>
 
-
-
                               {pago.anulado && (
 
                                 <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
@@ -2010,8 +1903,6 @@ export default function DetallePedidoPage() {
 
                             </div>
 
-
-
                             <p className="mt-1 text-sm text-slate-500">
 
                               {formatearFechaCorta(
@@ -2021,8 +1912,6 @@ export default function DetallePedidoPage() {
                               )}
 
                             </p>
-
-
 
                             {pago.observaciones && (
 
@@ -2035,8 +1924,6 @@ export default function DetallePedidoPage() {
                             )}
 
                           </div>
-
-
 
                           <div className="text-left sm:text-right">
 
@@ -2061,8 +1948,6 @@ export default function DetallePedidoPage() {
                               )}
 
                             </p>
-
-
 
                             {!pago.anulado && (
 
@@ -2108,8 +1993,6 @@ export default function DetallePedidoPage() {
 
             </div>
 
-
-
             <div className="print:hidden">
 
               <div className="rounded-2xl bg-slate-50 p-5">
@@ -2119,8 +2002,6 @@ export default function DetallePedidoPage() {
                   Registrar nuevo pago
 
                 </h3>
-
-
 
                 {saldoPendiente <= 0 ? (
 
@@ -2154,8 +2035,6 @@ export default function DetallePedidoPage() {
 
                       </label>
 
-
-
                       <input
 
                         id="importe-pago"
@@ -2177,8 +2056,6 @@ export default function DetallePedidoPage() {
                         className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
 
                       />
-
-
 
                       <button
 
@@ -2204,8 +2081,6 @@ export default function DetallePedidoPage() {
 
                     </div>
 
-
-
                     <div>
 
                       <label
@@ -2219,8 +2094,6 @@ export default function DetallePedidoPage() {
                         Forma de pago
 
                       </label>
-
-
 
                       <select
 
@@ -2252,8 +2125,6 @@ export default function DetallePedidoPage() {
 
                     </div>
 
-
-
                     <div>
 
                       <label
@@ -2273,8 +2144,6 @@ export default function DetallePedidoPage() {
                         </span>
 
                       </label>
-
-
 
                       <textarea
 
@@ -2301,8 +2170,6 @@ export default function DetallePedidoPage() {
                       />
 
                     </div>
-
-
 
                     <button
 
@@ -2334,8 +2201,6 @@ export default function DetallePedidoPage() {
 
         </section>
 
-
-
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
 
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -2350,8 +2215,6 @@ export default function DetallePedidoPage() {
 
                 </h2>
 
-
-
                 <p className="mt-1 text-sm text-slate-500">
 
                   {detalles.length} producto(s) diferente(s)
@@ -2360,8 +2223,6 @@ export default function DetallePedidoPage() {
 
               </div>
 
-
-
               <p className="text-sm font-semibold text-slate-600">
 
                 {cantidadTotal} unidad(es)
@@ -2369,8 +2230,6 @@ export default function DetallePedidoPage() {
               </p>
 
             </div>
-
-
 
             {detalles.length === 0 ? (
 
@@ -2416,8 +2275,6 @@ export default function DetallePedidoPage() {
 
                     )}
 
-
-
                     <div className="min-w-0 flex-1">
 
                       <h3 className="font-bold">
@@ -2425,8 +2282,6 @@ export default function DetallePedidoPage() {
                         {detalle.producto_nombre}
 
                       </h3>
-
-
 
                       <p className="mt-2 text-sm text-slate-500">
 
@@ -2441,8 +2296,6 @@ export default function DetallePedidoPage() {
                       </p>
 
                     </div>
-
-
 
                     <p className="text-xl font-bold">
 
@@ -2464,8 +2317,6 @@ export default function DetallePedidoPage() {
 
           </section>
 
-
-
           <aside className="space-y-6">
 
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -2475,8 +2326,6 @@ export default function DetallePedidoPage() {
                 Cliente
 
               </h2>
-
-
 
               <div className="mt-5 space-y-4">
 
@@ -2488,8 +2337,6 @@ export default function DetallePedidoPage() {
 
                   </p>
 
-
-
                   <p className="mt-1 font-semibold">
 
                     {pedido.cliente_nombre}
@@ -2497,8 +2344,6 @@ export default function DetallePedidoPage() {
                   </p>
 
                 </div>
-
-
 
                 <div>
 
@@ -2508,8 +2353,6 @@ export default function DetallePedidoPage() {
 
                   </p>
 
-
-
                   <p className="mt-1 text-sm text-slate-600">
 
                     {pedido.cliente_telefono}
@@ -2518,8 +2361,6 @@ export default function DetallePedidoPage() {
 
                 </div>
 
-
-
                 <div>
 
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -2527,8 +2368,6 @@ export default function DetallePedidoPage() {
                     Dirección
 
                   </p>
-
-
 
                   <p className="mt-1 text-sm text-slate-600">
 
@@ -2540,8 +2379,6 @@ export default function DetallePedidoPage() {
 
               </div>
 
-
-
               {pedido.observaciones && (
 
                 <div className="mt-5 rounded-2xl bg-slate-50 p-4">
@@ -2551,8 +2388,6 @@ export default function DetallePedidoPage() {
                     Observaciones
 
                   </p>
-
-
 
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
 
@@ -2566,8 +2401,6 @@ export default function DetallePedidoPage() {
 
             </section>
 
-
-
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
 
               <h2 className="text-xl font-bold">
@@ -2575,8 +2408,6 @@ export default function DetallePedidoPage() {
                 Resumen
 
               </h2>
-
-
 
               <div className="mt-5 space-y-3 text-sm">
 
@@ -2587,8 +2418,6 @@ export default function DetallePedidoPage() {
                     Subtotal
 
                   </span>
-
-
 
                   <span className="font-semibold">
 
@@ -2602,8 +2431,6 @@ export default function DetallePedidoPage() {
 
                 </div>
 
-
-
                 <div className="flex justify-between gap-4">
 
                   <span className="text-slate-500">
@@ -2611,8 +2438,6 @@ export default function DetallePedidoPage() {
                     Envío
 
                   </span>
-
-
 
                   <span className="font-semibold">
 
@@ -2626,8 +2451,6 @@ export default function DetallePedidoPage() {
 
                 </div>
 
-
-
                 <div className="flex justify-between gap-4">
 
                   <span className="text-slate-500">
@@ -2635,8 +2458,6 @@ export default function DetallePedidoPage() {
                     Descuento
 
                   </span>
-
-
 
                   <span className="font-semibold">
 
@@ -2654,8 +2475,6 @@ export default function DetallePedidoPage() {
 
               </div>
 
-
-
               <div className="mt-5 flex items-center justify-between gap-4 border-t border-slate-200 pt-5">
 
                 <span className="text-lg font-semibold">
@@ -2664,8 +2483,6 @@ export default function DetallePedidoPage() {
 
                 </span>
 
-
-
                 <span className="text-2xl font-bold">
 
                   {formatearPrecio(Number(pedido.total))}
@@ -2673,8 +2490,6 @@ export default function DetallePedidoPage() {
                 </span>
 
               </div>
-
-
 
               <div className="mt-5 grid gap-3">
 
@@ -2685,8 +2500,6 @@ export default function DetallePedidoPage() {
                     Estado del pago
 
                   </p>
-
-
 
                   <span
 
@@ -2704,8 +2517,6 @@ export default function DetallePedidoPage() {
 
                 </div>
 
-
-
                 <div className="rounded-2xl bg-slate-50 p-4">
 
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -2713,8 +2524,6 @@ export default function DetallePedidoPage() {
                     Método de entrega
 
                   </p>
-
-
 
                   <p className="mt-2 font-semibold">
 
