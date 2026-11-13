@@ -1183,6 +1183,26 @@ export default function DetallePedidoPage() {
               box-shadow: none !important;
               min-height: 0 !important;
             }
+            /* Ocultar por completo las capas de la aplicacion (incluidos
+               fondos oscuros, botones flotantes y overlays) al imprimir. */
+            body * {
+              visibility: hidden !important;
+            }
+            body::before, body::after,
+            html::before, html::after {
+              content: none !important;
+              display: none !important;
+            }
+            #comersys-pedido-impresion,
+            #comersys-pedido-impresion *,
+            #comersys-pedido-impresion *::before,
+            #comersys-pedido-impresion *::after {
+              visibility: visible !important;
+            }
+            /* El panel de gestion nunca debe ocupar espacio en el PDF. */
+            #comersys-pedido-impresion ~ div {
+              display: none !important;
+            }
             /* Impresión independiente del tema oscuro del navegador o del sistema. */
             #comersys-pedido-impresion {
               display: block !important;
