@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
 
 type CatalogoExterno = {
   id: number;
@@ -126,70 +125,36 @@ export default function CatalogoExternoPublicoPage() {
       }
 
       try {
-        const { data: catalogoData, error: errorCatalogo } = await supabase
-          .from("catalogos_externos")
-          .select("id, nombre, slug, descripcion, logo_url, foto_perfil_url, portada_url, whatsapp, color_principal, color_secundario, activo")
-          .eq("slug", slug)
-          .eq("activo", true)
-          .maybeSingle();
+        // El servidor valida que el catálogo esté publicado y entrega únicamente
+        // los productos activos y visibles. Evitamos lecturas anónimas sujetas a RLS.
+        const respuesta = await fetch(
+          `/api/catalogo-externo/publico?slug=${encodeURIComponent(slug)}`,
+          { method: "GET", cache: "no-store" }
+        );
+        const datos: {
+          ok?: boolean;
+          error?: string;
+          catalogo?: CatalogoExterno;
+          categorias?: CategoriaExterna[];
+          productos?: ProductoExterno[];
+          multimedia?: MultimediaExterna[];
+          colores?: ColorCatalogoExterno[];
+        } = await respuesta.json();
 
-        if (errorCatalogo) throw errorCatalogo;
-        if (!catalogoData) {
-          if (vigente) setError("No encontramos este catálogo o todavía no está publicado.");
-          return;
-        }
-
-        const { data: categoriasData, error: errorCategorias } = await supabase
-          .from("categorias_externas")
-          .select("id, catalogo_id, nombre, orden, activo")
-          .eq("catalogo_id", catalogoData.id)
-          .eq("activo", true)
-          .order("orden", { ascending: true })
-          .order("nombre", { ascending: true });
-
-        if (errorCategorias) throw errorCategorias;
-
-        const { data: productosData, error: errorProductos } = await supabase
-          .from("productos_externos")
-          .select("id, catalogo_id, categoria_id, nombre, codigo, descripcion, precio, precio_mayorista, cantidad_minima_mayorista, stock, controlar_stock, imagen_url, activo, visible, colores")
-          .eq("catalogo_id", catalogoData.id)
-          .eq("activo", true)
-          .eq("visible", true);
-
-        if (errorProductos) throw errorProductos;
-        if (!vigente) return;
-
-        // Los colores visibles pertenecen únicamente a este comercio.
-        // Si falla esta consulta, el catálogo sigue disponible sin círculos.
-        const { data: coloresData, error: errorColores } = await supabase
-          .from("colores_catalogos_externos")
-          .select("nombre, codigo_hex")
-          .eq("catalogo_id", catalogoData.id)
-          .order("nombre", { ascending: true });
-        if (errorColores) {
-          console.warn("No se pudieron consultar los colores del catálogo externo:", errorColores);
+        if (!respuesta.ok || !datos.ok || !datos.catalogo) {
+          throw new Error(datos.error || "No pudimos cargar el catálogo.");
         }
         if (!vigente) return;
-        setColoresCatalogo(errorColores ? [] : (coloresData || []) as ColorCatalogoExterno[]);
 
-        const {data: multimediaData, error: errorMultimedia} = await supabase
-          .from("producto_multimedia_externo")
-          .select("id,producto_id,tipo,url,orden,activo")
-          .eq("catalogo_id",catalogoData.id)
-          .eq("activo",true)
-          .order("orden",{ascending:true})
-          .order("id",{ascending:true});
-        if (errorMultimedia) throw errorMultimedia;
-        if (!vigente) return;
-        setMultimedia((multimediaData || []) as MultimediaExterna[]);
-
-        setCatalogo(catalogoData as CatalogoExterno);
-        setCategorias((categoriasData || []) as CategoriaExterna[]);
-        setProductos((productosData || []) as ProductoExterno[]);
+        setCatalogo(datos.catalogo);
+        setCategorias(datos.categorias || []);
+        setProductos(datos.productos || []);
+        setMultimedia(datos.multimedia || []);
+        setColoresCatalogo(datos.colores || []);
       } catch (fallo) {
         if (vigente) {
           console.error("Error al cargar catálogo externo:", fallo);
-          setError("No pudimos cargar el catálogo. Intentá nuevamente más tarde.");
+          setError(fallo instanceof Error ? fallo.message : "No pudimos cargar el catálogo. Intentá nuevamente más tarde.");
         }
       } finally {
         if (vigente) setCargando(false);

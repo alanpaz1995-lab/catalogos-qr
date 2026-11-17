@@ -1,44 +1,38 @@
+
 import { supabase } from "@/lib/supabase";
 import type { Empresa } from "@/types/empresa";
 
 export async function obtenerEmpresaActual(): Promise<Empresa> {
   const {
-    data: { user },
-    error: errorUsuario,
-  } = await supabase.auth.getUser();
+    data: { session },
+    error: errorSesion,
+  } = await supabase.auth.getSession();
 
-  if (errorUsuario) {
-    throw new Error(
-      `No se pudo verificar la sesión: ${errorUsuario.message}`
-    );
-  }
-
-  if (!user) {
+  if (errorSesion || !session?.access_token) {
     throw new Error(
       "Tu sesión no está activa. Iniciá sesión nuevamente."
     );
   }
 
-  const {
-    data: empresa,
-    error: errorEmpresa,
-  } = await supabase
-    .from("empresas")
-    .select("*")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
+  const respuesta = await fetch("/api/empresa/dashboard", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    cache: "no-store",
+  });
 
-  if (errorEmpresa) {
+  const resultado: {
+    ok?: boolean;
+    empresa?: Empresa;
+    error?: string;
+  } = await respuesta.json();
+
+  if (!respuesta.ok || resultado.ok !== true || !resultado.empresa) {
     throw new Error(
-      `No se pudo cargar la empresa: ${errorEmpresa.message}`
+      resultado.error || "No se pudo cargar la empresa."
     );
   }
 
-  if (!empresa) {
-    throw new Error(
-      "No encontramos una empresa asociada a tu cuenta."
-    );
-  }
-
-  return empresa as Empresa;
+  return resultado.empresa;
 }

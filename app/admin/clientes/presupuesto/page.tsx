@@ -1,7 +1,5 @@
 "use client";
 
-
-
 import Link from "next/link";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,8 +9,6 @@ import { supabase } from "@/lib/supabase";
 import { crearCliente } from "@/services/clientes";
 
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
-
-
 
 type Producto = {
 
@@ -36,8 +32,6 @@ type Producto = {
 
 };
 
-
-
 type Lista = { id: number; nombre: string; activa: boolean };
 
 type PrecioLista = { producto_id: number; lista_id: number; precio_minorista: number | null; precio_mayorista: number | null; visible: boolean };
@@ -47,6 +41,28 @@ type Seleccion = { cantidad: number | ""; lista: string; tipoPrecio: "minorista"
 type DescuentoTipo = "ninguno" | "porcentaje" | "fijo";
 
 type TipoDocumento = "presupuesto" | "remito";
+
+type OperacionDocumento = { operacion_id: string; numero: number };
+
+const UUID_OPERACION = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function mostrarNumeroOperacion(numero: number): string {
+  // Un único contador por empresa, presentado en dos grupos.
+  return `${String(Math.floor(numero / 100)).padStart(5, "0")}-${String(numero % 100).padStart(2, "0")}`;
+}
+
+function recuperarOperacionPDF(texto: string, empresaId: number): OperacionDocumento | null {
+  const match = texto.match(/COMERSYS_OPERACION_V1\s*:\s*(\d+)\s*:\s*([0-9a-f-]{36})\s*:\s*(\d+)\s*:\s*FIN_COMERSYS_OPERACION/i);
+  if (!match) return null;
+  const idEmpresa = Number(match[1]);
+  const numero = Number(match[3]);
+  if (idEmpresa !== empresaId || !UUID_OPERACION.test(match[2]) || !Number.isSafeInteger(numero) || numero < 1) {
+    throw new Error("El PDF contiene una referencia de operación inválida o de otra empresa.");
+  }
+  return { operacion_id: match[2], numero };
+}
+
+
 
 type Cliente = {
 
@@ -74,8 +90,6 @@ const CLIENTE_VACIO: FormCliente = { nombre: "", telefono: "", email: "", direcc
 
 const inputCliente = "mt-1.5 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-500";
 
-
-
 const MONEDA = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
 
 const pesos = (n: number) => MONEDA.format(n);
@@ -83,10 +97,6 @@ const pesos = (n: number) => MONEDA.format(n);
 const escapar = (valor: unknown) => String(valor ?? "").replace(/[&<>"']/g, (caracter) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[caracter] || caracter);
 
 const numeroSeguro = (valor: unknown) => { const n = Number(valor); return Number.isFinite(n) && n >= 0 ? n : 0; };
-
-
-
-
 
 // Importación de documentos PDF generados por «Calcular mi compra».
 
@@ -101,75 +111,140 @@ type FilaCalculoPDF = { codigo: string; nombre: string; cantidad: number; precio
 type CoincidenciaPendientePDF = { fila: FilaCalculoPDF; candidatos: number[] };
 
 // Los presupuestos generados en este módulo incluyen un marcador de datos
+
 // que permite reabrirlos sin depender de las posiciones visuales de la tabla.
+
 type PresupuestoReeditablePDF = {
+
   formato: "COMERSYS_PRESUPUESTO_V1";
+
   empresa_id: number;
+
   cliente: string;
+
   cliente_id?: number | null;
+
+  operacion_id?: string;
+
+  numero_operacion?: number;
+
   mensaje?: string;
+
   subtotal: number;
+
   descuento_tipo: DescuentoTipo;
+
   descuento_valor: number;
+
   total: number;
+
   productos: {
+
     id: number;
+
     nombre: string;
+
     cantidad: number;
+
     lista: string;
+
     tipo_precio: "minorista" | "mayorista";
+
     precio_unitario: number;
+
   }[];
+
 };
 
 function extraerPresupuestoReeditable(texto: string): PresupuestoReeditablePDF | null {
+
   const match = texto.match(/COMERSYS_PRESUPUESTO_V1\s*:\s*([A-Za-z0-9+/=\s]+?)\s*:\s*FIN_COMERSYS_PRESUPUESTO/);
+
   if (!match) return null;
+
   let dato: unknown;
+
   try {
+
     const codificado = match[1].replace(/\s/g, "");
+
     dato = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(codificado), c => c.charCodeAt(0))));
+
   } catch {
+
     throw new Error("El presupuesto tiene datos internos dañados y no se puede reabrir.");
+
   }
+
   if (!dato || typeof dato !== "object") throw new Error("Los datos del presupuesto no son válidos.");
+
   const v = dato as PresupuestoReeditablePDF;
+
   if (v.formato !== "COMERSYS_PRESUPUESTO_V1" || !Number.isSafeInteger(v.empresa_id) || v.empresa_id < 1) {
+
     throw new Error("El presupuesto no tiene un identificador de empresa válido.");
+
   }
+
   if (!Array.isArray(v.productos) || !v.productos.length || v.productos.length > 5000) {
+
     throw new Error("El presupuesto no contiene productos válidos.");
+
   }
+
   const ids = new Set<number>();
+
   for (const item of v.productos) {
+
     if (!item || !Number.isSafeInteger(item.id) || item.id < 1 || ids.has(item.id) ||
+
         typeof item.nombre !== "string" || !Number.isSafeInteger(item.cantidad) || item.cantidad < 1 ||
+
         !Number.isFinite(item.precio_unitario) || item.precio_unitario < 0 ||
+
         !["minorista", "mayorista"].includes(item.tipo_precio) ||
+
         !(item.lista === "principal" || (/^[0-9]+$/.test(item.lista) && Number(item.lista) > 0))) {
+
       throw new Error("El presupuesto contiene un producto con datos inválidos.");
+
     }
+
     ids.add(item.id);
+
   }
+
   if (!["ninguno", "porcentaje", "fijo"].includes(v.descuento_tipo) ||
+
       !Number.isFinite(v.descuento_valor) || v.descuento_valor < 0 ||
+
       (v.descuento_tipo === "porcentaje" && v.descuento_valor > 100) ||
+
       !Number.isFinite(v.subtotal) || !Number.isFinite(v.total) || v.total < 0) {
+
     throw new Error("El presupuesto contiene totales o descuentos inválidos.");
+
   }
+
   const subtotalCalculado = v.productos.reduce((ac, item) => ac + item.cantidad * item.precio_unitario, 0);
+
   const descuentoCalculado = v.descuento_tipo === "porcentaje"
+
     ? subtotalCalculado * v.descuento_valor / 100
+
     : v.descuento_tipo === "fijo" ? Math.min(subtotalCalculado, v.descuento_valor) : 0;
+
   if (Math.abs(subtotalCalculado - v.subtotal) > 0.03 ||
+
       Math.abs(Math.max(0, subtotalCalculado - descuentoCalculado) - v.total) > 0.03) {
+
     throw new Error("Los importes internos del presupuesto no coinciden. No se modificó la selección.");
+
   }
+
   return v;
+
 }
-
-
-
 
 type PDFJsMinimo = {
 
@@ -187,19 +262,15 @@ type PDFJsMinimo = {
 
 };
 
-
-
 declare global {
 
   interface Window { pdfjsLib?: PDFJsMinimo }
 
 }
 
+const PDF_JS_CDN = "https\://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 
-
-const PDF_JS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-
-const PDF_WORKER_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const PDF_WORKER_CDN = "https\://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 let promesaPDFJS: Promise<PDFJsMinimo> | null = null;
 
@@ -239,8 +310,6 @@ function obtenerPDFJS(): Promise<PDFJsMinimo> {
 
 }
 
-
-
 function normalizarCoincidencia(texto: string) {
 
   return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLocaleLowerCase("es");
@@ -272,8 +341,6 @@ function precioExtraido(texto: string) {
   return Number(num);
 
 }
-
-
 
 // Se identifican las columnas por su posición en el PDF. No se interpreta
 
@@ -354,11 +421,17 @@ function extraerFilasCalculo(lineas: LineaPDF[]): FilaCalculoPDF[] {
     }
 
     // Los importes y la cantidad se alinean a la DERECHA en el PDF
+
     // (a diferencia de los encabezados, alineados a la izquierda).
+
     // Usar el punto medio entre títulos mezclaba Cantidad con Precio
+
     // y hacía que un PDF válido pareciera no contener productos.
+
     // El margen anterior a cada encabezado respeta el ancho disponible
+
     // y permite reconocer también importes con distintas cifras.
+
     const limites = [
 
       (columnas[0] + columnas[1]) / 2,
@@ -390,7 +463,9 @@ function extraerFilasCalculo(lineas: LineaPDF[]): FilaCalculoPDF[] {
     const subtotal = precioExtraido(c[4]);
 
     // No aceptar filas ajenas a la tabla ni importes incoherentes.
+
     // El margen de dos centavos contempla redondeos de impresión.
+
     const esRenglon = Boolean(c[1]) && Number.isSafeInteger(cantidad) && cantidad > 0 && c[2] !== "" &&
 
       Number.isFinite(precio) && precio >= 0 && Number.isFinite(subtotal) && subtotal >= 0 &&
@@ -421,9 +496,7 @@ function extraerFilasCalculo(lineas: LineaPDF[]): FilaCalculoPDF[] {
 
 }
 
-
-
-async function leerCalculoPDF(archivo: File) {
+async function leerCalculoPDF(archivo: File, empresaId: number) {
 
   if (!archivo.name.toLowerCase().endsWith(".pdf")) {
 
@@ -446,6 +519,7 @@ async function leerCalculoPDF(archivo: File) {
   const lineas: LineaPDF[] = [];
 
   let clientePDF: { nombre: string; telefono: string } | null = null;
+
   let textoMarcador = "";
 
   try {
@@ -455,6 +529,7 @@ async function leerCalculoPDF(archivo: File) {
       const pagina = await pdf.getPage(numero);
 
       const contenido = await pagina.getTextContent();
+
       textoMarcador += "\n" + contenido.items.map(item => (item && typeof item === "object" && "str" in item) ? String(item.str) : "").join("");
 
       const agrupadas: LineaPDF[] = [];
@@ -501,18 +576,21 @@ async function leerCalculoPDF(archivo: File) {
 
   } finally { pdf.cleanup(); }
 
+  // La referencia acompaña tanto a cálculos de compra como a presupuestos y remitos.
+  // No es una credencial: el servidor deberá validar su pertenencia al guardar un pedido.
+  const operacion = recuperarOperacionPDF(textoMarcador, empresaId);
   const presupuesto = extraerPresupuestoReeditable(textoMarcador);
-  if (presupuesto) return { tipo: "presupuesto" as const, presupuesto };
+
+  if (presupuesto) return { tipo: "presupuesto" as const, presupuesto, operacion };
+
 
   const filas = extraerFilasCalculo(lineas);
 
   if (!filas.length) throw new Error("No encontré la tabla de «Mi cálculo de compra». Usá el PDF generado desde el catálogo y no una fotografía o un PDF escaneado.");
 
-  return { tipo: "calculo" as const, filas, clientePDF };
+  return { tipo: "calculo" as const, filas, clientePDF, operacion };
 
 }
-
-
 
 export default function PresupuestoClientePage() {
 
@@ -529,6 +607,11 @@ export default function PresupuestoClientePage() {
   const [busqueda, setBusqueda] = useState("");
 
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>("presupuesto");
+  const operacionActualRef = useRef<OperacionDocumento | null>(null);
+  const claveSolicitudRef = useRef<string | null>(null);
+  const generandoDocumentoRef = useRef(false);
+  const [generandoDocumento, setGenerandoDocumento] = useState(false);
+  const [numeroOperacionVisible, setNumeroOperacionVisible] = useState<number | null>(null);
 
   const [fotosOcultas, setFotosOcultas] = useState<Record<number, boolean>>({});
 
@@ -577,8 +660,6 @@ export default function PresupuestoClientePage() {
   const [advertenciasPDF, setAdvertenciasPDF] = useState<string[]>([]);
 
   const [pendientesPDF, setPendientesPDF] = useState<CoincidenciaPendientePDF[]>([]);
-
-
 
   const cargarDatos = useCallback(async () => {
 
@@ -658,11 +739,7 @@ export default function PresupuestoClientePage() {
 
   }, [empresa?.id]);
 
-
-
   useEffect(() => { void cargarDatos(); }, [cargarDatos]);
-
-
 
   const clientesFiltrados = useMemo(() => {
 
@@ -676,8 +753,6 @@ export default function PresupuestoClientePage() {
 
   }, [clientes, busquedaCliente]);
 
-
-
   function actualizarFormCliente(campo: keyof FormCliente, valor: string) {
 
     setFormCliente(prev => ({ ...prev, [campo]: valor }));
@@ -687,8 +762,6 @@ export default function PresupuestoClientePage() {
     setAvisoCliente("");
 
   }
-
-
 
   function elegirCliente(item: Cliente) {
 
@@ -703,8 +776,6 @@ export default function PresupuestoClientePage() {
     setAvisoCliente("");
 
   }
-
-
 
   async function guardarClienteNuevo(event: React.FormEvent<HTMLFormElement>) {
 
@@ -806,8 +877,6 @@ export default function PresupuestoClientePage() {
 
   }
 
-
-
   const categorias = useMemo(() => [...new Set(productos.map(p => (p.categoria || "").trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"es")), [productos]);
 
   const visibles = useMemo(() => productos.filter(p =>
@@ -818,13 +887,9 @@ export default function PresupuestoClientePage() {
 
   ), [productos, categoria, busqueda]);
 
-
-
   function opcionesPrecio(producto: Producto) {
 
     const opciones: { clave: string; etiqueta: string; tipo: "minorista" | "mayorista"; precio: number }[] = [];
-
-
 
     // Si la lista ofrece un solo precio, mostrar "Precio" sin clasificarlo
 
@@ -882,8 +947,6 @@ export default function PresupuestoClientePage() {
 
     };
 
-
-
     agregarPrecios("principal", "Lista principal", producto.precio, producto.precio_mayorista);
 
     for (const lista of listas) {
@@ -899,8 +962,6 @@ export default function PresupuestoClientePage() {
     return opciones;
 
   }
-
-
 
   function cambiarSeleccion(producto: Producto, activo: boolean) {
 
@@ -918,8 +979,6 @@ export default function PresupuestoClientePage() {
 
   }
 
-
-
   const renglones = useMemo(() => productos.flatMap(producto => {
 
     const sel = seleccion[producto.id];
@@ -934,6 +993,14 @@ export default function PresupuestoClientePage() {
 
   }), [productos, seleccion, listas, precios]);
 
+  useEffect(() => {
+    if (renglones.length === 0) {
+      operacionActualRef.current = null;
+      claveSolicitudRef.current = null;
+      setNumeroOperacionVisible(null);
+    }
+  }, [renglones.length]);
+
   const subtotal = renglones.reduce((total, renglon) => total + renglon.subtotal, 0);
 
   const valorD = numeroSeguro(descuentoValor.replace(",", "."));
@@ -941,8 +1008,6 @@ export default function PresupuestoClientePage() {
   const descuento = descuentoTipo === "porcentaje" ? subtotal * Math.min(100, valorD) / 100 : descuentoTipo === "fijo" ? Math.min(subtotal, valorD) : 0;
 
   const total = Math.max(0, subtotal - descuento);
-
-
 
   async function importarPDF(archivo: File | undefined) {
 
@@ -962,65 +1027,133 @@ export default function PresupuestoClientePage() {
 
     try {
 
-      const lectura = await leerCalculoPDF(archivo);
+      const lectura = await leerCalculoPDF(archivo, Number(empresa.id));
+
       if (lectura.tipo === "presupuesto") {
+
         const anterior = lectura.presupuesto;
+
         if (Number(anterior.empresa_id) !== Number(empresa.id)) {
+
           throw new Error("Este presupuesto pertenece a otra empresa. No se puede importar en la cuenta actual.");
+
         }
+
         const nuevaSeleccion: Record<number, Seleccion> = {};
+
         const avisos: string[] = [];
+
         for (const item of anterior.productos) {
+
           const producto = productos.find(p => p.id === item.id);
+
           if (!producto || normalizarCoincidencia(producto.nombre) !== normalizarCoincidencia(item.nombre)) {
+
             avisos.push(`«${item.nombre}»: ya no se encuentra con el mismo identificador y nombre en esta empresa. No se importó.`);
+
             continue;
+
           }
+
           const clave = `${item.lista}:${item.tipo_precio}`;
+
           const opcion = opcionesPrecio(producto).find(o => o.clave === clave);
+
           if (!opcion) {
+
             avisos.push(`«${item.nombre}»: la lista o el tipo de precio original ya no está disponible. No se importó.`);
+
             continue;
+
           }
+
           if (Math.abs(opcion.precio - item.precio_unitario) > 0.011) {
+
             avisos.push(`«${item.nombre}»: el precio cambió de ${pesos(item.precio_unitario)} a ${pesos(opcion.precio)}. No se importó automáticamente para evitar cambiar el presupuesto sin avisarte.`);
+
             continue;
+
           }
+
           nuevaSeleccion[producto.id] = { cantidad: item.cantidad, lista: item.lista, tipoPrecio: item.tipo_precio };
+
         }
+
         const cantidadImportada = Object.keys(nuevaSeleccion).length;
+
         if (!cantidadImportada) {
+
           throw new Error(`Ninguno de los productos del presupuesto coincide con sus precios actuales. ${avisos.slice(0, 3).join(" ")}`);
+
         }
+
         const completo = cantidadImportada === anterior.productos.length;
+
+        const operacionImportada = lectura.operacion || (
+          typeof anterior.operacion_id === "string" && UUID_OPERACION.test(anterior.operacion_id) &&
+          Number.isSafeInteger(anterior.numero_operacion) && Number(anterior.numero_operacion) > 0
+          ? { operacion_id: anterior.operacion_id, numero: Number(anterior.numero_operacion) }
+          : null
+        );
+        operacionActualRef.current = operacionImportada;
+        claveSolicitudRef.current = null;
+        setNumeroOperacionVisible(operacionImportada?.numero ?? null);
         setSeleccion(nuevaSeleccion);
+
         setTipoDocumento("presupuesto");
+
         setMostrarPrecios(true);
+
         setBusqueda("");
+
         setCategoria("__todas__");
+
         setMensaje(typeof anterior.mensaje === "string" ? anterior.mensaje : "");
+
         setDescuentoTipo(completo ? anterior.descuento_tipo : "ninguno");
+
         setDescuentoValor(completo ? String(anterior.descuento_valor) : "0");
+
         if (!completo) avisos.push("Como algunos productos no pudieron importarse, se quitó temporalmente el descuento para que lo revises antes de guardar.");
+
         const clientePorId = Number.isSafeInteger(anterior.cliente_id) && anterior.cliente_id
+
           ? clientes.find(c => c.id === anterior.cliente_id) : null;
+
         const clientePorNombre = clientes.find(c => normalizarCoincidencia(c.nombre) === normalizarCoincidencia(anterior.cliente || ""));
+
         const clienteEncontrado = clientePorId || clientePorNombre;
+
         if (clienteEncontrado) {
+
           elegirCliente(clienteEncontrado);
+
         } else if (anterior.cliente?.trim()) {
+
           setClienteElegidoId(null);
+
           setFormCliente({ ...CLIENTE_VACIO, nombre: anterior.cliente.trim() });
+
           setModoCliente("nuevo");
+
           avisos.push("No se encontró al cliente original. Seleccionalo o completá sus datos antes de generar el nuevo presupuesto.");
+
         } else {
+
           setClienteElegidoId(null);
+
         }
+
         setAdvertenciasPDF(avisos);
+
         setPendientesPDF([]);
+
         setResultadoPDF(`Presupuesto abierto para editar: ${cantidadImportada} de ${anterior.productos.length} productos recuperados. Revisá los datos y generá un nuevo PDF cuando termines.`);
+
         return;
+
       }
+
       const { filas, clientePDF } = lectura;
 
       const nuevaSeleccion: Record<number, Seleccion> = {};
@@ -1129,6 +1262,9 @@ export default function PresupuestoClientePage() {
 
       if (!importados) throw new Error(`No se pudieron asociar productos del PDF con los precios actuales.${advertencias.length ? " Revisá los avisos: " + advertencias.slice(0, 3).join(" ") : ""}`);
 
+      operacionActualRef.current = lectura.operacion;
+      claveSolicitudRef.current = null;
+      setNumeroOperacionVisible(lectura.operacion?.numero ?? null);
       setSeleccion(nuevaSeleccion);
 
       setTipoDocumento("presupuesto");
@@ -1191,8 +1327,6 @@ export default function PresupuestoClientePage() {
 
   }
 
-
-
   function resolverProductoPendiente(indice: number, productoId: number) {
 
     const pendiente = pendientesPDF[indice];
@@ -1247,10 +1381,9 @@ export default function PresupuestoClientePage() {
 
   }
 
+  async function imprimirDocumento() {
 
-
-  function imprimirDocumento() {
-
+    if (generandoDocumentoRef.current || !empresa?.id) return;
     if (!renglones.length) { setError("Seleccioná al menos un producto con un precio válido."); return; }
 
     if (renglones.some(({ seleccion: item }) => item.cantidad === "")) { setError("Completá las cantidades antes de generar el documento."); return; }
@@ -1260,6 +1393,36 @@ export default function PresupuestoClientePage() {
     const ventana = window.open("", "_blank");
 
     if (!ventana) { setError("El navegador bloqueó la vista de impresión. Habilitá las ventanas emergentes y volvé a intentar."); return; }
+
+    generandoDocumentoRef.current = true;
+    setGenerandoDocumento(true);
+    ventana.document.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Preparando documento</title></head><body>Reservando número de operación...</body></html>');
+    ventana.document.close();
+
+    try {
+      let operacion = operacionActualRef.current;
+      if (!operacion) {
+        const slug = (empresa as { slug?: string }).slug;
+        if (!slug) throw new Error("La empresa no tiene un catálogo válido para reservar números.");
+        // Reutilizamos la clave si la red falla, evitando saltos al reintentar.
+        const claveSolicitud = claveSolicitudRef.current || crypto.randomUUID();
+        claveSolicitudRef.current = claveSolicitud;
+        const respuesta = await fetch("/api/operaciones", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug, clave_solicitud: claveSolicitud }), cache: "no-store",
+        });
+        const datos: { error?: unknown; operacion_id?: unknown; numero?: unknown } = await respuesta.json();
+        if (!respuesta.ok) throw new Error(typeof datos.error === "string" ? datos.error : "No se pudo reservar el número de operación.");
+        if (typeof datos.operacion_id !== "string" || !UUID_OPERACION.test(datos.operacion_id) ||
+            !Number.isSafeInteger(Number(datos.numero)) || Number(datos.numero) < 1) {
+          throw new Error("La respuesta de numeración no es válida.");
+        }
+        operacion = { operacion_id: datos.operacion_id, numero: Number(datos.numero) };
+        operacionActualRef.current = operacion;
+      }
+      setNumeroOperacionVisible(operacion.numero);
+      const numeroVisible = mostrarNumeroOperacion(operacion.numero);
+      const marcaOperacion = `COMERSYS_OPERACION_V1:${empresa.id}:${operacion.operacion_id}:${operacion.numero}:FIN_COMERSYS_OPERACION`;
 
     const esRemito = tipoDocumento === "remito";
 
@@ -1301,7 +1464,10 @@ export default function PresupuestoClientePage() {
 
     const datosImportacion = {
 
-      formato: "COMERSYS_PRESUPUESTO_V1", fecha: new Date().toISOString(), empresa_id: empresa?.id,
+      // Se conserva el formato V1 para que ambos tipos de PDF sean compatibles con el importador.
+      formato: "COMERSYS_PRESUPUESTO_V1", tipo_documento: tipoDocumento,
+      fecha: new Date().toISOString(), empresa_id: empresa?.id,
+      operacion_id: operacion.operacion_id, numero_operacion: operacion.numero,
 
       cliente, cliente_id: clienteElegidoId, mensaje, subtotal, descuento_tipo: descuentoTipo, descuento_valor: valorD, descuento, total,
 
@@ -1309,13 +1475,14 @@ export default function PresupuestoClientePage() {
 
     };
 
-    // Mantener el marcador de importación original solamente en presupuestos.
-
-    const referencia = !esRemito ? btoa(unescape(encodeURIComponent(JSON.stringify(datosImportacion)))) : "";
+    // El remito también lleva los datos reeditables: el importador puede recuperar
+    // productos, cantidades, precios y la misma operación sin reservar otro número.
+    // Se mantiene COMERSYS_PRESUPUESTO_V1 por compatibilidad con los PDFs anteriores.
+    const referencia = btoa(unescape(encodeURIComponent(JSON.stringify(datosImportacion))));
 
     const totales = conPrecios ? `<div class="totales"><div class="linea"><span>Subtotal</span><b>${pesos(subtotal)}</b></div>${descuentoTipo !== "ninguno" ? `<div class="linea"><span>${escapar(descuentoNombre)}</span><b>− ${pesos(descuento)}</b></div>` : ""}<div class="linea final"><span>Total</span><b>${pesos(total)}</b></div></div>` : `<div class="unidades">Total de unidades: ${renglones.reduce((acumulado, renglon) => acumulado + Number(renglon.seleccion.cantidad), 0)}</div>`;
 
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo} - ${escapar(cliente || empresaNombre)}</title>
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo} N.º ${numeroVisible} - ${escapar(cliente || empresaNombre)}</title>
 
       <style>
 
@@ -1373,7 +1540,7 @@ export default function PresupuestoClientePage() {
 
       <div class="acciones"><button onclick="window.print()">Guardar / imprimir PDF</button><button onclick="window.close()">Cerrar</button></div>
 
-      <header><div class="empresa">${logo ? `<img src="${escapar(logo)}" alt="Logo"/>` : ""}<strong>${escapar(empresaNombre)}</strong></div><div><h1>${titulo}</h1><div class="fecha">${escapar(hoy)}</div></div></header>
+      <header><div class="empresa">${logo ? `<img src="${escapar(logo)}" alt="Logo"/>` : ""}<strong>${escapar(empresaNombre)}</strong></div><div><h1>${titulo}</h1><div class="fecha" style="color:#243247;font-weight:700;font-size:13px">N.º ${numeroVisible}</div><div class="fecha">${escapar(hoy)}</div></div></header>
 
       ${datosCliente ? `<div class="datos">${datosCliente}</div>` : ""}
 
@@ -1385,7 +1552,8 @@ export default function PresupuestoClientePage() {
 
       ${esRemito ? '<div class="firma">Firma y aclaración de recepción: __________________________</div>' : '<p class="nota">Presupuesto válido por 10 días.</p>'}
 
-      ${!esRemito ? `<div class="datos-importacion">COMERSYS_PRESUPUESTO_V1:${referencia}:FIN_COMERSYS_PRESUPUESTO</div>` : ""}
+      <div class="datos-importacion">${marcaOperacion}</div>
+      <div class="datos-importacion">COMERSYS_PRESUPUESTO_V1:${referencia}:FIN_COMERSYS_PRESUPUESTO</div>
 
       </body></html>`;
 
@@ -1396,16 +1564,21 @@ export default function PresupuestoClientePage() {
     ventana.document.close();
 
     ventana.focus();
-
+    } catch (e) {
+      const mensajeError = e instanceof Error ? e.message : "No se pudo generar el documento.";
+      setError(mensajeError);
+      ventana.document.open();
+      ventana.document.write('<!doctype html><html lang="es"><body><p>No se pudo reservar un número de operación. Cerrá esta ventana y reintentá desde ComerSys.</p></body></html>');
+      ventana.document.close();
+    } finally {
+      generandoDocumentoRef.current = false;
+      setGenerandoDocumento(false);
+    }
   }
-
-
 
   if (cargandoEmpresa || cargando) return <main className="min-h-screen bg-slate-50 p-10 text-center text-slate-600">Cargando productos y precios...</main>;
 
   if (errorEmpresa) return <main className="p-8 text-red-700">{errorEmpresa}</main>;
-
-
 
   return <main className="min-h-screen bg-[#F8FAFC] p-5 text-slate-800 sm:p-8">
 
@@ -1413,7 +1586,7 @@ export default function PresupuestoClientePage() {
 
       <div className="flex flex-wrap items-start justify-between gap-4">
 
-        <div><Link href="/admin" className="font-semibold text-blue-600">← Volver al panel</Link><h1 className="mt-4 text-3xl font-bold">Presupuestos y Remitos</h1>
+        <div><Link href="/admin" className="font-semibold text-blue-600">← Volver al panel</Link><h1 className="mt-4 text-3xl font-bold">Presupuestos y Remitos</h1>{numeroOperacionVisible !== null && <p className="mt-1 text-sm font-bold text-blue-700">N.º {mostrarNumeroOperacion(numeroOperacionVisible)}</p>}
 
           <p className="mt-2 text-slate-500">Elegí el tipo de documento, buscá por nombre o código y seleccioná la lista y el precio de cada producto.</p></div>
 
@@ -1615,7 +1788,7 @@ export default function PresupuestoClientePage() {
 
               <label className="block text-sm font-semibold">Teléfono *<input required type="tel" value={formCliente.telefono} onChange={e => actualizarFormCliente("telefono", e.target.value)} className={inputCliente} placeholder="Ej.: 11 5555-5555" /></label>
 
-              <label className="block text-sm font-semibold">Email<input type="email" value={formCliente.email} onChange={e => actualizarFormCliente("email", e.target.value)} className={inputCliente} placeholder="cliente@email.com" /></label>
+              <label className="block text-sm font-semibold">Email<input type="email" value={formCliente.email} onChange={e => actualizarFormCliente("email", e.target.value)} className={inputCliente} placeholder="cliente\@email.com" /></label>
 
               <label className="block text-sm font-semibold">Dirección<input value={formCliente.direccion} onChange={e => actualizarFormCliente("direccion", e.target.value)} className={inputCliente} placeholder="Calle, número y localidad" /></label>
 
@@ -1647,7 +1820,7 @@ export default function PresupuestoClientePage() {
 
             <div className="mt-4 flex justify-between border-t pt-4 text-xl font-bold"><span>Total</span><span>{pesos(total)}</span></div>
 
-            <button type="button" onClick={imprimirDocumento} disabled={!renglones.length || guardandoCliente} className="mt-5 w-full rounded-xl bg-blue-600 px-5 py-4 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Generar / descargar PDF</button>
+            <button type="button" onClick={() => { void imprimirDocumento(); }} disabled={!renglones.length || guardandoCliente || generandoDocumento} className="mt-5 w-full rounded-xl bg-blue-600 px-5 py-4 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{generandoDocumento ? "Reservando número..." : "Generar / descargar PDF"}</button>
 
             <p className="mt-3 text-xs leading-5 text-slate-500">Se abrirá una vista A4 lista para imprimir o guardar como PDF. No se genera un pedido ni se descuenta stock.</p>
 

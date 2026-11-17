@@ -200,31 +200,62 @@ export default function PerfilEmpresaPage() {
     setError("");
     try {
       const {
-        data: { user },
-        error: errorUsuario,
-      } = await supabase.auth.getUser();
-      if (errorUsuario) {
-        throw errorUsuario;
-      }
-      if (!user) {
+        data: { session },
+        error: errorSesion,
+      } = await supabase.auth.getSession();
+      if (errorSesion || !session?.access_token) {
         throw new Error(
           "Tu sesión no está activa. Iniciá sesión nuevamente para editar el perfil."
         );
       }
-      const { data, error: errorConsulta } =
-        await supabase
-          .from("empresas")
-          .select("*")
-          .eq("auth_user_id", user.id)
-          .maybeSingle();
-      if (errorConsulta) {
-        throw errorConsulta;
-      }
-      if (!data) {
+
+      const respuesta = await fetch("/api/empresa/perfil", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        cache: "no-store",
+      });
+
+      const resultado: {
+        ok?: boolean;
+        empresa?: {
+          id: number;
+          carritos_catalogo?: unknown;
+          nombre?: string | null;
+          descripcion?: string | null;
+          rubro?: string | null;
+          logo?: string | null;
+          portada?: string | null;
+          whatsapp?: string | null;
+          email?: string | null;
+          direccion?: string | null;
+          ciudad?: string | null;
+          provincia?: string | null;
+          pais?: string | null;
+          instagram?: string | null;
+          facebook?: string | null;
+          tiktok?: string | null;
+          sitio_web?: string | null;
+          horario?: string | null;
+          horarios_semana?: unknown;
+          latitud?: number | null;
+          longitud?: number | null;
+          medios_pago?: string | null;
+          realiza_envios?: boolean | null;
+          color_principal?: string | null;
+          color_secundario?: string | null;
+        };
+        error?: string;
+      } = await respuesta.json();
+
+      if (!respuesta.ok || resultado.ok !== true || !resultado.empresa) {
         throw new Error(
-          "No encontramos una empresa asociada a tu cuenta."
+          resultado.error || "No se pudo cargar el perfil de la empresa."
         );
       }
+
+      const data = resultado.empresa;
       const { data: listasDatos, error: errorListas } = await supabase
         .from("listas_catalogos")
         .select("id, nombre, activa")

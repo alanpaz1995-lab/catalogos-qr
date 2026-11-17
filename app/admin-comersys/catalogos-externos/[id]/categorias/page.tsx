@@ -76,15 +76,23 @@ export default function CategoriasExternasPage() {
       setCategorias([]);
       try {
         if (!idValido) throw new Error("El catálogo solicitado no es válido.");
-        const { data: { user }, error: errorSesion } = await supabase.auth.getUser();
-        if (errorSesion || !user) throw new Error("Iniciá sesión para continuar.");
+        // El servidor comprueba que la sesión pertenezca al SuperAdmin activo
+        // propietario de ComerSys (empresa ID 1).
+        const { data: { session }, error: errorSesion } = await supabase.auth.getSession();
+        if (errorSesion || !session?.access_token) throw new Error("Iniciá sesión para continuar.");
 
-        const [{ data: superadmin, error: errorSuperadmin }, { data: empresaPropia, error: errorEmpresa }] = await Promise.all([
-          supabase.from("superadmins").select("id").eq("auth_user_id", user.id).eq("activo", true).maybeSingle(),
-          supabase.from("empresas").select("id").eq("id", 1).eq("auth_user_id", user.id).maybeSingle(),
-        ]);
-        if (errorSuperadmin || errorEmpresa) throw new Error("No se pudo comprobar tu autorización.");
-        if (!superadmin || !empresaPropia) throw new Error("Esta pantalla está reservada al propietario de ComerSys.");
+        const respuestaAutorizacion = await fetch("/api/admin-comersys/autorizacion", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        if (!respuestaAutorizacion.ok) {
+          throw new Error(respuestaAutorizacion.status === 403
+            ? "Esta pantalla está reservada al propietario de ComerSys."
+            : respuestaAutorizacion.status === 401
+              ? "Tu sesión no está activa. Iniciá sesión nuevamente."
+              : "No se pudo comprobar tu autorización. Intentá nuevamente.");
+        }
 
         const { data: datosCatalogo, error: errorCatalogo } = await supabase
           .from("catalogos_externos")

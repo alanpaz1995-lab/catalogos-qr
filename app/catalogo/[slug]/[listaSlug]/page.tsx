@@ -2,7 +2,7 @@
 
 
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 
 
@@ -221,15 +221,24 @@ export default function CatalogoListaPage() {
     let vigente = true;
     async function comprobarAdministrador() {
       setVistaAdminAutorizada(false);
-      const { data: { user }, error: errorSesion } = await supabase.auth.getUser();
-      if (errorSesion || !user) return;
-      const { data: empresaPropia, error: errorEmpresa } = await supabase
-        .from("empresas")
-        .select("id")
-        .eq("id", empresa!.id)
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-      if (!vigente || errorEmpresa || !empresaPropia) return;
+      // La vista administrativa requiere la sesión del propietario,
+      // comprobada en el servidor, no una consulta pública a empresas.
+      const { data: { session }, error: errorSesion } = await supabase.auth.getSession();
+      if (errorSesion || !session?.access_token) return;
+      try {
+        const respuesta = await fetch("/api/empresa/dashboard", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        if (!respuesta.ok) return;
+        const resultado: { ok?: boolean; empresa?: { id?: number } } = await respuesta.json();
+        if (!vigente || resultado.ok !== true || Number(resultado.empresa?.id) !== empresa!.id) return;
+      } catch (error) {
+        console.error("No se pudo comprobar la vista administrativa:", error);
+        return;
+      }
+      if (!vigente) return;
       const preferencia = window.localStorage.getItem("comersys-catalogo-modo-oscuro");
       setModoOscuroAdmin(preferencia === null
         ? window.localStorage.getItem("comersys-modo-oscuro") === "true"
@@ -309,6 +318,8 @@ export default function CatalogoListaPage() {
   const [calculoIniciado, setCalculoIniciado] = useState(false);
   const [calculoClaveCargada, setCalculoClaveCargada] = useState("");
   const [mensajeCalculo, setMensajeCalculo] = useState("");
+  const [generandoPDFCalculo, setGenerandoPDFCalculo] = useState(false);
+  const generandoPDFCalculoRef = useRef(false);
 
 
 
@@ -461,6 +472,14 @@ export default function CatalogoListaPage() {
       JSON.stringify(calculo.map((item) => ({ id: item.producto.id, cantidad: item.cantidad })))
     );
   }, [empresa?.id, listaSlug, calculo, calculoClaveCargada]);
+
+  // Una clave por cálculo y por lista. Vaciar el cálculo inicia otra operación.
+  useEffect(() => {
+    if (!empresa?.id || !listaSlug ||
+        calculoClaveCargada !== `comersys_calculo_${empresa.id}_lista_${listaSlug}` ||
+        calculo.length !== 0) return;
+    window.localStorage.removeItem(`comersys_operacion_calculo_${empresa.id}_lista_${listaSlug}`);
+  }, [empresa?.id, listaSlug, calculo.length, calculoClaveCargada]);
 
   async function registrarCliente(event: React.FormEvent<HTMLFormElement>) {
 
@@ -796,57 +815,24 @@ export default function CatalogoListaPage() {
 
 
 
-        const { data: datosEmpresa, error: errorEmpresa } = await supabase
-
-
-
-          .from("empresas")
-
-
-
-          .select("*")
-
-
-
-          .eq("slug", slug)
-
-
-
-          .maybeSingle();
-
-
-
-        if (errorEmpresa) throw errorEmpresa;
-
-
-
-        if (
-
-
-
-          !datosEmpresa ||
-
-
-
-          datosEmpresa.estado !== "Activo" ||
-
-
-
-          datosEmpresa.catalogo_activo === false
-
-
-
-        ) {
-
-
-
-          throw new Error("Este catálogo no se encuentra disponible.");
-
-
-
+        // Consultamos únicamente los datos públicos de la empresa.
+        // La API controla que el catálogo exista y esté habilitado.
+        const respuestaEmpresa = await fetch(
+          `/api/catalogo/empresa?slug=${encodeURIComponent(slug)}`,
+          { method: "GET", cache: "no-store" }
+        );
+        const resultadoEmpresa: {
+          ok?: boolean;
+          empresa?: Empresa & { carritos_catalogo?: Record<string, boolean> | null };
+          error?: string;
+        } = await respuestaEmpresa.json();
+        if (!respuestaEmpresa.ok || resultadoEmpresa.ok !== true || !resultadoEmpresa.empresa) {
+          throw new Error(resultadoEmpresa.error || "No se pudo cargar la empresa del catálogo.");
         }
-
-
+        const datosEmpresa = resultadoEmpresa.empresa;
+        if ((datosEmpresa.estado && datosEmpresa.estado !== "Activo") || datosEmpresa.catalogo_activo === false) {
+          throw new Error("Este catálogo no se encuentra disponible.");
+        }
 
         const ids = [...new Set(precios.map((fila) => Number(fila.producto_id)))];
 
@@ -1453,39 +1439,93 @@ export default function CatalogoListaPage() {
     setCalculo((actual) => actual.filter((item) => item.producto.id !== id));
   }
 
-  function imprimirCalculo() {
-    if (!empresa || calculo.length === 0) return;
-    const escapar = (valor: unknown) => String(valor ?? "").replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c)
-    );
-    const filas = calculo.map(({ producto, cantidad }) => {
-      const p = producto as ProductoLista;
-      const unitario = precioAplicado(p, cantidad);
-      return `<tr><td>${escapar(p.codigo)}</td><td>${escapar(p.nombre)}</td><td class="num">${cantidad}</td><td class="num">${escapar(dinero(unitario))}</td><td class="num">${escapar(dinero(unitario * cantidad))}</td></tr>`;
-    }).join("");
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"/><title>Mi cálculo de compra</title>
-    <style>body{font-family:Arial,sans-serif;color:#1e293b;padding:28px;font-size:12px}
-    h1{font-size:23px;margin:6px 0}h2{font-size:17px;margin:0}.muted{color:#64748b}
-    .cabecera{border-bottom:2px solid #334155;padding-bottom:18px;margin-bottom:22px}
-    table{width:100%;border-collapse:collapse;margin-top:18px}th,td{padding:10px 7px;border-bottom:1px solid #cbd5e1;text-align:left;vertical-align:top}
-    th{background:#f1f5f9}.num{text-align:right;white-space:nowrap}.total{font-size:21px;text-align:right;margin-top:22px;font-weight:700}
-    .nota{margin-top:24px;color:#64748b;font-size:11px}@page{size:A4;margin:14mm}@media print{body{padding:0}}</style>
-    </head><body><div class="cabecera"><h2>${escapar(empresa.nombre)}</h2><h1>Mi cálculo de compra</h1>
-    <div class="muted">Fecha: ${new Date().toLocaleDateString("es-AR")} · Documento informativo</div>
-    ${clienteRegistrado ? `<div>Cliente: ${escapar(clienteRegistrado.nombre)} · Tel.: ${escapar(clienteRegistrado.telefono)}</div>` : ""}
-    </div><table><thead><tr><th>Código</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th></tr></thead>
-    <tbody>${filas}</tbody></table><div class="total">Total estimado: ${escapar(dinero(totalCalculo))}</div>
-    <p class="nota">Cálculo informativo. No constituye un pedido confirmado. Los precios están sujetos a actualización.</p></body></html>`;
+  async function imprimirCalculo() {
+    if (!empresa || !slug || !listaSlug || calculo.length === 0 || generandoPDFCalculoRef.current) return;
+
+    // Abrir desde el clic, antes de esperar a Supabase, para evitar bloqueos de ventanas.
     const ventana = window.open("", "_blank");
     if (!ventana) {
       setMensajeCalculo("El navegador bloqueó la ventana. Permití ventanas emergentes para guardar el PDF.");
       return;
     }
+    generandoPDFCalculoRef.current = true;
+    setGenerandoPDFCalculo(true);
+    setMensajeCalculo("");
     ventana.document.open();
-    ventana.document.write(html);
+    ventana.document.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Preparando cálculo</title></head><body><p>Reservando número de operación...</p></body></html>');
     ventana.document.close();
-    ventana.focus();
-    ventana.setTimeout(() => ventana.print(), 450);
+
+    try {
+      const claveAlmacenamiento = `comersys_operacion_calculo_${empresa.id}_lista_${listaSlug}`;
+      const claveAnterior = window.localStorage.getItem(claveAlmacenamiento);
+      const claveSolicitud = claveAnterior && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claveAnterior)
+        ? claveAnterior
+        : window.crypto.randomUUID();
+
+      // Guardar la clave antes de llamar a la API: los reintentos no gastan números.
+      window.localStorage.setItem(claveAlmacenamiento, claveSolicitud);
+      const respuesta = await fetch("/api/operaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, clave_solicitud: claveSolicitud }),
+        cache: "no-store",
+      });
+      const resultado: unknown = await respuesta.json();
+      const datos = resultado as { error?: unknown; numero?: unknown; operacion_id?: unknown };
+      if (!respuesta.ok) {
+        throw new Error(typeof datos.error === "string" ? datos.error : "No se pudo reservar la operación.");
+      }
+      const numero = Number(datos.numero);
+      const operacionId = datos.operacion_id;
+      if (!Number.isSafeInteger(numero) || numero < 1 || typeof operacionId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operacionId)) {
+        throw new Error("La numeración recibida del servidor no es válida.");
+      }
+      // Serie única: 1 -> 00000-01, 99 -> 00000-99, 100 -> 00001-00.
+      const numeroVisible = `${String(Math.floor(numero / 100)).padStart(5, "0")}-${String(numero % 100).padStart(2, "0")}`;
+      const escapar = (valor: unknown) => String(valor ?? "").replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c)
+      );
+      const filas = calculo.map(({ producto, cantidad }) => {
+        const p = producto as ProductoLista;
+        const unitario = precioAplicado(p, cantidad);
+        return `<tr><td>${escapar(p.codigo)}</td><td>${escapar(p.nombre)}</td><td class="num">${cantidad}</td><td class="num">${escapar(dinero(unitario))}</td><td class="num">${escapar(dinero(unitario * cantidad))}</td></tr>`;
+      }).join("");
+      // PDF.js puede extraer este marcador y recuperar la operación en Presupuestos/Pedidos.
+      const referencia = `COMERSYS_OPERACION_V1:${empresa.id}:${operacionId}:${numero}:FIN_COMERSYS_OPERACION`;
+      const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"/><title>Mi cálculo de compra N.º ${numeroVisible}</title>
+      <style>body{font-family:Arial,sans-serif;color:#1e293b;padding:28px;font-size:12px}
+      h1{font-size:23px;margin:6px 0}h2{font-size:17px;margin:0}.muted{color:#64748b}
+      .cabecera{border-bottom:2px solid #334155;padding-bottom:18px;margin-bottom:22px}
+      table{width:100%;border-collapse:collapse;margin-top:18px}th,td{padding:10px 7px;border-bottom:1px solid #cbd5e1;text-align:left;vertical-align:top}
+      th{background:#f1f5f9}.num{text-align:right;white-space:nowrap}.total{font-size:21px;text-align:right;margin-top:22px;font-weight:700}
+      .nota{margin-top:24px;color:#64748b;font-size:11px}.referencia{font-size:1px;color:#fefefe;line-height:1px;overflow-wrap:anywhere}
+      @page{size:A4;margin:14mm}@media print{body{padding:0}}</style>
+      </head><body><div class="cabecera"><h2>${escapar(empresa.nombre)}</h2><h1>Mi cálculo de compra N.º ${numeroVisible}</h1>
+      <div class="muted">Fecha: ${new Date().toLocaleDateString("es-AR")} · Documento informativo</div>
+      ${clienteRegistrado ? `<div>Cliente: ${escapar(clienteRegistrado.nombre)} · Tel.: ${escapar(clienteRegistrado.telefono)}</div>` : ""}
+      </div><table><thead><tr><th>Código</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Subtotal</th></tr></thead>
+      <tbody>${filas}</tbody></table><div class="total">Total estimado: ${escapar(dinero(totalCalculo))}</div>
+      <p class="nota">Cálculo informativo. No constituye un pedido confirmado. Los precios están sujetos a actualización.</p>
+      <div class="referencia">${escapar(referencia)}</div></body></html>`;
+      if (ventana.closed) {
+        setMensajeCalculo("Se reservó el número, pero cerraste la ventana. Volvé a descargar el cálculo para recuperar el mismo número.");
+        return;
+      }
+      ventana.document.open();
+      ventana.document.write(html);
+      ventana.document.close();
+      ventana.focus();
+      ventana.setTimeout(() => { if (!ventana.closed) ventana.print(); }, 450);
+    } catch (errorDesconocido) {
+      if (!ventana.closed) ventana.close();
+      setMensajeCalculo(errorDesconocido instanceof Error
+        ? `No se pudo generar el PDF: ${errorDesconocido.message}`
+        : "No se pudo reservar el número de operación. Probá nuevamente.");
+    } finally {
+      generandoPDFCalculoRef.current = false;
+      setGenerandoPDFCalculo(false);
+    }
   }
 
   function precioUnitario(item: ItemPedido) {
@@ -2231,8 +2271,8 @@ export default function CatalogoListaPage() {
               <div className="flex items-center justify-between text-lg font-bold"><span>Total estimado</span><span>{dinero(totalCalculo)}</span></div>
               <p className="mt-1 text-xs text-slate-500">{cantidadCalculo} unidades · Los precios pueden cambiar.</p>
               {mensajeCalculo && <p className="mt-2 text-sm text-red-600">{mensajeCalculo}</p>}
-              <button type="button" onClick={imprimirCalculo} disabled={calculo.length === 0}
-                className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">📄 Descargar cálculo en PDF</button>
+              <button type="button" onClick={() => { void imprimirCalculo(); }} disabled={calculo.length === 0 || generandoPDFCalculo}
+                className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-50">{generandoPDFCalculo ? "Reservando número..." : "📄 Descargar cálculo en PDF"}</button>
               <p className="mt-1 text-center text-xs text-slate-500">En la ventana de impresión elegí «Guardar como PDF».</p>
               <div className="mt-3 flex gap-2">
                 <button type="button" onClick={() => setCalculo([])} disabled={calculo.length === 0}

@@ -445,36 +445,41 @@ export default function NuevoProductoManualPage() {
       setCargandoCategorias(true);
       setError("");
       const {
-        data: { user },
-        error: errorUsuario,
-      } = await supabase.auth.getUser();
-      if (errorUsuario || !user) {
-        setError(
-          errorUsuario?.message ||
-            "Tu sesión no está activa. Iniciá sesión nuevamente."
-        );
+        data: { session },
+        error: errorSesion,
+      } = await supabase.auth.getSession();
+      if (errorSesion || !session?.access_token) {
+        setError(errorSesion?.message || "Tu sesión no está activa. Iniciá sesión nuevamente.");
         setCategorias([]);
         setCargandoCategorias(false);
         return;
       }
-      const {
-        data: empresaData,
-        error: errorEmpresa,
-      } = await supabase
-        .from("empresas")
-        .select("id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-      if (errorEmpresa || !empresaData) {
-        setError(
-          errorEmpresa?.message ||
-            "No encontramos una empresa asociada a tu cuenta."
-        );
+
+      let idEmpresa: number;
+      try {
+        const respuesta = await fetch("/api/empresa/dashboard", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        const resultado: {
+          ok?: boolean;
+          empresa?: { id?: number };
+          error?: string;
+        } = await respuesta.json();
+        if (!respuesta.ok || resultado.ok !== true || !resultado.empresa) {
+          throw new Error(resultado.error || "No encontramos una empresa asociada a tu cuenta.");
+        }
+        idEmpresa = Number(resultado.empresa.id);
+        if (!Number.isSafeInteger(idEmpresa) || idEmpresa <= 0) {
+          throw new Error("El identificador de la empresa no es válido.");
+        }
+      } catch (errorDesconocido) {
+        setError(errorDesconocido instanceof Error ? errorDesconocido.message : "No se pudo cargar la empresa.");
         setCategorias([]);
         setCargandoCategorias(false);
         return;
       }
-      const idEmpresa = Number(empresaData.id);
       setEmpresaId(idEmpresa);
       // Consultamos listas aparte: los negocios sin listas siguen igual.
       const { data: listasData, error: consultaListasError } = await supabase

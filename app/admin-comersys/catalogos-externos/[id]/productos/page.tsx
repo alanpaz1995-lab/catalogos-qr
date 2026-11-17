@@ -186,17 +186,21 @@ export default function ProductosCatalogoExternoPage() {
     }
 
     try {
-      const { data: usuario, error: errorAuth } = await supabase.auth.getUser();
-      if (errorAuth || !usuario.user) throw new Error("Iniciá sesión para continuar.");
+      // Verificamos la identidad y los permisos de SuperAdmin desde el servidor.
+      const { data: { session }, error: errorAuth } = await supabase.auth.getSession();
+      if (errorAuth || !session?.access_token) throw new Error("Iniciá sesión para continuar.");
 
-      const [respuestaSuperadmin, respuestaEmpresa] = await Promise.all([
-        supabase.from("superadmins").select("id").eq("auth_user_id", usuario.user.id).eq("activo", true).maybeSingle(),
-        supabase.from("empresas").select("id").eq("id", 1).eq("auth_user_id", usuario.user.id).maybeSingle(),
-      ]);
-      if (respuestaSuperadmin.error) throw respuestaSuperadmin.error;
-      if (respuestaEmpresa.error) throw respuestaEmpresa.error;
-      if (!respuestaSuperadmin.data || !respuestaEmpresa.data) {
-        throw new Error("Acceso restringido al propietario de ComerSys (empresa ID 1).");
+      const respuestaAutorizacion = await fetch("/api/admin-comersys/autorizacion", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      if (!respuestaAutorizacion.ok) {
+        throw new Error(respuestaAutorizacion.status === 403
+          ? "Acceso restringido al propietario de ComerSys (empresa ID 1)."
+          : respuestaAutorizacion.status === 401
+            ? "Tu sesión no está activa. Iniciá sesión nuevamente."
+            : "No se pudo verificar la autorización. Intentá nuevamente.");
       }
       setAutorizado(true);
 

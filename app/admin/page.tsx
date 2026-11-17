@@ -252,6 +252,17 @@ export default function DashboardPage() {
 
     useState(false);
 
+  // La numeración visible se obtiene de la RPC autenticada, no de pedidos.numero.
+  const [numerosOperacion, setNumerosOperacion] = useState<Record<number, number | null>>({});
+
+  function etiquetaPedido(id: number): string {
+    const numero = numerosOperacion[id];
+    if (numero === undefined) return "Pedido · Consultando número";
+    if (numero === null) return "Pedido · Número no disponible";
+    return `Pedido N.º ${String(Math.floor(numero / 100)).padStart(5, "0")}-${String(numero % 100).padStart(2, "0")}`;
+  }
+
+
   useEffect(() => {
 
     const aplicarTema = () => {
@@ -326,40 +337,35 @@ const cargarDashboard = useCallback(async () => {
 
     }
 
-    const {
+    // Los datos de suscripcion se leen solo desde la API autenticada.
+    // No modificar la funcion activarPlanProfesional ni las rutas de Mercado Pago.
+    const { data: { session }, error: errorSesion } = await supabase.auth.getSession();
 
-      data: empresaData,
-
-      error: empresaError,
-
-    } = await supabase
-
-      .from("empresas")
-
-      .select(
-
-        "id, nombre, slug, descripcion, rubro, logo, portada, whatsapp, direccion, ciudad, provincia, horarios_semana, color_principal, color_secundario, plan, estado_suscripcion, prueba_inicio, prueba_fin, suscripcion_activa"
-
-      )
-
-      .eq("auth_user_id", user.id)
-
-      .maybeSingle();
-
-    if (empresaError || !empresaData) {
-
-      setError(
-
-        empresaError?.message ||
-
-          "No encontramos una empresa asociada a tu cuenta."
-
-      );
-
+    if (errorSesion || !session?.access_token) {
+      setError("Tu sesion no esta activa. Inicia sesion nuevamente.");
       setCargando(false);
-
       return;
+    }
 
+    let empresaData: EmpresaDashboard;
+    try {
+      const respuesta = await fetch("/api/empresa/dashboard", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const datos: { ok?: boolean; empresa?: EmpresaDashboard; error?: string } =
+        await respuesta.json();
+      if (!respuesta.ok || datos.ok !== true || !datos.empresa) {
+        throw new Error(datos.error || "No se pudo cargar la empresa.");
+      }
+      empresaData = datos.empresa;
+    } catch (errorDesconocido) {
+      setError(errorDesconocido instanceof Error
+        ? errorDesconocido.message
+        : "No se pudo cargar la empresa.");
+      setCargando(false);
+      return;
     }
 
     const empresaActual =
@@ -775,6 +781,45 @@ const cargarDashboard = useCallback(async () => {
     cargarDashboard();
 
   }, [cargarDashboard]);
+
+  // Un único conjunto de pedidos alimenta alertas, actividad reciente y agenda.
+  // La RPC comprueba en Supabase que el pedido pertenezca a la sesión actual.
+  const idsParaNumeracion = useMemo(() =>
+    [...new Set([
+      ...pedidosHoy.map(p => p.id),
+      ...pedidosMes.map(p => p.id),
+      ...pedidosPendientes.map(p => p.id),
+      ...pedidosConDeuda.map(p => p.id),
+    ])].sort((a, b) => a - b).join(","),
+    [pedidosHoy, pedidosMes, pedidosPendientes, pedidosConDeuda]
+  );
+
+  useEffect(() => {
+    let cancelado = false;
+    const ids = idsParaNumeracion.split(",").filter(Boolean).map(Number);
+    setNumerosOperacion({});
+    if (!empresa?.id || !ids.length) return () => { cancelado = true; };
+
+    async function cargarNumeros() {
+      const valores: Record<number, number | null> = {};
+      for (let inicio = 0; inicio < ids.length; inicio += 8) {
+        if (cancelado) return;
+        const lote = ids.slice(inicio, inicio + 8);
+        await Promise.all(lote.map(async (id) => {
+          const { data, error: errorNumero } = await supabase.rpc(
+            "comersys_numero_operacion_pedido",
+            { p_pedido_id: id }
+          );
+          const numero = Number(data);
+          valores[id] = !errorNumero && data !== null &&
+            Number.isSafeInteger(numero) && numero > 0 ? numero : null;
+        }));
+      }
+      if (!cancelado) setNumerosOperacion(valores);
+    }
+    void cargarNumeros();
+    return () => { cancelado = true; };
+  }, [idsParaNumeracion, empresa?.id]);
 
   const pedidosHoyValidos = useMemo(
 
@@ -1744,11 +1789,7 @@ const cargarDashboard = useCallback(async () => {
 
             titulo: pedido.cliente_nombre || "Cliente sin nombre",
 
-            descripcion: `Pedido #${String(
-
-              pedido.numero ?? pedido.id
-
-            ).padStart(6, "0")} · Pedido: ${formatearFechaSoloDia(
+            descripcion: `${etiquetaPedido(pedido.id)} · Pedido: ${formatearFechaSoloDia(
 
               pedido.created_at
 
@@ -1785,6 +1826,7 @@ const cargarDashboard = useCallback(async () => {
       pedidosConPagoPendiente.length,
 
       deudasConAntiguedad,
+      numerosOperacion,
 
     ]);
 
@@ -1812,11 +1854,7 @@ const cargarDashboard = useCallback(async () => {
 
             id: `pedido-${pedido.id}`,
 
-            titulo: `Pedido #${String(
-
-              pedido.numero
-
-            ).padStart(6, "0")}`,
+            titulo: etiquetaPedido(pedido.id),
 
             descripcion: `${pedido.cliente_nombre} · ${pedido.estado} · ${formatearPrecio(
 
@@ -1941,6 +1979,7 @@ const cargarDashboard = useCallback(async () => {
       productos,
 
       clientes,
+      numerosOperacion,
 
     ]);
 
@@ -2250,6 +2289,27 @@ const cargarDashboard = useCallback(async () => {
 
           }
 
+          /* Las tarjetas de alertas son claras en ambos temas.
+             El tema oscuro no debe blanquear sus títulos ni descripciones. */
+          .dashboard-comersys .alertas-legibles .bg-red-50,
+          .dashboard-comersys .alertas-legibles .bg-red-50 :is(div, h3, h4, p, strong, span),
+          .dashboard-comersys .alertas-legibles .bg-rose-50,
+          .dashboard-comersys .alertas-legibles .bg-rose-50 :is(div, h3, h4, p, strong, span) {
+            color: #b91c1c !important;
+          }
+
+          .dashboard-comersys .alertas-legibles .bg-amber-50,
+          .dashboard-comersys .alertas-legibles .bg-amber-50 :is(div, h3, h4, p, strong, span),
+          .dashboard-comersys .alertas-legibles .bg-yellow-50,
+          .dashboard-comersys .alertas-legibles .bg-yellow-50 :is(div, h3, h4, p, strong, span) {
+            color: #b45309 !important;
+          }
+
+          .dashboard-comersys .alertas-legibles .bg-blue-50,
+          .dashboard-comersys .alertas-legibles .bg-blue-50 :is(div, h3, h4, p, strong, span) {
+            color: #1d4ed8 !important;
+          }
+
           .dashboard-comersys input,
 
           .dashboard-comersys textarea,
@@ -2518,7 +2578,9 @@ const cargarDashboard = useCallback(async () => {
 
         <div className="grid gap-6 xl:grid-cols-[1fr_1.15fr]">
 
-          <AlertsPanel alertas={alertas} />
+          <div className="alertas-legibles">
+            <AlertsPanel alertas={alertas} />
+          </div>
 
           <RecentActivity
 
@@ -2610,20 +2672,7 @@ const cargarDashboard = useCallback(async () => {
 
                               <h3 className="font-bold">
 
-                                Pedido #
-
-                                {String(
-
-                                  pedido.numero
-
-                                ).padStart(
-
-                                  6,
-
-                                  "0"
-
-                                )}
-
+                                                                 {etiquetaPedido(pedido.id)}
                               </h3>
 
                               <span

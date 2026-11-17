@@ -1,12 +1,10 @@
 "use client";
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, FileUp, Loader2 } from "lucide-react";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 import { supabase } from "@/lib/supabase";
-
 type ProductoPDF = {
   id: number;
   nombre: string;
@@ -25,8 +23,63 @@ type PresupuestoPDF = {
   descuento_valor: number;
   total: number;
   productos: ProductoPDF[];
+  operacion_id?: string;
+  numero_operacion?: number;
 };
+// Referencia incluida en los calculos de compra nuevos. El servidor valida
+// posteriormente que esta operacion pertenezca a la empresa autenticada.
+function leerReferenciaOperacion(texto: string, empresaId: number):
+  { operacion_id: string; numero_operacion: number } | null {
+  const compacto = texto.replace(/\s+/g, "");
+  const match = compacto.match(/COMERSYS_OPERACION_V1:(\d+):([0-9a-f-]{36}):(\d+):FIN_COMERSYS_OPERACION/i);
+  if (!match) return null;
+  if (Number(match[1]) !== empresaId) {
+    throw new Error("El cálculo pertenece a otra empresa. No se puede importar.");
+  }
+  const numero = Number(match[3]);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(match[2]) ||
+      !Number.isSafeInteger(numero) || numero < 1) {
+    throw new Error("El cálculo contiene una referencia de operación inválida.");
+  }
+  return { operacion_id: match[2], numero_operacion: numero };
+}
+
 const dinero = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(n);
+// PDF.js a veces separa la referencia codificada en muchos fragmentos de texto.
+// Reconstruimos el marcador completo sin perder caracteres antes de decodificar.
+function extraerDocumentoComerSys(textos: string[]): PresupuestoPDF | null {
+  const inicio = "COMERSYS_PRESUPUESTO_V1:";
+  const fin = ":FIN_COMERSYS_PRESUPUESTO";
+  let marcadorEncontrado = false;
+
+  for (const original of textos) {
+    // PDF.js puede introducir espacios, saltos de línea o caracteres invisibles.
+    const compacto = original.replace(/[\s\u200B-\u200D\uFEFF\u00AD]/g, "");
+    const desde = compacto.indexOf(inicio);
+    if (desde < 0) continue;
+    marcadorEncontrado = true;
+    const hasta = compacto.indexOf(fin, desde + inicio.length);
+    if (hasta < 0) continue;
+
+    const base64 = compacto.slice(desde + inicio.length, hasta);
+    // No aceptar datos parcialmente recuperados ni inventar productos.
+    if (!base64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) continue;
+    try {
+      const bytes = Uint8Array.from(atob(base64), caracter => caracter.charCodeAt(0));
+      const contenido = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+      if (contenido && typeof contenido === "object" && !Array.isArray(contenido)) {
+        return contenido as PresupuestoPDF;
+      }
+    } catch {
+      // Probar con la otra reconstrucción del texto antes de informar un error.
+    }
+  }
+
+  if (marcadorEncontrado) {
+    throw new Error("El PDF contiene datos de ComerSys, pero el lector no pudo reconstruirlos completos. No se importó ni se generó otro número. Pasame este PDF para revisar su formato.");
+  }
+  return null;
+}
 
 // Lectura de la tabla «Mi cálculo de compra» exportada por el catálogo.
 // Se emplean las posiciones reales de las celdas, no el texto plano de la página.
@@ -35,7 +88,6 @@ type FilaCalculo = { codigo: string; nombre: string; cantidad: number; precio: n
 type ProductoActual = { id: number; nombre: string; codigo: string | null; precio: number | null; precio_mayorista: number | null };
 type ListaActual = { id: number };
 type PrecioActual = { producto_id: number; lista_id: number; precio_minorista: number | null; precio_mayorista: number | null; visible: boolean };
-
 function normalizar(valor: string) {
   return valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLocaleLowerCase("es");
 }
@@ -109,7 +161,6 @@ function extraerCalculo(piezasPorPagina: PiezaCalculo[][]): { filas: FilaCalculo
   }
   return { filas, cliente };
 }
-
 async function convertirCalculoEnPedido(filas: FilaCalculo[], cliente: string, empresaId: number): Promise<PresupuestoPDF> {
   if (!filas.length || filas.length > 100) throw new Error("El PDF no contiene una cantidad válida de productos.");
   const [respuestaProductos, respuestaListas] = await Promise.all([
@@ -187,8 +238,6 @@ async function convertirCalculoEnPedido(filas: FilaCalculo[], cliente: string, e
   return { formato: "COMERSYS_PRESUPUESTO_V1", empresa_id: empresaId, cliente, mensaje: "",
     subtotal, descuento_tipo: "ninguno", descuento_valor: 0, total: subtotal, productos: productosPDF };
 }
-
-
 export default function ImportarPedidoPDFPage() {
   const router = useRouter();
   const { empresa, cargandoEmpresa, errorEmpresa } = useEmpresa();
@@ -196,7 +245,6 @@ export default function ImportarPedidoPDFPage() {
   const [error, setError] = useState("");
   const [datos, setDatos] = useState<PresupuestoPDF | null>(null);
   const [archivo, setArchivo] = useState("");
-
   async function leerPDF(file: File | undefined) {
     if (!file) return;
     setError("");
@@ -216,11 +264,14 @@ export default function ImportarPedidoPDFPage() {
       try {
         if (documento.numPages > 30) throw new Error("El PDF tiene demasiadas páginas (máximo 30).");
         let texto = "";
+        let textoSinSeparadores = "";
         const piezasPorPagina: PiezaCalculo[][] = [];
         for (let pagina = 1; pagina <= documento.numPages; pagina++) {
           const hoja = await documento.getPage(pagina);
           const contenido = await hoja.getTextContent();
-          texto += "\n" + contenido.items.map((item) => "str" in item ? String(item.str) : "").join(" ");
+          const fragmentos = contenido.items.map(item => "str" in item ? String(item.str) : "");
+          texto += "\n" + fragmentos.join(" ");
+          textoSinSeparadores += fragmentos.join("");
           const piezas: PiezaCalculo[] = [];
           for (const item of contenido.items) {
             if (!( "str" in item && "transform" in item )) continue;
@@ -232,22 +283,32 @@ export default function ImportarPedidoPDFPage() {
           piezasPorPagina.push(piezas);
           hoja.cleanup();
         }
-        const match = texto.match(/COMERSYS_PRESUPUESTO_V1\s*:\s*([A-Za-z0-9+/=\s]+?)\s*:\s*FIN_COMERSYS_PRESUPUESTO/);
-        if (!match) {
+        const presupuestoExtraido = extraerDocumentoComerSys([textoSinSeparadores, texto]);
+        if (!presupuestoExtraido) {
           const calculo = extraerCalculo(piezasPorPagina);
           if (!calculo.filas.length) throw new Error("No encontré la tabla de «Mi cálculo de compra» ni datos de un presupuesto de ComerSys. Seleccioná el PDF original generado desde el catálogo.");
           const pedido = await convertirCalculoEnPedido(calculo.filas, calculo.cliente, Number(empresa.id));
-          setDatos(pedido);
+          const referencia = leerReferenciaOperacion(texto, Number(empresa.id));
+          setDatos({ ...pedido, ...(referencia || {}) });
           setArchivo(file.name);
           return;
         }
-        const base64 = match[1].replace(/\s/g, "");
-        const json = new TextDecoder().decode(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
-        const presupuesto = JSON.parse(json) as PresupuestoPDF;
+        const presupuesto = presupuestoExtraido;
+          // El PDF de ComerSys puede traer ya la operación de origen.
+          // Nunca se reserva otro número en este importador.
+          const id = presupuesto.operacion_id;
+          if (id !== undefined && (typeof id !== "string" ||
+              !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+            throw new Error("El documento incluye una operación inválida.");
+          }
+          const numero = presupuesto.numero_operacion;
+          if (numero !== undefined && (!Number.isSafeInteger(numero) || numero < 1)) {
+            throw new Error("El documento incluye un número de operación inválido.");
+          }
         if (presupuesto.formato !== "COMERSYS_PRESUPUESTO_V1" ||
             !Number.isSafeInteger(Number(presupuesto.empresa_id)) ||
             Number(presupuesto.empresa_id) !== Number(empresa.id)) {
-          throw new Error("Este presupuesto pertenece a otra empresa. No se puede importar en la cuenta actual.");
+          throw new Error("Este documento pertenece a otra empresa. No se puede importar en la cuenta actual.");
         }
         if (!Array.isArray(presupuesto.productos) || !presupuesto.productos.length || presupuesto.productos.length > 100)
           throw new Error("El presupuesto no contiene una cantidad válida de productos.");
@@ -282,7 +343,6 @@ export default function ImportarPedidoPDFPage() {
       setLeyendo(false);
     }
   }
-
   function continuar() {
     if (!datos || !empresa?.id) return;
     try {
@@ -292,7 +352,6 @@ export default function ImportarPedidoPDFPage() {
       setError("El navegador no pudo preparar los datos del pedido. Probá nuevamente.");
     }
   }
-
   return (
     <main className="min-h-screen bg-[#F8FAFC] p-5 text-slate-800 sm:p-8">
       <div className="mx-auto max-w-4xl">
@@ -300,13 +359,13 @@ export default function ImportarPedidoPDFPage() {
           <ArrowLeft className="h-4 w-4" /> Volver a Pedidos
         </Link>
         <h1 className="mt-6 text-3xl font-black">Cargar pedido desde PDF</h1>
-        <p className="mt-3 text-slate-500">Seleccioná «Mi cálculo de compra» del catálogo o un presupuesto PDF de ComerSys. Podrás revisar y editar el pedido antes de guardarlo.</p>
+        <p className="mt-3 text-slate-500">Seleccioná «Mi cálculo de compra», un presupuesto o un remito PDF de ComerSys. Podrás revisar y editar el pedido antes de guardarlo.</p>
         {(error || errorEmpresa) && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 font-semibold text-red-700">{errorEmpresa || error}</p>}
         <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 p-8 text-center hover:bg-blue-100">
             <FileUp className="mx-auto mb-3 h-10 w-10 text-blue-600" />
-            <span className="block text-lg font-bold text-blue-800">Seleccionar cálculo de compra o presupuesto PDF</span>
-            <span className="mt-2 block text-sm text-slate-600">Sin límite fijo de 15 MB · PDF de catálogo o Presupuesto para cliente · Hasta 30 páginas</span>
+            <span className="block text-lg font-bold text-blue-800">Seleccionar cálculo de compra, presupuesto o remito PDF</span>
+            <span className="mt-2 block text-sm text-slate-600">Sin límite fijo de 15 MB · PDF de catálogo, presupuesto o remito · Hasta 30 páginas</span>
             <input className="mt-5 block w-full text-sm" type="file" accept="application/pdf,.pdf"
               disabled={leyendo || cargandoEmpresa || !empresa?.id}
               onChange={e => void leerPDF(e.target.files?.[0])} />
@@ -314,7 +373,13 @@ export default function ImportarPedidoPDFPage() {
           {leyendo && <p className="mt-5 flex items-center gap-2 text-blue-700"><Loader2 className="h-5 w-5 animate-spin" /> Leyendo PDF... Los archivos grandes pueden tardar un poco más.</p>}
           {datos && <div className="mt-7 space-y-4">
             <h2 className="text-xl font-black">Vista previa: {archivo}</h2>
-            <p><strong>Cliente:</strong> {datos.cliente || "A completar"}</p>
+              <p><strong>Cliente:</strong> {datos.cliente || "A completar"}</p>
+              {datos.operacion_id && <p className="text-sm font-bold text-blue-700">
+                Operación original: {datos.numero_operacion
+                  ? `N.º ${String(datos.numero_operacion).padStart(7, "0").slice(0, -2)}-${String(datos.numero_operacion).padStart(7, "0").slice(-2)}`
+                  : "identificada en el PDF"}. Se conservará al crear el pedido.
+              </p>}
+              {!datos.operacion_id && <p className="text-xs text-amber-700">PDF anterior sin referencia de operación: al crear el pedido se asignará un número nuevo.</p>}
             <div className="overflow-x-auto"><table className="w-full text-left text-sm">
               <thead><tr className="border-b bg-slate-50"><th className="p-3">Producto</th><th className="p-3">Cantidad</th><th className="p-3">Precio acordado</th></tr></thead>
               <tbody>{datos.productos.map((item, index) => <tr key={index} className="border-b">

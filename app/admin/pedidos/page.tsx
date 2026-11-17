@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
 import { FileUp, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useEmpresa } from "@/lib/empresa/EmpresaProvider";
 
 type Pedido = {
   id: number;
-  numero?: number | null;
+  operacion_id?: string | null;
   cliente_nombre: string;
   cliente_telefono: string;
   cliente_direccion?: string | null;
@@ -18,6 +18,13 @@ type Pedido = {
   empresa_id: number;
   visto_admin: boolean;
 };
+
+type NumeroOperacion = number | null;
+
+function formatearNumeroOperacion(numero: number): string {
+  const completo = String(numero).padStart(7, "0");
+  return `${completo.slice(0, -2)}-${completo.slice(-2)}`;
+}
 
 const ESTADOS = [
   "Pendiente",
@@ -37,10 +44,70 @@ export default function PedidosPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [pedidoEliminando, setPedidoEliminando] = useState<number | null>(null);
+  const [numerosOperacion, setNumerosOperacion] = useState<Record<number, NumeroOperacion>>({});
+  const [consultandoNumeros, setConsultandoNumeros] = useState(false);
+  const empresaActualRef = useRef<number | null>(null);
+  empresaActualRef.current = empresa?.id ?? null;
+
+  // La tabla de operaciones no se expone al navegador. La función RPC
+  // comprueba que cada pedido corresponda al administrador autenticado.
+  async function consultarNumero(pedidoId: number, empresaId: number): Promise<NumeroOperacion> {
+    const { data, error: errorNumero } = await supabase.rpc(
+      "comersys_numero_operacion_pedido", { p_pedido_id: pedidoId }
+    );
+    if (errorNumero) throw errorNumero;
+    if (empresaActualRef.current !== empresaId) return null;
+    if (data == null) return null;
+    const numero = Number(data);
+    if (!Number.isSafeInteger(numero) || numero < 1) {
+      throw new Error(`La numeración del pedido no es válida.`);
+    }
+    return numero;
+  }
+
+  async function cargarNumeros(lista: Pedido[], empresaId: number) {
+    setConsultandoNumeros(true);
+    let fallos = 0;
+    const resultados: Record<number, NumeroOperacion> = {};
+    // Limitar las consultas concurrentes para no saturar Supabase.
+    for (let i = 0; i < lista.length; i += 8) {
+      const lote = lista.slice(i, i + 8);
+      await Promise.all(lote.map(async (pedido) => {
+        try {
+          resultados[pedido.id] = await consultarNumero(pedido.id, empresaId);
+        } catch (e) {
+          fallos++;
+          console.error(`Error al consultar la operación del pedido:`, e);
+        }
+      }));
+      if (empresaActualRef.current !== empresaId) return;
+      setNumerosOperacion(prev => ({ ...prev, ...resultados }));
+    }
+    if (empresaActualRef.current !== empresaId) return;
+    setConsultandoNumeros(false);
+    if (fallos) {
+      setError(`No se pudo consultar la numeración de ${fallos} pedido(s). Presioná «Actualizar» para volver a intentar.`);
+    }
+  }
+
+  async function actualizarNumero(pedidoId: number, empresaId: number) {
+    try {
+      const numero = await consultarNumero(pedidoId, empresaId);
+      if (empresaActualRef.current !== empresaId) return;
+      setNumerosOperacion(prev => ({ ...prev, [pedidoId]: numero }));
+    } catch (e) {
+      console.error("Error al consultar el número del pedido:", e);
+      if (empresaActualRef.current === empresaId) {
+        setError("No se pudo consultar la numeración de un pedido. Presioná «Actualizar» para reintentar.");
+      }
+    }
+  }
 
   useEffect(() => {
     if (!empresa?.id) return;
-    cargarPedidos();
+    setPedidos([]);
+    setNumerosOperacion({});
+    void cargarPedidos();
   }, [empresa?.id]);
 
   useEffect(() => {
@@ -62,6 +129,7 @@ export default function PedidosPage() {
             pedidoNuevo,
             ...actuales.filter((pedido) => pedido.id !== pedidoNuevo.id),
           ]);
+          void actualizarNumero(pedidoNuevo.id, empresa!.id);
         }
       )
       .on(
@@ -79,6 +147,9 @@ export default function PedidosPage() {
               pedido.id === pedidoActualizado.id ? pedidoActualizado : pedido
             )
           );
+          // Si la operación quedó vinculada después de crear el pedido,
+          // consultar el número real sin perderlo por una actualización de estado.
+          void actualizarNumero(pedidoActualizado.id, empresa!.id);
         }
       )
       .subscribe();
@@ -107,8 +178,11 @@ export default function PedidosPage() {
       return;
     }
 
-    setPedidos((data as Pedido[]) || []);
+    const lista = (data as Pedido[]) || [];
+    setPedidos(lista);
+    setNumerosOperacion({});
     setCargando(false);
+    void cargarNumeros(lista, empresa.id);
   }
 
   async function cambiarEstado(pedidoId: number, nuevoEstado: string) {
@@ -152,9 +226,7 @@ export default function PedidosPage() {
     if (!empresa?.id || pedidoEliminando !== null) return;
 
     const confirmado = window.confirm(
-      `¿Seguro que querés eliminar el pedido #${obtenerNumeroPedido(
-        pedido
-      )}?\n\nEsta acción no se puede deshacer.`
+      `¿Seguro que querés eliminar el ${etiquetaPedido(pedido)}?\n\nEsta acción no se puede deshacer.`
     );
     if (!confirmado) return;
 
@@ -180,6 +252,11 @@ export default function PedidosPage() {
       setPedidos((actuales) =>
         actuales.filter((actual) => actual.id !== pedido.id)
       );
+      setNumerosOperacion(actuales => {
+        const siguiente = { ...actuales };
+        delete siguiente[pedido.id];
+        return siguiente;
+      });
     } catch (e) {
       const mensaje = e instanceof Error ? e.message : "Error desconocido";
       setError(`No se pudo eliminar el pedido: ${mensaje}`);
@@ -204,8 +281,11 @@ export default function PedidosPage() {
     }).format(new Date(fecha));
   }
 
-  function obtenerNumeroPedido(pedido: Pedido) {
-    return String(pedido.numero ?? pedido.id).padStart(6, "0");
+  function etiquetaPedido(pedido: Pedido): string {
+    const numero = numerosOperacion[pedido.id];
+    if (typeof numero === "number") return `Pedido N.º ${formatearNumeroOperacion(numero)}`;
+    if (numero === null) return "Pedido sin número de operación asignado";
+    return "Pedido · Numeración no disponible";
   }
 
   function clasesEstado(estado: string) {
@@ -264,7 +344,7 @@ export default function PedidosPage() {
               </div>
 
               <p className="mt-2 text-slate-500">
-                Gestioná los pedidos recibidos desde el catálogo.
+                Gestioná los pedidos recibidos desde el catálogo.{consultandoNumeros ? " Consultando numeración…" : ""}
               </p>
             </div>
 
@@ -398,7 +478,7 @@ export default function PedidosPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-3">
                         <h2 className="text-xl font-bold">
-                          Pedido #{obtenerNumeroPedido(pedido)}
+                          {etiquetaPedido(pedido)}
                         </h2>
 
                         {pedido.visto_admin === false && (

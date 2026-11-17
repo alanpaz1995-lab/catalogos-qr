@@ -126,37 +126,44 @@ export default function AdminLayout({
 
       }
 
-      const { data: empresaData, error: empresaError } = await supabase
+      // Consultamos la empresa propia desde el servidor, sin lectura directa
+      // de columnas privadas de suscripcion desde el navegador.
+      const { data: { session }, error: errorSesion } = await supabase.auth.getSession();
 
-        .from("empresas")
-
-        .select(
-
-          "id, nombre, plan, estado_suscripcion, prueba_fin, suscripcion_activa"
-
-        )
-
-        .eq("auth_user_id", user.id)
-
-        .maybeSingle();
-
-      if (empresaError || !empresaData) {
-
-        setError(
-
-          empresaError?.message ||
-
-            "No encontramos una empresa asociada a tu cuenta."
-
-        );
-
+      if (errorSesion || !session?.access_token) {
+        setError("Tu sesión no está activa. Iniciá sesión nuevamente.");
         setCargando(false);
-
         return;
-
       }
 
-      setEmpresa(empresaData as EmpresaAcceso);
+      let empresaData: EmpresaAcceso | null = null;
+
+      try {
+        const respuesta = await fetch("/api/empresa/dashboard", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+
+        const resultado: { ok?: boolean; empresa?: EmpresaAcceso; error?: string } =
+          await respuesta.json();
+
+        if (!respuesta.ok || resultado.ok !== true || !resultado.empresa) {
+          throw new Error(resultado.error || "No encontramos una empresa asociada a tu cuenta.");
+        }
+
+        empresaData = resultado.empresa;
+      } catch (errorConsulta) {
+        setError(
+          errorConsulta instanceof Error
+            ? errorConsulta.message
+            : "No se pudo verificar el acceso. Intentá nuevamente."
+        );
+        setCargando(false);
+        return;
+      }
+
+      setEmpresa(empresaData);
 
       setCargando(false);
 

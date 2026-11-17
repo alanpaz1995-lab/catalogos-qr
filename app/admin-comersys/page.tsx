@@ -115,46 +115,55 @@ export default function SuperAdminComerSysPage() {
 
     setAutorizado(true);
 
-    const { data: empresasData, error: errorEmpresas } = await supabase
-      .from("empresas")
-      .select(
-        "id, nombre, email, plan, estado_suscripcion, prueba_inicio, prueba_fin, suscripcion_activa, mercado_pago_suscripcion_id, proximo_pago"
-      )
-      .order("created_at", { ascending: false });
+    // Los datos administrativos se obtienen exclusivamente desde la API
+    // autorizada en el servidor, nunca mediante SELECT directo del navegador.
+    try {
+      const {
+        data: { session },
+        error: errorSesion,
+      } = await supabase.auth.getSession();
 
-    if (errorEmpresas) {
-      setError(`No se pudieron cargar los suscriptores: ${errorEmpresas.message}`);
-      setCargando(false);
-      return;
-    }
+      if (errorSesion || !session?.access_token) {
+        throw new Error("Tu sesión no está activa. Volvé a iniciar sesión.");
+      }
 
-    const empresasCargadas =
-      (empresasData as EmpresaSuscripcion[]) || [];
+      const inicioMes = new Date();
+      inicioMes.setDate(1);
+      inicioMes.setHours(0, 0, 0, 0);
 
-    setEmpresas(empresasCargadas);
-
-    const inicioMes = new Date();
-    inicioMes.setDate(1);
-    inicioMes.setHours(0, 0, 0, 0);
-
-    const { data: pagosData, error: errorPagos } = await supabase
-      .from("pagos_suscripcion")
-      .select(
-        "id, empresa_id, importe, fecha_pago, periodo, estado, medio_pago, referencia_pago"
-      )
-      .gte("fecha_pago", inicioMes.toISOString())
-      .order("fecha_pago", { ascending: false });
-
-    if (errorPagos) {
-      setError(
-        `No se pudieron cargar los pagos: ${errorPagos.message}`
+      const respuesta = await fetch(
+        `/api/admin-comersys/datos?inicioMes=${encodeURIComponent(inicioMes.toISOString())}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          cache: "no-store",
+        }
       );
-      setCargando(false);
-      return;
-    }
 
-    setPagos((pagosData as PagoSuscripcion[]) || []);
-    setCargando(false);
+      const resultado: {
+        ok?: boolean;
+        error?: string;
+        empresas?: EmpresaSuscripcion[];
+        pagos?: PagoSuscripcion[];
+      } = await respuesta.json();
+
+      if (!respuesta.ok || resultado.ok !== true) {
+        throw new Error(resultado.error || "No se pudieron cargar los datos administrativos.");
+      }
+
+      setEmpresas(resultado.empresas ?? []);
+      setPagos(resultado.pagos ?? []);
+    } catch (errorDesconocido) {
+      setError(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudieron cargar los datos administrativos."
+      );
+    } finally {
+      setCargando(false);
+    }
   }
 
   const resumen = useMemo(() => {
@@ -222,31 +231,62 @@ export default function SuperAdminComerSysPage() {
   }, [pagos]);
 
 
-  async function actualizarEmpresa(
+  type AccionSuscripcion =
+    | "activar_profesional"
+    | "pausar_suscripcion"
+    | "extender_prueba";
+
+  async function actualizarSuscripcion(
     empresaId: number,
-    cambios: Partial<EmpresaSuscripcion> & {
-      aviso_vencimiento_enviado?: boolean;
-    }
-  ) {
+    accion: AccionSuscripcion
+  ): Promise<boolean> {
     setProcesandoEmpresaId(empresaId);
     setError("");
 
-    const { error: errorActualizacion } = await supabase
-      .from("empresas")
-      .update(cambios)
-      .eq("id", empresaId);
+    try {
+      const {
+        data: { session },
+        error: errorSesion,
+      } = await supabase.auth.getSession();
 
-    if (errorActualizacion) {
-      setError(
-        `No se pudo actualizar la empresa: ${errorActualizacion.message}`
+      if (errorSesion || !session?.access_token) {
+        throw new Error("Tu sesión no está activa. Volvé a iniciar sesión.");
+      }
+
+      const respuesta = await fetch(
+        "/api/admin-comersys/actualizar-suscripcion",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ empresaId, accion }),
+          cache: "no-store",
+        }
       );
-      setProcesandoEmpresaId(null);
-      return false;
-    }
 
-    await cargarSuperAdmin();
-    setProcesandoEmpresaId(null);
-    return true;
+      const resultado: { ok?: boolean; error?: string } =
+        await respuesta.json();
+
+      if (!respuesta.ok || resultado.ok !== true) {
+        throw new Error(
+          resultado.error || "No se pudo actualizar la suscripción."
+        );
+      }
+
+      await cargarSuperAdmin();
+      return true;
+    } catch (errorDesconocido) {
+      setError(
+        errorDesconocido instanceof Error
+          ? errorDesconocido.message
+          : "No se pudo actualizar la suscripción."
+      );
+      return false;
+    } finally {
+      setProcesandoEmpresaId(null);
+    }
   }
 
   async function activarProfesional(empresa: EmpresaSuscripcion) {
@@ -255,12 +295,7 @@ export default function SuperAdminComerSysPage() {
     );
 
     if (!confirmado) return;
-
-    await actualizarEmpresa(empresa.id, {
-      plan: "profesional",
-      estado_suscripcion: "activa",
-      suscripcion_activa: true,
-    });
+    await actualizarSuscripcion(empresa.id, "activar_profesional");
   }
 
   async function pausarSuscripcion(empresa: EmpresaSuscripcion) {
@@ -269,35 +304,16 @@ export default function SuperAdminComerSysPage() {
     );
 
     if (!confirmado) return;
-
-    await actualizarEmpresa(empresa.id, {
-      estado_suscripcion: "pausada",
-      suscripcion_activa: false,
-    });
+    await actualizarSuscripcion(empresa.id, "pausar_suscripcion");
   }
 
   async function extenderPrueba(empresa: EmpresaSuscripcion) {
-    const base =
-      empresa.prueba_fin && new Date(empresa.prueba_fin).getTime() > Date.now()
-        ? new Date(empresa.prueba_fin)
-        : new Date();
-
-    base.setDate(base.getDate() + 7);
-
     const confirmado = window.confirm(
       `ATENCIÓN: esta acción extenderá manualmente 7 días la prueba gratuita de ${empresa.nombre}.\n\nNo genera ningún cobro ni modifica Mercado Pago.\n\n¿Querés continuar?`
     );
 
     if (!confirmado) return;
-
-    await actualizarEmpresa(empresa.id, {
-      plan: "prueba",
-      estado_suscripcion: "prueba",
-      suscripcion_activa: false,
-      prueba_inicio: empresa.prueba_inicio || new Date().toISOString(),
-      prueba_fin: base.toISOString(),
-      aviso_vencimiento_enviado: false,
-    });
+    await actualizarSuscripcion(empresa.id, "extender_prueba");
   }
 
   async function eliminarCuenta(empresa: EmpresaSuscripcion) {

@@ -102,20 +102,29 @@ export default function CatalogosExternosAdminPage() {
   useEffect(() => {
     let vigente = true;
     async function iniciar() {
-      const { data: { user }, error: sesionError } = await supabase.auth.getUser();
+      const { data: { session }, error: sesionError } = await supabase.auth.getSession();
       if (!vigente) return;
-      if (sesionError || !user) {
+      if (sesionError || !session?.access_token) {
         setError("Iniciá sesión para acceder a este módulo.");
         setCargando(false);
         return;
       }
-      const [respuestaSuperadmin, respuestaEmpresa] = await Promise.all([
-        supabase.from("superadmins").select("id").eq("auth_user_id", user.id).eq("activo", true).maybeSingle(),
-        supabase.from("empresas").select("id").eq("auth_user_id", user.id).eq("id", 1).maybeSingle(),
-      ]);
+      // La autorización se comprueba en el servidor, no mediante lecturas
+      // directas de empresas o superadmins desde el navegador.
+      let accesoPermitido = false;
+      try {
+        const respuesta = await fetch("/api/admin-comersys/autorizacion", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        accesoPermitido = respuesta.ok;
+      } catch (errorAutorizacion) {
+        console.error("No se pudo verificar el acceso a catálogos externos:", errorAutorizacion);
+      }
       if (!vigente) return;
-      if (respuestaSuperadmin.error || respuestaEmpresa.error || !respuestaSuperadmin.data || !respuestaEmpresa.data) {
-        setError("Acceso restringido al propietario de ComerSys (empresa ID 1).");
+      if (!accesoPermitido) {
+        setError("Acceso restringido al propietario de ComerSys (empresa ID 1), o no se pudo verificar la autorización.");
         setCargando(false);
         return;
       }

@@ -50,15 +50,21 @@ export default function ActualizacionMasivaExternaPage() {
     setCargando(true); setError(""); setConfirmando(false); setSeleccion({});
     try {
       if (!idValido) throw new Error("El identificador del catálogo no es válido.");
-      const { data: auth, error: errorAuth } = await supabase.auth.getUser();
-      if (errorAuth || !auth.user) throw new Error("Iniciá sesión para continuar.");
-      const [superadmin, propietario] = await Promise.all([
-        supabase.from("superadmins").select("id").eq("auth_user_id", auth.user.id).eq("activo", true).maybeSingle(),
-        supabase.from("empresas").select("id").eq("id", 1).eq("auth_user_id", auth.user.id).maybeSingle(),
-      ]);
-      if (superadmin.error) throw superadmin.error;
-      if (propietario.error) throw propietario.error;
-      if (!superadmin.data || !propietario.data) throw new Error("Acceso restringido al propietario de ComerSys.");
+      // Validamos la sesión y los permisos de SuperAdmin en el servidor.
+      const { data: { session }, error: errorAuth } = await supabase.auth.getSession();
+      if (errorAuth || !session?.access_token) throw new Error("Iniciá sesión para continuar.");
+      const respuestaAutorizacion = await fetch("/api/admin-comersys/autorizacion", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      if (!respuestaAutorizacion.ok) {
+        throw new Error(respuestaAutorizacion.status === 403
+          ? "Acceso restringido al propietario de ComerSys."
+          : respuestaAutorizacion.status === 401
+            ? "Tu sesión no está activa. Iniciá sesión nuevamente."
+            : "No se pudo verificar la autorización. Intentá nuevamente.");
+      }
       setAutorizado(true);
       const { data: info, error: errorCatalogo } = await supabase.from("catalogos_externos")
         .select("id,nombre").eq("id", catalogoId).maybeSingle();

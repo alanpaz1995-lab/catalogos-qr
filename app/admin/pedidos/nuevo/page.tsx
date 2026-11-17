@@ -86,6 +86,9 @@ export default function NuevoPedidoPage() {
   const [mensaje, setMensaje] = useState("");
   const [desdePDF, setDesdePDF] = useState(false);
   const [nombreArchivoPDF, setNombreArchivoPDF] = useState("");
+  const [operacionPDF, setOperacionPDF] = useState<string | null>(null);
+  // Una sola clave por intento de alta: los reintentos no consumen otro número.
+  const claveOperacionPedido = useRef<string | null>(null);
   useEffect(() => {
     if (!empresa?.id) return;
     cargarDatos();
@@ -148,6 +151,7 @@ export default function NuevoPedidoPage() {
         const carga = JSON.parse(pendiente) as {
           formato: string; empresa_id: number; cliente: string; mensaje?: string;
           descuento_tipo: string; descuento_valor: number; archivo?: string;
+          operacion_id?: unknown;
           productos: Array<{ id: number; cantidad: number; lista: string;
             tipo_precio: "minorista" | "mayorista"; precio_unitario: number }>;
         };
@@ -188,6 +192,13 @@ export default function NuevoPedidoPage() {
         setMostrarDescuento(carga.descuento_tipo !== "ninguno");
         setTipoDescuento(carga.descuento_tipo === "porcentaje" ? "porcentaje" : "pesos");
         setValorDescuento(carga.descuento_tipo === "ninguno" ? "" : String(desc));
+        // El UUID solo identifica la operación. Supabase comprobará su pertenencia
+        // a la empresa antes de asociarla al pedido.
+        const idOrigen = typeof carga.operacion_id === "string" ? carga.operacion_id.trim() : "";
+        if (idOrigen && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idOrigen)) {
+          throw new Error("El PDF incluye un identificador de operación inválido.");
+        }
+        setOperacionPDF(idOrigen || null);
         setDesdePDF(true);
         setNombreArchivoPDF(String(carga.archivo || "Presupuesto PDF"));
         window.sessionStorage.removeItem("comersys_presupuesto_pdf_pendiente");
@@ -463,6 +474,30 @@ export default function NuevoPedidoPage() {
     }
     return Number(clienteCreado.id);
   }
+  async function reservarOperacionPedido(): Promise<{ operacion_id: string; numero: number }> {
+    const slug = (empresa as (typeof empresa & { slug?: string }) | null)?.slug;
+    if (!slug) throw new Error("La empresa no tiene un identificador de catálogo válido.");
+    if (!claveOperacionPedido.current) claveOperacionPedido.current = crypto.randomUUID();
+    const respuesta = await fetch("/api/operaciones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, clave_solicitud: claveOperacionPedido.current }),
+      cache: "no-store",
+    });
+    const datos: { operacion_id?: unknown; numero?: unknown; error?: unknown } = await respuesta.json();
+    if (!respuesta.ok) throw new Error(typeof datos.error === "string" ? datos.error : "No se pudo reservar la operación.");
+    if (typeof datos.operacion_id !== "string" || !/^[0-9a-f-]{36}$/i.test(datos.operacion_id) ||
+        !Number.isSafeInteger(datos.numero) || Number(datos.numero) < 1) {
+      throw new Error("Supabase devolvió una operación inválida.");
+    }
+    return { operacion_id: datos.operacion_id, numero: Number(datos.numero) };
+  }
+
+  function mostrarNumeroOperacion(numero: number): string {
+    const cifras = String(numero).padStart(7, "0");
+    return `${cifras.slice(0, -2)}-${cifras.slice(-2)}`;
+  }
+
   async function guardarPedido() {
     if (!empresa?.id) {
       setError("No encontramos la empresa actual.");
@@ -525,8 +560,14 @@ export default function NuevoPedidoPage() {
     setError("");
     setMensaje("");
     try {
-      const clienteFinalId =
-        await obtenerOCrearCliente();
+      // Si el PDF ya tiene una operación, reutilizarla. Si no existe un UUID
+      // en el PDF (archivos antiguos), reservar el siguiente número nuevo.
+      // La clave del intento permanece estable para evitar consumir números
+      // adicionales cuando una solicitud debe reintentarse.
+      const clienteFinalId = await obtenerOCrearCliente();
+      const operacionReservada = operacionPDF ? null : await reservarOperacionPedido();
+      const operacionParaPedido = operacionPDF || operacionReservada?.operacion_id;
+      if (!operacionParaPedido) throw new Error("No se pudo identificar la operación del pedido.");
       const { data: respuestaPedido, error: errorCrearPedido } = await supabase.rpc(desdePDF ? "crear_pedido_desde_presupuesto_pdf" : "crear_pedido_manual_con_listas_descuento", {
           p_empresa_id: empresa.id,
           p_cliente_nombre: nombreCliente.trim(),
@@ -536,7 +577,8 @@ export default function NuevoPedidoPage() {
           p_descuento_tipo: mostrarDescuento ? tipoDescuento : "ninguno",
           p_descuento_valor: mostrarDescuento ? valorNumericoDescuento : 0,
           p_items: [
-            ...items.map((item) => ({
+            ...items.map((item, indice) => ({
+              ...(indice === 0 ? { operacion_id: operacionParaPedido } : {}),
               producto_id: item.producto.id,
               lista_precio_id: item.lista_precio_id,
               cantidad: item.cantidad,
@@ -545,7 +587,8 @@ export default function NuevoPedidoPage() {
                 tipo_precio_presupuesto: usaPrecioMayorista(item) ? "mayorista" : "minorista"
               } : {}),
             })),
-            ...itemsFueraCatalogo.map((item) => ({
+            ...itemsFueraCatalogo.map((item, indice) => ({
+              ...(items.length === 0 && indice === 0 ? { operacion_id: operacionParaPedido } : {}),
               producto_id: null,
               producto_nombre: item.nombre.trim(),
               precio_unitario: convertirPrecioManual(item.precio),
@@ -614,12 +657,9 @@ export default function NuevoPedidoPage() {
           );
         }
       }
-      setMensaje(
-        `Pedido #${String(resultado.numero_pedido).padStart(
-          6,
-          "0"
-        )} creado correctamente.`
-      );
+      setMensaje(operacionReservada
+        ? `Pedido N.º ${mostrarNumeroOperacion(operacionReservada.numero)} creado correctamente.`
+        : "Pedido creado correctamente y vinculado a la operación original del PDF.");
       window.setTimeout(() => {
         router.push(`/admin/pedidos/${resultado.pedido_id}`);
         router.refresh();

@@ -72,17 +72,30 @@ export default function HeaderDashboard({
     setErrorListas("");
     setListas([]);
     try {
-      const { data: { user }, error: errorUsuario } = await supabase.auth.getUser();
-      if (errorUsuario || !user) throw new Error("Iniciá sesión para consultar tus listas.");
+      // La empresa se valida en el servidor, sin consultar empresas desde el navegador.
+      const { data: { session }, error: errorSesion } = await supabase.auth.getSession();
+      if (errorSesion || !session?.access_token) {
+        throw new Error("Iniciá sesión para consultar tus listas.");
+      }
 
-      const { data: empresa, error: errorEmpresa } = await supabase
-        .from("empresas")
-        .select("id")
-        .eq("auth_user_id", user.id)
-        .eq("slug", slugEmpresa)
-        .maybeSingle();
-      if (errorEmpresa) throw errorEmpresa;
-      if (!empresa) throw new Error("No encontramos la empresa asociada a tu sesión.");
+      const respuesta = await fetch("/api/empresa/dashboard", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const resultado: {
+        ok?: boolean;
+        error?: string;
+        empresa?: { id: number; slug: string };
+      } = await respuesta.json();
+
+      if (!respuesta.ok || resultado.ok !== true || !resultado.empresa) {
+        throw new Error(resultado.error || "No encontramos la empresa asociada a tu sesión.");
+      }
+      const empresa = resultado.empresa;
+      if (empresa.slug !== slugEmpresa) {
+        throw new Error("El catálogo no corresponde a tu empresa.");
+      }
 
       const { data, error } = await supabase
         .from("listas_catalogos")

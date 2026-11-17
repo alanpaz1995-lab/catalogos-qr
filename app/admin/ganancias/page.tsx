@@ -40,10 +40,21 @@ export default function GananciasPage() {
     setCargando(true);
     setError("");
     try {
-      const { data: { user }, error: errorUsuario } = await supabase.auth.getUser();
-      if (errorUsuario || !user) throw new Error(errorUsuario?.message || "Tu sesión no está activa. Iniciá sesión nuevamente.");
-      const { data: empresa, error: errorEmpresa } = await supabase.from("empresas").select("id").eq("auth_user_id", user.id).maybeSingle();
-      if (errorEmpresa || !empresa) throw new Error(errorEmpresa?.message || "No encontramos una empresa asociada a tu cuenta.");
+      const { data: { session }, error: errorSesion } = await supabase.auth.getSession();
+      if (errorSesion || !session?.access_token) {
+        throw new Error("Tu sesión no está activa. Iniciá sesión nuevamente.");
+      }
+      const respuestaEmpresa = await fetch("/api/empresa/dashboard", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+      const resultadoEmpresa: { ok?: boolean; empresa?: { id: number }; error?: string } =
+        await respuestaEmpresa.json();
+      if (!respuestaEmpresa.ok || resultadoEmpresa.ok !== true || !resultadoEmpresa.empresa?.id) {
+        throw new Error(resultadoEmpresa.error || "No encontramos una empresa asociada a tu cuenta.");
+      }
+      const empresa = resultadoEmpresa.empresa;
       const inicio = new Date(anio, mes, 1).toISOString();
       const fin = new Date(anio, mes + 1, 1).toISOString();
       const [pedidosNuevos, listasNuevas] = await Promise.all([
