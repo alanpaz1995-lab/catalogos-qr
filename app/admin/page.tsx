@@ -2462,6 +2462,31 @@ const cargarDashboard = useCallback(async () => {
           </section>
         )}
 
+        {empresa?.id === 1 && (
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                  MÓDULO EXCLUSIVO · EMPRESA ID 1
+                </p>
+                <h2 className="mt-1 text-lg font-black text-slate-900">
+                  Presupuestos Alaan
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Creá presupuestos y remitos de servicios desde un módulo independiente,
+                  sin utilizar productos, clientes ni pedidos de ComerSys.
+                </p>
+              </div>
+              <Link
+                href="/admin/presupuestos-alaan"
+                className="shrink-0 rounded-2xl bg-emerald-700 px-5 py-3 text-center text-sm font-black text-white shadow-sm transition hover:bg-emerald-800"
+              >
+                📄 Abrir Presupuestos Alaan
+              </Link>
+            </div>
+          </section>
+        )}
+
         {estadoPrueba?.mostrarAviso && (
 
           <section
