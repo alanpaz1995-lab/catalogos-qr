@@ -2402,7 +2402,7 @@ const cargarDashboard = useCallback(async () => {
 
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
 
-                  MATEANDO ER
+                  ALAAN PAZ
 
                 </p>
 
