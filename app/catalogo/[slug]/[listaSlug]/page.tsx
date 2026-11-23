@@ -1936,7 +1936,7 @@ export default function CatalogoListaPage() {
 
 
 
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      <section className="mx-auto max-w-7xl px-3 py-6 sm:px-6 sm:py-10">
 
 
 
@@ -2056,7 +2056,7 @@ export default function CatalogoListaPage() {
 
 
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
 
 
 
@@ -2129,7 +2129,7 @@ export default function CatalogoListaPage() {
                   <div className="flex w-full flex-col">
                     {producto.imaguen ? (
                       <button type="button" onClick={() => abrirGaleriaProducto(producto)}
-                        className="group relative block h-48 w-full cursor-zoom-in overflow-hidden bg-slate-100 text-left"
+                        className="group relative block h-32 w-full sm:h-48 cursor-zoom-in overflow-hidden bg-slate-100 text-left"
                         aria-label={`Ampliar imagen de ${producto.nombre}`}>
                         <img src={producto.imaguen} alt={producto.nombre}
                           loading={indiceProducto < 4 ? "eager" : "lazy"}
@@ -2137,16 +2137,16 @@ export default function CatalogoListaPage() {
                           decoding="async"
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
                         <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-lg">
-                          🔍 Ver completa
+                          🔍 <span className="hidden sm:inline">Ver completa</span>
                         </span>
                       </button>
                     ) : (
-                      <div className="flex h-48 items-center justify-center bg-slate-100 text-sm text-slate-400">Sin imagen</div>
+                      <div className="flex h-32 items-center justify-center sm:h-48 bg-slate-100 text-sm text-slate-400">Sin imagen</div>
                     )}
-                    <div className="flex flex-1 flex-col p-4">
+                    <div className="flex flex-1 flex-col p-2.5 sm:p-4">
                       <div>
-                        <p className="text-xs font-semibold" style={{ color }}>{producto.categoria || "Sin categoría"}</p>
-                        <h2 className="mt-1.5 text-lg font-bold leading-snug">{producto.nombre}</h2>
+                        <p className="text-[10px] font-semibold sm:text-xs" style={{ color }}>{producto.categoria || "Sin categoría"}</p>
+                        <h2 className="mt-1 text-sm font-bold leading-snug line-clamp-3 sm:mt-1.5 sm:text-lg sm:line-clamp-none">{producto.nombre}</h2>
                         {obtenerColoresProducto(producto).length > 0 && (
                           <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
                             <span className="mr-0.5 text-xs font-semibold text-slate-600">Colores:</span>
@@ -2177,11 +2177,11 @@ export default function CatalogoListaPage() {
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                               {producto.precio_mayorista != null ? "Precio minorista" : "Precio"}
                             </p>
-                            <p className="mt-0.5 text-xl font-bold">{dinero(producto.precio)}</p>
+                            <p className="mt-0.5 break-words text-base font-bold sm:text-xl">{dinero(producto.precio)}</p>
                             {producto.precio_mayorista != null && (
-                              <div className="mt-2.5 rounded-lg bg-emerald-50 px-3 py-2.5">
+                              <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-2 sm:mt-2.5 sm:px-3 sm:py-2.5">
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Precio mayorista</p>
-                                <p className="mt-0.5 text-lg font-bold text-emerald-700">{dinero(producto.precio_mayorista)}</p>
+                                <p className="mt-0.5 break-words text-sm font-bold text-emerald-700 sm:text-lg">{dinero(producto.precio_mayorista)}</p>
                                 <p className="mt-0.5 text-[11px] font-medium text-emerald-700">Desde {minimo} unidades de este producto</p>
                               </div>
                             )}
@@ -2194,22 +2194,22 @@ export default function CatalogoListaPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="mt-3.5 flex flex-1 flex-col justify-end space-y-2">
+                      <div className="mt-3 flex flex-1 flex-col justify-end space-y-2 sm:mt-3.5">
                         {empresa.mostrar_precios !== false && (
                           <button type="button" onClick={() => agregarAlCalculo(producto)}
-                            className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-center text-[13px] font-bold text-white transition hover:bg-emerald-800">
+                            className="w-full min-h-10 rounded-lg bg-emerald-700 px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-bold text-white transition hover:bg-emerald-800">
                             🧮 {calculoIniciado ? "Agregar al cálculo" : "Calcular mi compra"}
                           </button>
                         )}
                         {permitirCarrito && (
                           <button type="button" disabled={!disponible} onClick={() => agregarAlCarrito(producto)}
-                            className="w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="w-full min-h-10 rounded-lg px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                             style={{ backgroundColor: color }}>
                             🛒 Agregar al carrito
                           </button>
                         )}
                         <a href={enlace} target="_blank" rel="noreferrer"
-                          className="block w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95"
+                          className="block w-full rounded-lg px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-semibold text-white transition hover:brightness-95"
                           style={{ backgroundColor: secundario }}>Consultar por WhatsApp</a>
                       </div>
                     </div>

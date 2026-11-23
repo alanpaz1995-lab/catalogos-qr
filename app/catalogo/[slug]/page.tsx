@@ -1348,7 +1348,7 @@ export default function CatalogoEmpresaPage() {
         clienteRegistrado={clienteRegistrado}
       />
       <HeroCatalogo empresa={empresa} modoOscuro={catalogoOscuro} />
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      <section className="mx-auto max-w-7xl px-3 py-6 sm:px-6 sm:py-10">
         <div className="mb-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1407,7 +1407,7 @@ export default function CatalogoEmpresaPage() {
             </p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
             {productosFiltrados.map((producto, indiceProducto) => {
               const mensajeWhatsApp = encodeURIComponent(
                 `Hola, quiero consultar por el producto: ${producto.nombre}`
@@ -1428,7 +1428,7 @@ export default function CatalogoEmpresaPage() {
                       <button
                         type="button"
                         onClick={() => abrirGaleriaProducto(producto)}
-                        className="group relative block h-48 w-full cursor-zoom-in overflow-hidden bg-slate-100 text-left"
+                        className="group relative block h-32 w-full sm:h-48 cursor-zoom-in overflow-hidden bg-slate-100 text-left"
                         aria-label={`Ver imagen completa de ${producto.nombre}`}
                       >
                         <img
@@ -1440,18 +1440,18 @@ export default function CatalogoEmpresaPage() {
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                         />
                         <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-lg backdrop-blur-sm">
-                          🔍 Ver completa
+                          🔍 <span className="hidden sm:inline">Ver completa</span>
                         </span>
                       </button>
                     ) : (
-                      <div className="flex h-48 items-center justify-center bg-slate-100 text-sm font-medium text-slate-400">
+                      <div className="flex h-32 items-center justify-center sm:h-48 bg-slate-100 text-sm font-medium text-slate-400">
                         Sin imagen
                       </div>
                     )}
-                    <div className="flex flex-1 flex-col p-4">
+                    <div className="flex flex-1 flex-col p-2.5 sm:p-4">
                       <div>
                         <p
-                          className="text-xs font-semibold"
+                          className="text-[10px] font-semibold sm:text-xs"
                           style={{
                             color:
                               empresa.color_principal ||
@@ -1460,7 +1460,7 @@ export default function CatalogoEmpresaPage() {
                         >
                           {producto.categoria || "Sin categoría"}
                         </p>
-                        <h3 className="mt-1.5 text-lg font-bold leading-snug">
+                        <h3 className="mt-1 text-sm font-bold leading-snug line-clamp-3 sm:mt-1.5 sm:text-lg sm:line-clamp-none">
                           {producto.nombre}
                         </h3>
                         {obtenerColoresProducto(producto).length > 0 && (
@@ -1498,18 +1498,18 @@ export default function CatalogoEmpresaPage() {
                               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                                 {tienePrecioMayorista(producto) ? "Precio minorista" : "Precio"}
                               </p>
-                              <p className="mt-0.5 text-xl font-bold">
+                              <p className="mt-0.5 break-words text-base font-bold sm:text-xl">
                                 {formatearPrecio(
                                   Number(producto.precio)
                                 )}
                               </p>
                             </div>
                             {tienePrecioMayorista(producto) && (
-                              <div className="mt-2.5 rounded-lg bg-emerald-50 px-3 py-2.5">
+                              <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-2 sm:mt-2.5 sm:px-3 sm:py-2.5">
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
                                   Precio mayorista
                                 </p>
-                                <p className="mt-0.5 text-lg font-bold text-emerald-700">
+                                <p className="mt-0.5 break-words text-sm font-bold text-emerald-700 sm:text-lg">
                                   {formatearPrecio(
                                     Number(
                                       producto.precio_mayorista
@@ -1539,10 +1539,10 @@ export default function CatalogoEmpresaPage() {
                           )}
                         </div>
                       </div>
-                      <div className="mt-3.5 flex flex-1 flex-col justify-end space-y-2">
+                      <div className="mt-3 flex flex-1 flex-col justify-end space-y-2 sm:mt-3.5">
                         {mostrarPrecios && (
                           <button type="button" onClick={() => agregarAlCalculo(producto)}
-                            className="w-full rounded-lg bg-emerald-700 px-3 py-2.5 text-center text-[13px] font-bold text-white transition hover:bg-emerald-800">
+                            className="w-full min-h-10 rounded-lg bg-emerald-700 px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-bold text-white transition hover:bg-emerald-800">
                             🧮 {calculoIniciado ? "Agregar al cálculo" : "Calcular mi compra"}
                           </button>
                         )}
@@ -1558,7 +1558,7 @@ export default function CatalogoEmpresaPage() {
                             disabled={
                               !productoDisponible(producto)
                             }
-                            className="w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="w-full min-h-10 rounded-lg px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                             style={{
                               backgroundColor:
                                 empresa.color_principal ||
@@ -1574,7 +1574,7 @@ export default function CatalogoEmpresaPage() {
                           href={enlaceWhatsApp}
                           target="_blank"
                           rel="noreferrer"
-                          className="block w-full rounded-lg px-3 py-2.5 text-center text-[13px] font-semibold text-white transition hover:brightness-95"
+                          className="block w-full rounded-lg px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-semibold text-white transition hover:brightness-95"
                           style={{
                             backgroundColor:
                               empresa.color_secundario ||
