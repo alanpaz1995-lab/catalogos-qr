@@ -162,6 +162,7 @@ export default function CatalogoEmpresaPage() {
     imagenes: ImagenGaleria[];
     indice: number;
     alt: string;
+    descripcion?: string | null;
   } | null>(null);
   useEffect(() => {
     async function cargarCatalogo() {
@@ -575,6 +576,7 @@ export default function CatalogoEmpresaPage() {
       imagenes,
       indice: 0,
       alt: producto.nombre,
+      descripcion: producto.descripcion,
     });
   }
   function cambiarImagenGaleria(direccion: -1 | 1) {
@@ -1448,7 +1450,7 @@ export default function CatalogoEmpresaPage() {
                         Sin imagen
                       </div>
                     )}
-                    <div className="flex flex-1 flex-col p-2.5 sm:p-4">
+                    <div className="flex flex-1 flex-col p-2 sm:p-4">
                       <div>
                         <p
                           className="text-[10px] font-semibold sm:text-xs"
@@ -1464,7 +1466,7 @@ export default function CatalogoEmpresaPage() {
                           {producto.nombre}
                         </h3>
                         {obtenerColoresProducto(producto).length > 0 && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2 sm:gap-1.5" aria-label="Colores disponibles">
                             <span className="mr-0.5 text-xs font-semibold text-slate-600">Colores:</span>
                             {obtenerColoresProducto(producto).map((nombreColor) => (
                               <span key={claveColorCatalogo(nombreColor)}
@@ -1476,14 +1478,14 @@ export default function CatalogoEmpresaPage() {
                             ))}
                           </div>
                         )}
-                        <div className="mt-1.5 min-h-[1.5rem]">
+                        <div className="hidden sm:block mt-1.5 min-h-[1.5rem]">
                           {producto.descripcion && (
                             <p className="line-clamp-2 text-xs leading-5 text-slate-500">
                               {producto.descripcion}
                             </p>
                           )}
                         </div>
-                        <div className="mt-1 min-h-[1.25rem]">
+                        <div className="mt-1 sm:min-h-[1.25rem]">
                           {obtenerCodigo(producto) && (
                             <p className="text-xs font-medium text-slate-600">
                               Código: <span className="font-semibold break-all">{obtenerCodigo(producto)}</span>
@@ -1491,7 +1493,7 @@ export default function CatalogoEmpresaPage() {
                           )}
                         </div>
                       </div>
-                      <div className="mt-3">
+                      <div className="mt-1.5 sm:mt-3">
                         {mostrarPrecios && (
                           <div>
                             <div>
@@ -1505,7 +1507,7 @@ export default function CatalogoEmpresaPage() {
                               </p>
                             </div>
                             {tienePrecioMayorista(producto) && (
-                              <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-2 sm:mt-2.5 sm:px-3 sm:py-2.5">
+                              <div className="mt-1.5 rounded-lg bg-emerald-50 px-2 py-1.5 sm:mt-2.5 sm:px-3 sm:py-2.5">
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
                                   Precio mayorista
                                 </p>
@@ -1527,7 +1529,7 @@ export default function CatalogoEmpresaPage() {
                             )}
                           </div>
                         )}
-                        <div className="mt-3">
+                        <div className="hidden sm:block mt-3">
                           {productoDisponible(producto) ? (
                             <span className="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
                               Disponible
@@ -1539,7 +1541,7 @@ export default function CatalogoEmpresaPage() {
                           )}
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-1 flex-col justify-end space-y-2 sm:mt-3.5">
+                      <div className="mt-2 flex flex-1 flex-col justify-end space-y-1.5 sm:mt-3.5 sm:space-y-2">
                         {mostrarPrecios && (
                           <button type="button" onClick={() => agregarAlCalculo(producto)}
                             className="w-full min-h-10 rounded-lg bg-emerald-700 px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-bold text-white transition hover:bg-emerald-800">
@@ -1632,7 +1634,7 @@ export default function CatalogoEmpresaPage() {
                   controls
                   playsInline
                   preload="metadata"
-                  className="max-h-[78vh] max-w-[94vw]"
+                  className="max-h-full max-w-[94vw] sm:max-h-[78vh]"
                 >
                   Tu navegador no puede reproducir este video.
                 </video>
@@ -1641,7 +1643,7 @@ export default function CatalogoEmpresaPage() {
                   src={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
                   alt={imagenAmpliada.imagenes[imagenAmpliada.indice].alt}
                   decoding="async"
-                  className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+                  className="max-h-full max-w-[94vw] object-contain sm:max-h-[78vh] sm:max-w-[88vw]"
                 />
               )}
               {imagenAmpliada.imagenes.length > 1 && (
@@ -1655,6 +1657,16 @@ export default function CatalogoEmpresaPage() {
                 </button>
               )}
             </div>
+            {(imagenAmpliada.alt || imagenAmpliada.descripcion) && (
+              <div className="w-full max-w-3xl shrink-0 rounded-xl bg-black/65 px-4 py-2 text-left text-white sm:hidden">
+                <p className="text-sm font-semibold">{imagenAmpliada.alt}</p>
+                {imagenAmpliada.descripcion && (
+                  <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-line text-xs leading-5 text-slate-200">
+                    {imagenAmpliada.descripcion}
+                  </p>
+                )}
+              </div>
+            )}
             {imagenAmpliada.imagenes.length > 1 && (
               <div className="flex w-full max-w-3xl flex-col items-center gap-3">
                 <div className="rounded-full bg-black/60 px-4 py-2 text-sm font-bold text-white backdrop-blur-sm">

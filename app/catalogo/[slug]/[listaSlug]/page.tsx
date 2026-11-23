@@ -151,6 +151,7 @@ type VisorGaleria = {
   elementos: ElementoGaleria[];
   indice: number;
   nombreProducto: string;
+  descripcion?: string | null;
 };
 
 
@@ -1246,7 +1247,7 @@ export default function CatalogoListaPage() {
   function abrirGaleriaProducto(producto: ProductoLista) {
     const elementos = obtenerGaleriaProducto(producto);
     if (elementos.length === 0) return;
-    setImagenAmpliada({ elementos, indice: 0, nombreProducto: producto.nombre });
+    setImagenAmpliada({ elementos, indice: 0, nombreProducto: producto.nombre, descripcion: producto.descripcion });
   }
 
   function cambiarElementoGaleria(direccion: -1 | 1) {
@@ -2143,12 +2144,12 @@ export default function CatalogoListaPage() {
                     ) : (
                       <div className="flex h-32 items-center justify-center sm:h-48 bg-slate-100 text-sm text-slate-400">Sin imagen</div>
                     )}
-                    <div className="flex flex-1 flex-col p-2.5 sm:p-4">
+                    <div className="flex flex-1 flex-col p-2 sm:p-4">
                       <div>
                         <p className="text-[10px] font-semibold sm:text-xs" style={{ color }}>{producto.categoria || "Sin categoría"}</p>
                         <h2 className="mt-1 text-sm font-bold leading-snug line-clamp-3 sm:mt-1.5 sm:text-lg sm:line-clamp-none">{producto.nombre}</h2>
                         {obtenerColoresProducto(producto).length > 0 && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Colores disponibles">
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2 sm:gap-1.5" aria-label="Colores disponibles">
                             <span className="mr-0.5 text-xs font-semibold text-slate-600">Colores:</span>
                             {obtenerColoresProducto(producto).map((nombreColor) => (
                               <span key={claveColorCatalogo(nombreColor)}
@@ -2160,18 +2161,18 @@ export default function CatalogoListaPage() {
                             ))}
                           </div>
                         )}
-                        <div className="mt-1.5 min-h-[1.5rem]">
+                        <div className="hidden sm:block mt-1.5 min-h-[1.5rem]">
                           {producto.descripcion && (
                             <p className="line-clamp-2 text-xs leading-5 text-slate-500">{producto.descripcion}</p>
                           )}
                         </div>
-                        <div className="mt-1 min-h-[1.25rem]">
+                        <div className="mt-1 sm:min-h-[1.25rem]">
                           {producto.codigo?.trim() && (
                             <p className="text-xs font-medium text-slate-600">Código: <span className="font-semibold break-all">{producto.codigo}</span></p>
                           )}
                         </div>
                       </div>
-                      <div className="mt-3">
+                      <div className="mt-1.5 sm:mt-3">
                         {empresa.mostrar_precios !== false && (
                           <div>
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -2179,7 +2180,7 @@ export default function CatalogoListaPage() {
                             </p>
                             <p className="mt-0.5 break-words text-base font-bold sm:text-xl">{dinero(producto.precio)}</p>
                             {producto.precio_mayorista != null && (
-                              <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-2 sm:mt-2.5 sm:px-3 sm:py-2.5">
+                              <div className="mt-1.5 rounded-lg bg-emerald-50 px-2 py-1.5 sm:mt-2.5 sm:px-3 sm:py-2.5">
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Precio mayorista</p>
                                 <p className="mt-0.5 break-words text-sm font-bold text-emerald-700 sm:text-lg">{dinero(producto.precio_mayorista)}</p>
                                 <p className="mt-0.5 text-[11px] font-medium text-emerald-700">Desde {minimo} unidades de este producto</p>
@@ -2187,14 +2188,14 @@ export default function CatalogoListaPage() {
                             )}
                           </div>
                         )}
-                        <div className="mt-3">
+                        <div className="hidden sm:block mt-3">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${disponible
                             ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
                             {disponible ? "Disponible" : "No disponible"}
                           </span>
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-1 flex-col justify-end space-y-2 sm:mt-3.5">
+                      <div className="mt-2 flex flex-1 flex-col justify-end space-y-1.5 sm:mt-3.5 sm:space-y-2">
                         {empresa.mostrar_precios !== false && (
                           <button type="button" onClick={() => agregarAlCalculo(producto)}
                             className="w-full min-h-10 rounded-lg bg-emerald-700 px-1.5 py-2 text-center text-[11px] leading-tight sm:px-3 sm:py-2.5 sm:text-[13px] font-bold text-white transition hover:bg-emerald-800">
@@ -2682,7 +2683,7 @@ export default function CatalogoListaPage() {
                   controls
                   playsInline
                   preload="metadata"
-                  className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+                  className="max-h-full max-w-[94vw] object-contain sm:max-h-[78vh] sm:max-w-[88vw]"
                   aria-label={`Video de ${imagenAmpliada.nombreProducto}`}
                 >
                   Tu navegador no puede reproducir este video.
@@ -2691,7 +2692,7 @@ export default function CatalogoListaPage() {
                 <img
                   src={imagenAmpliada.elementos[imagenAmpliada.indice].src}
                   alt={imagenAmpliada.elementos[imagenAmpliada.indice].alt}
-                  className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
+                  className="max-h-full max-w-[94vw] object-contain sm:max-h-[78vh] sm:max-w-[88vw]"
                 />
               )}
 
@@ -2707,6 +2708,16 @@ export default function CatalogoListaPage() {
               )}
             </div>
 
+            {(imagenAmpliada.nombreProducto || imagenAmpliada.descripcion) && (
+              <div className="w-full max-w-3xl shrink-0 rounded-xl bg-black/65 px-4 py-2 text-left text-white sm:hidden">
+                <p className="text-sm font-semibold">{imagenAmpliada.nombreProducto}</p>
+                {imagenAmpliada.descripcion && (
+                  <p className="mt-1 max-h-24 overflow-y-auto whitespace-pre-line text-xs leading-5 text-slate-200">
+                    {imagenAmpliada.descripcion}
+                  </p>
+                )}
+              </div>
+            )}
             {imagenAmpliada.elementos.length > 1 && (
               <div className="flex w-full max-w-3xl flex-col items-center gap-3">
                 <div className="rounded-full bg-black/60 px-4 py-2 text-sm font-bold text-white">
