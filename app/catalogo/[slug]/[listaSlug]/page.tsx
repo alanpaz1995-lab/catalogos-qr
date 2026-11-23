@@ -119,6 +119,13 @@ function claveColorCatalogo(nombre: string): string {
 // Compara los códigos de forma natural: 9, 10, 11; CU-2 antes que CU-10.
 const comparadorCodigosLista = new Intl.Collator("es-AR", { numeric: true, sensitivity: "base" });
 
+// Comparar con el orden configurado aunque los nombres tengan diferencias
+// de mayúsculas, tildes o espacios entre productos y categorías.
+function claveCategoriaLista(nombre: string | null | undefined): string {
+  return (nombre || "").trim().replace(/\s+/g, " ").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
+
 function obtenerColoresProducto(producto: ProductoLista): string[] {
   if (!Array.isArray(producto.colores)) return [];
   const vistos = new Set<string>();
@@ -945,7 +952,7 @@ export default function CatalogoListaPage() {
 
 
 
-        const orden = new Map(categorias.map((nombre, i) => [nombre, i]));
+        const orden = new Map(categorias.map((nombre, i) => [claveCategoriaLista(nombre), i]));
 
 
 
@@ -1049,11 +1056,11 @@ export default function CatalogoListaPage() {
 
 
 
-            const posA = orden.get(a.categoria || "") ?? Number.MAX_SAFE_INTEGER;
+            const posA = orden.get(claveCategoriaLista(a.categoria)) ?? Number.MAX_SAFE_INTEGER;
 
 
 
-            const posB = orden.get(b.categoria || "") ?? Number.MAX_SAFE_INTEGER;
+            const posB = orden.get(claveCategoriaLista(b.categoria)) ?? Number.MAX_SAFE_INTEGER;
 
 
 
@@ -1631,7 +1638,7 @@ export default function CatalogoListaPage() {
 
 
 
-    ...categoriasOrdenadas.filter((c) => categoriasPresentes.has(c)),
+    ...categoriasOrdenadas.filter((c) => [...categoriasPresentes].some((nombre) => claveCategoriaLista(nombre) === claveCategoriaLista(c))),
 
 
 
@@ -1639,7 +1646,7 @@ export default function CatalogoListaPage() {
 
 
 
-      (c): c is string => Boolean(c) && !categoriasOrdenadas.includes(c)
+      (c): c is string => Boolean(c) && !categoriasOrdenadas.some((nombre) => claveCategoriaLista(nombre) === claveCategoriaLista(c))
 
 
 
@@ -1688,7 +1695,7 @@ export default function CatalogoListaPage() {
 
 
 
-      (categoria === "Todos" || producto.categoria === categoria)
+      (categoria === "Todos" || claveCategoriaLista(producto.categoria) === claveCategoriaLista(categoria))
 
 
 

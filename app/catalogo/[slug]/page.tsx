@@ -43,6 +43,13 @@ const comparadorCodigoCatalogo = new Intl.Collator("es-AR", {
   sensitivity: "base",
 });
 
+// La misma categoría puede tener diferencias de espacios, mayúsculas o tildes
+// entre el nombre guardado en el producto y el configurado en Administración.
+function claveCategoriaCatalogo(nombre: string | null | undefined): string {
+  return (nombre || "").trim().replace(/\s+/g, " ").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR");
+}
+
 function ordenarProductosCatalogo(
   a: Producto,
   b: Producto,
@@ -50,8 +57,8 @@ function ordenarProductosCatalogo(
 ): number {
   const categoriaA = (a.categoria || "").trim();
   const categoriaB = (b.categoria || "").trim();
-  const ordenA = posicionCategoria.get(categoriaA) ?? Number.MAX_SAFE_INTEGER;
-  const ordenB = posicionCategoria.get(categoriaB) ?? Number.MAX_SAFE_INTEGER;
+  const ordenA = posicionCategoria.get(claveCategoriaCatalogo(categoriaA)) ?? Number.MAX_SAFE_INTEGER;
+  const ordenB = posicionCategoria.get(claveCategoriaCatalogo(categoriaB)) ?? Number.MAX_SAFE_INTEGER;
   if (ordenA !== ordenB) return ordenA - ordenB;
   // También agrupamos las categorías que todavía no tienen un orden asignado.
   if (categoriaA !== categoriaB) {
@@ -278,7 +285,7 @@ export default function CatalogoEmpresaPage() {
       setCategoriasOrdenadas(nombresOrdenados);
       const posicionCategoria = new Map(
         nombresOrdenados.map((nombre, indice) => [
-          nombre,
+          claveCategoriaCatalogo(nombre),
           indice,
         ])
       );
@@ -610,7 +617,7 @@ export default function CatalogoEmpresaPage() {
   // Mantener SIEMPRE el orden configurado por el administrador, incluso
   // después de INSERT/UPDATE recibidos en tiempo real desde Supabase.
   const posicionCategoriaActual = new Map(
-    categoriasOrdenadas.map((nombre, indice) => [nombre, indice])
+    categoriasOrdenadas.map((nombre, indice) => [claveCategoriaCatalogo(nombre), indice])
   );
   const productosOrdenados = [...productos].sort((a, b) =>
     ordenarProductosCatalogo(a, b, posicionCategoriaActual)
@@ -628,7 +635,7 @@ export default function CatalogoEmpresaPage() {
       codigo.includes(textoBuscado);
     const coincideCategoria =
       categoriaSeleccionada === "Todos" ||
-      producto.categoria === categoriaSeleccionada;
+      claveCategoriaCatalogo(producto.categoria) === claveCategoriaCatalogo(categoriaSeleccionada);
     return coincideBusqueda && coincideCategoria;
   });
   const categoriasDeProductos = new Set(
@@ -639,10 +646,10 @@ export default function CatalogoEmpresaPage() {
   const categorias = [
     "Todos",
     ...categoriasOrdenadas.filter((categoria) =>
-      categoriasDeProductos.has(categoria)
+      [...categoriasDeProductos].some((nombre) => claveCategoriaCatalogo(nombre) === claveCategoriaCatalogo(categoria))
     ),
     ...Array.from(categoriasDeProductos).filter(
-      (categoria) => !categoriasOrdenadas.includes(categoria)
+      (categoria) => !categoriasOrdenadas.some((nombre) => claveCategoriaCatalogo(nombre) === claveCategoriaCatalogo(categoria))
     ),
   ];
   function formatearPrecio(precio: number) {
