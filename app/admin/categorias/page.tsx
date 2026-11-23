@@ -204,83 +204,75 @@ export default function CategoriasPage() {
     categoria: Categoria,
     direccion: "arriba" | "abajo"
   ) {
-    if (!empresa?.id) return;
+    if (!empresa?.id || guardando) return;
 
-    const indice = categorias.findIndex(
-      (item) => item.id === categoria.id
-    );
+    const indice = categorias.findIndex((item) => item.id === categoria.id);
+    const indiceDestino = direccion === "arriba" ? indice - 1 : indice + 1;
+    if (indice < 0 || indiceDestino < 0 || indiceDestino >= categorias.length) return;
 
-    const indiceDestino =
-      direccion === "arriba"
-        ? indice - 1
-        : indice + 1;
-
-    if (
-      indice < 0 ||
-      indiceDestino < 0 ||
-      indiceDestino >= categorias.length
-    ) {
-      return;
-    }
-
+    setGuardando(true);
     setError("");
 
-    const categoriaDestino =
-      categorias[indiceDestino];
-
-    const ordenActual =
-      Number(categoria.orden ?? indice + 1);
-    const ordenDestino =
-      Number(
-        categoriaDestino.orden ??
-          indiceDestino + 1
-      );
-
-    const { error: errorActual } = await supabase
-      .from("categorias")
-      .update({ orden: ordenDestino })
-      .eq("id", categoria.id)
-      .eq("empresa_id", empresa.id);
-
-    if (errorActual) {
-      setError(
-        `No se pudo cambiar el orden: ${errorActual.message}`
-      );
-      return;
-    }
-
-    const { error: errorDestino } = await supabase
-      .from("categorias")
-      .update({ orden: ordenActual })
-      .eq("id", categoriaDestino.id)
-      .eq("empresa_id", empresa.id);
-
-    if (errorDestino) {
-      await supabase
-        .from("categorias")
-        .update({ orden: ordenActual })
-        .eq("id", categoria.id)
-        .eq("empresa_id", empresa.id);
-
-      setError(
-        `No se pudo cambiar el orden: ${errorDestino.message}`
-      );
-      return;
-    }
-
+    // La posición visible es la fuente de verdad para el nuevo orden.
+    // Intercambiar valores de 'orden' falla cuando dos categorías tienen
+    // el mismo número (o NULL): en esos casos el cambio no se persiste.
     const nuevasCategorias = [...categorias];
+    [nuevasCategorias[indice], nuevasCategorias[indiceDestino]] = [
+      nuevasCategorias[indiceDestino],
+      nuevasCategorias[indice],
+    ];
 
-    nuevasCategorias[indice] = {
-      ...categoriaDestino,
-      orden: ordenActual,
-    };
+    try {
+      // Se usan valores temporales únicos, superiores a los actuales,
+      // para evitar colisiones si la BD exige orden único por empresa.
+      const { data: ordenesBD, error: errorLectura } = await supabase
+        .from("categorias")
+        .select("id, orden")
+        .eq("empresa_id", empresa.id);
+      if (errorLectura) throw errorLectura;
 
-    nuevasCategorias[indiceDestino] = {
-      ...categoria,
-      orden: ordenDestino,
-    };
+      const maximo = Math.max(
+        0,
+        ...(ordenesBD || []).map((item) => Number(item.orden) || 0)
+      );
+      const baseTemporal = maximo + nuevasCategorias.length + 1;
 
-    setCategorias(nuevasCategorias);
+      // Primero liberamos todas las posiciones definitivas.
+      for (let i = 0; i < nuevasCategorias.length; i++) {
+        const { error: errorTemporal } = await supabase
+          .from("categorias")
+          .update({ orden: baseTemporal + i })
+          .eq("id", nuevasCategorias[i].id)
+          .eq("empresa_id", empresa.id);
+        if (errorTemporal) throw errorTemporal;
+      }
+
+      // Grabamos el orden consecutivo que debe leer el catálogo público.
+      for (let i = 0; i < nuevasCategorias.length; i++) {
+        const { error: errorOrden } = await supabase
+          .from("categorias")
+          .update({ orden: i + 1 })
+          .eq("id", nuevasCategorias[i].id)
+          .eq("empresa_id", empresa.id);
+        if (errorOrden) throw errorOrden;
+      }
+    } catch (errorDesconocido) {
+      // Un error de red puede dejar cambios parciales: releemos siempre.
+      await cargarCategorias();
+      setError(
+        `No se pudo guardar el orden completo: ${
+          errorDesconocido instanceof Error
+            ? errorDesconocido.message
+            : "Error desconocido"
+        }. Verificá el orden antes de volver a mover categorías.`
+      );
+      setGuardando(false);
+      return;
+    }
+
+    // Mostrar solamente el orden que realmente quedó guardado.
+    await cargarCategorias();
+    setGuardando(false);
   }
 
   async function cambiarEstado(
