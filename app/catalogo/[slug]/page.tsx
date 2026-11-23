@@ -268,45 +268,6 @@ export default function CatalogoEmpresaPage() {
       }
       const productosCargados =
         (productosData as Producto[]) || [];
-      const idsProductos = productosCargados.map(
-        (producto) => producto.id
-      );
-      let multimediaData: MultimediaProducto[] = [];
-      if (idsProductos.length > 0) {
-        const {
-          data: multimediaConsulta,
-          error: multimediaError,
-        } = await supabase
-          .from("producto_multimedia")
-          .select(
-            "id, producto_id, tipo, url, es_principal, activo, orden"
-          )
-          .in("producto_id", idsProductos)
-          .eq("activo", true)
-          .order("orden", { ascending: true });
-        if (multimediaError) {
-          console.warn(
-            "No se pudo cargar la multimedia de los productos:",
-            multimediaError
-          );
-        } else {
-          multimediaData =
-            (multimediaConsulta as MultimediaProducto[]) || [];
-        }
-      }
-      const multimediaAgrupada: Record<number, MultimediaProducto[]> = {};
-      for (const item of multimediaData) {
-        // En el módulo Multimedia, las fotos originales se guardan
-        // actualmente con tipo = "Original". Para el catálogo público
-        // alcanza con que el registro esté activo y tenga una URL válida.
-        if (!item.url) continue;
-        const productoId = Number(item.producto_id);
-        if (!multimediaAgrupada[productoId]) {
-          multimediaAgrupada[productoId] = [];
-        }
-        multimediaAgrupada[productoId].push(item);
-      }
-      setMultimediaPorProducto(multimediaAgrupada);
       const nombresOrdenados = (
         (categoriasData as Array<{
           nombre: string;
@@ -325,7 +286,54 @@ export default function CatalogoEmpresaPage() {
           ordenarProductosCatalogo(a, b, posicionCategoria)
         )
       );
+      // Mostrar el catálogo apenas estén listos los productos y categorías.
+      // Las fotos adicionales de la galería se consultan en segundo plano.
       setCargando(false);
+      void (async () => {
+        try {
+            const idsProductos = productosCargados.map(
+            (producto) => producto.id
+          );
+          let multimediaData: MultimediaProducto[] = [];
+          if (idsProductos.length > 0) {
+            const {
+              data: multimediaConsulta,
+              error: multimediaError,
+            } = await supabase
+              .from("producto_multimedia")
+              .select(
+                "id, producto_id, tipo, url, es_principal, activo, orden"
+              )
+              .in("producto_id", idsProductos)
+              .eq("activo", true)
+              .order("orden", { ascending: true });
+            if (multimediaError) {
+              console.warn(
+                "No se pudo cargar la multimedia de los productos:",
+                multimediaError
+              );
+            } else {
+              multimediaData =
+                (multimediaConsulta as MultimediaProducto[]) || [];
+            }
+          }
+          const multimediaAgrupada: Record<number, MultimediaProducto[]> = {};
+          for (const item of multimediaData) {
+            // En el módulo Multimedia, las fotos originales se guardan
+            // actualmente con tipo = "Original". Para el catálogo público
+            // alcanza con que el registro esté activo y tenga una URL válida.
+            if (!item.url) continue;
+            const productoId = Number(item.producto_id);
+            if (!multimediaAgrupada[productoId]) {
+              multimediaAgrupada[productoId] = [];
+            }
+            multimediaAgrupada[productoId].push(item);
+          }
+          setMultimediaPorProducto(multimediaAgrupada);
+        } catch (errorMultimedia) {
+          console.warn("No se pudo cargar la galería adicional:", errorMultimedia);
+        }
+      })();
     }
     cargarCatalogo();
   }, [slugParametro]);
@@ -1400,7 +1408,7 @@ export default function CatalogoEmpresaPage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {productosFiltrados.map((producto) => {
+            {productosFiltrados.map((producto, indiceProducto) => {
               const mensajeWhatsApp = encodeURIComponent(
                 `Hola, quiero consultar por el producto: ${producto.nombre}`
               );
@@ -1426,6 +1434,9 @@ export default function CatalogoEmpresaPage() {
                         <img
                           src={producto.imaguen}
                           alt={producto.nombre}
+                          loading={indiceProducto < 4 ? "eager" : "lazy"}
+                          fetchPriority={indiceProducto < 2 ? "high" : "auto"}
+                          decoding="async"
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                         />
                         <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-lg backdrop-blur-sm">
@@ -1629,6 +1640,7 @@ export default function CatalogoEmpresaPage() {
                 <img
                   src={imagenAmpliada.imagenes[imagenAmpliada.indice].src}
                   alt={imagenAmpliada.imagenes[imagenAmpliada.indice].alt}
+                  decoding="async"
                   className="max-h-[78vh] max-w-[94vw] object-contain sm:max-w-[88vw]"
                 />
               )}
@@ -1668,7 +1680,7 @@ export default function CatalogoEmpresaPage() {
                       {imagen.tipo === "video" ? (
                         <span className="flex h-full w-full items-center justify-center bg-slate-900 text-xl text-white" aria-hidden="true">▶</span>
                       ) : (
-                        <img src={imagen.src} alt="" className="h-full w-full object-cover" />
+                        <img src={imagen.src} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                       )}
                     </button>
                   ))}

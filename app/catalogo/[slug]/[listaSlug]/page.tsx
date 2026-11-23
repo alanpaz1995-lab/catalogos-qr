@@ -1083,31 +1083,41 @@ export default function CatalogoListaPage() {
 
         if (!vigente) return;
 
-        // Los videos y fotografías pertenecen a los productos ya autorizados por la lista.
+        // Las fotos adicionales se consultan en segundo plano.
+        // No retrasan la aparición de productos, precios ni categorías.
         const idsVisibles = productosDeLista.map((producto) => producto.id);
-        const agrupada: Record<number, MultimediaProducto[]> = {};
         if (idsVisibles.length > 0) {
-          const { data: multimediaData, error: multimediaError } = await supabase
-            .from("producto_multimedia")
-            .select("id, producto_id, tipo, url, es_principal, activo, orden")
-            .eq("empresa_id", datosEmpresa.id)
-            .eq("activo", true)
-            .in("producto_id", idsVisibles)
-            .order("orden", { ascending: true });
-
-          if (multimediaError) {
-            console.warn("No se pudo cargar multimedia de la lista:", multimediaError);
-          } else {
-            for (const item of (multimediaData || []) as MultimediaProducto[]) {
-              if (!item.url) continue;
-              const idProducto = Number(item.producto_id);
-              if (!agrupada[idProducto]) agrupada[idProducto] = [];
-              agrupada[idProducto].push(item);
+          void (async () => {
+            const agrupada: Record<number, MultimediaProducto[]> = {};
+            // Lotes para evitar URLs demasiado extensas en listas grandes.
+            for (let inicio = 0; inicio < idsVisibles.length; inicio += 100) {
+              if (!vigente) return;
+              const lote = idsVisibles.slice(inicio, inicio + 100);
+              const { data: multimediaData, error: multimediaError } = await supabase
+                .from("producto_multimedia")
+                .select("id, producto_id, tipo, url, es_principal, activo, orden")
+                .eq("empresa_id", datosEmpresa.id)
+                .eq("activo", true)
+                .in("producto_id", lote)
+                .order("orden", { ascending: true });
+              if (!vigente) return;
+              if (multimediaError) {
+                console.warn("No se pudo cargar multimedia de la lista:", multimediaError);
+                continue;
+              }
+              for (const item of (multimediaData || []) as MultimediaProducto[]) {
+                if (!item.url) continue;
+                const idProducto = Number(item.producto_id);
+                if (!agrupada[idProducto]) agrupada[idProducto] = [];
+                agrupada[idProducto].push(item);
+              }
+              // Publicamos por lote, manteniendo las galerías ya recibidas.
+              setMultimediaPorProducto({ ...agrupada });
             }
-          }
+          })().catch((error) => {
+            console.warn("No se pudo consultar la multimedia adicional:", error);
+          });
         }
-        if (!vigente) return;
-        setMultimediaPorProducto(agrupada);
         setEmpresa(datosEmpresa as Empresa);
 
 
@@ -2050,7 +2060,7 @@ export default function CatalogoListaPage() {
 
 
 
-            {filtrados.map((producto) => {
+            {filtrados.map((producto, indiceProducto) => {
 
 
 
@@ -2122,6 +2132,9 @@ export default function CatalogoListaPage() {
                         className="group relative block h-48 w-full cursor-zoom-in overflow-hidden bg-slate-100 text-left"
                         aria-label={`Ampliar imagen de ${producto.nombre}`}>
                         <img src={producto.imaguen} alt={producto.nombre}
+                          loading={indiceProducto < 4 ? "eager" : "lazy"}
+                          fetchPriority={indiceProducto < 4 ? "high" : "auto"}
+                          decoding="async"
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
                         <span className="absolute bottom-2 right-2 rounded-full bg-black/65 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-lg">
                           🔍 Ver completa
