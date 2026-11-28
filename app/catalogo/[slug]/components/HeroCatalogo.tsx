@@ -9,6 +9,7 @@ type TurnoHorario = {
 
 type HorarioDia = {
   activo: boolean;
+  abierto24Horas?: boolean;
   turnos: TurnoHorario[];
 };
 
@@ -243,7 +244,8 @@ function turnoCubreDiaCompleto(turno: TurnoHorario): boolean {
 }
 
 function diaAbiertoTodoElDia(dia: HorarioDia | undefined): boolean {
-  return Boolean(dia?.activo && Array.isArray(dia.turnos) && dia.turnos.some(turnoCubreDiaCompleto));
+  return Boolean(dia?.activo && (dia.abierto24Horas === true ||
+    (Array.isArray(dia.turnos) && dia.turnos.some(turnoCubreDiaCompleto))));
 }
 
 function calcularEstadoNegocio(
@@ -283,7 +285,7 @@ function calcularEstadoNegocio(
   }
 
   // Un turno nocturno puede seguir abierto después de medianoche.
-  if (horarioAyer?.activo && Array.isArray(horarioAyer.turnos)) {
+  if (horarioAyer?.activo && !diaAbiertoTodoElDia(horarioAyer) && Array.isArray(horarioAyer.turnos)) {
     for (const turno of horarioAyer.turnos) {
       const desde = convertirHoraAMinutos(turno.desde);
       const hasta = convertirHoraAMinutos(turno.hasta);
@@ -329,6 +331,9 @@ function buscarProximaApertura(
   for (let desplazamiento = 1; desplazamiento <= 7; desplazamiento++) {
     const indice = (fechaActual.getDay() + desplazamiento) % 7;
     const dia = horarios[DIAS_SEMANA[indice]];
+    if (diaAbiertoTodoElDia(dia)) {
+      return `Abre ${etiquetas[indice]} (24 horas)`;
+    }
     const primerTurno = dia?.turnos?.[0];
 
     if (dia?.activo && primerTurno?.desde) {

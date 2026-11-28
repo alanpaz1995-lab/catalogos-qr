@@ -18,6 +18,7 @@ type TurnoHorario = {
 
 type HorarioDia = {
   activo: boolean;
+  abierto24Horas?: boolean;
   turnos: TurnoHorario[];
 };
 
@@ -269,6 +270,11 @@ function esTurno24Horas(turno: TurnoHorario): boolean {
   return desde === 0 && (hasta === 0 || hasta === 1439 || hasta === 1440);
 }
 
+function diaAbiertoTodoElDia(dia?: HorarioDia): boolean {
+  return Boolean(dia?.activo && (dia.abierto24Horas === true ||
+    (Array.isArray(dia.turnos) && dia.turnos.some(esTurno24Horas))));
+}
+
 function obtenerTurnos(dia?: HorarioDia): TurnoHorario[] {
   return dia?.activo && Array.isArray(dia.turnos) ? dia.turnos : [];
 }
@@ -286,11 +292,13 @@ function calcularEstadoNegocio(valor: unknown): { abierto: boolean; detalle: str
   const ahora = new Date();
   const indiceHoy = ahora.getDay();
   const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
-  const hoy = obtenerTurnos(horarios[DIAS[indiceHoy]]);
-  const ayer = obtenerTurnos(horarios[DIAS[(indiceHoy + 6) % 7]]);
+  const horarioHoy = horarios[DIAS[indiceHoy]];
+  const horarioAyer = horarios[DIAS[(indiceHoy + 6) % 7]];
+  const hoy = obtenerTurnos(horarioHoy);
+  const ayer = diaAbiertoTodoElDia(horarioAyer) ? [] : obtenerTurnos(horarioAyer);
 
   // Un turno de 24 horas no informa hora de cierre.
-  if (hoy.some(esTurno24Horas)) {
+  if (diaAbiertoTodoElDia(horarioHoy)) {
     return { abierto: true, detalle: "" };
   }
 
@@ -331,7 +339,9 @@ function buscarProximaApertura(horarios: HorariosSemana, fechaActual: Date): str
 
   for (let desplazamiento = 1; desplazamiento <= 7; desplazamiento++) {
     const indice = (fechaActual.getDay() + desplazamiento) % 7;
-    const turnos = obtenerTurnos(horarios[DIAS[indice]]);
+    const dia = horarios[DIAS[indice]];
+    if (diaAbiertoTodoElDia(dia)) return `Abre ${ETIQUETAS[indice]} (24 horas)`;
+    const turnos = obtenerTurnos(dia);
     const primerTurno = turnos.find(turno => Number.isFinite(convertirHoraAMinutos(turno.desde)));
     if (primerTurno) return `Abre ${ETIQUETAS[indice]} a las ${primerTurno.desde}`;
   }
