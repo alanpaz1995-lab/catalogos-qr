@@ -14,6 +14,16 @@ type HorarioDia = {
 
 type HorariosSemana = Record<string, HorarioDia>;
 
+const DIAS_SEMANA = [
+  "domingo",
+  "lunes",
+  "martes",
+  "miercoles",
+  "jueves",
+  "viernes",
+  "sabado",
+];
+
 export default function HeroCatalogo({
   empresa,
   modoOscuro = false,
@@ -215,99 +225,97 @@ export default function HeroCatalogo({
   );
 }
 
+function convertirHoraAMinutos(hora: string): number {
+  if (typeof hora !== "string" || !/^(?:[01]?\d|2[0-4]):[0-5]\d$/.test(hora.trim())) {
+    return Number.NaN;
+  }
+  const [horas, minutos] = hora.trim().split(":").map(Number);
+  if (horas === 24 && minutos !== 0) return Number.NaN;
+  return horas * 60 + minutos;
+}
+
+function turnoCubreDiaCompleto(turno: TurnoHorario): boolean {
+  const desde = convertirHoraAMinutos(turno.desde);
+  const hasta = convertirHoraAMinutos(turno.hasta);
+  // Algunas pantallas guardan 24 horas como 00:00–00:00,
+  // otras como 00:00–23:59 o 00:00–24:00.
+  return desde === 0 && (hasta === 0 || hasta === 1439 || hasta === 1440);
+}
+
+function diaAbiertoTodoElDia(dia: HorarioDia | undefined): boolean {
+  return Boolean(dia?.activo && Array.isArray(dia.turnos) && dia.turnos.some(turnoCubreDiaCompleto));
+}
+
 function calcularEstadoNegocio(
   horariosValor: Empresa["horarios_semana"]
-) {
+): { abierto: boolean; detalle: string } {
   if (!horariosValor) {
-    return {
-      abierto: false,
-      detalle: "Horario no informado",
-    };
+    return { abierto: false, detalle: "Horario no informado" };
   }
 
   let horarios: HorariosSemana;
-
   try {
-    horarios =
-      typeof horariosValor === "string"
-        ? JSON.parse(horariosValor)
-        : (horariosValor as unknown as HorariosSemana);
+    horarios = typeof horariosValor === "string"
+      ? JSON.parse(horariosValor)
+      : (horariosValor as unknown as HorariosSemana);
   } catch {
-    return {
-      abierto: false,
-      detalle: "Horario no disponible",
-    };
+    return { abierto: false, detalle: "Horario no disponible" };
   }
 
-  const dias = [
-    "domingo",
-    "lunes",
-    "martes",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sabado",
-  ];
+  if (!horarios || typeof horarios !== "object") {
+    return { abierto: false, detalle: "Horario no disponible" };
+  }
+
+  // Los siete días configurados como jornada completa: abierto siempre,
+  // sin mensaje de hora de cierre.
+  if (DIAS_SEMANA.every((dia) => diaAbiertoTodoElDia(horarios[dia]))) {
+    return { abierto: true, detalle: "" };
+  }
 
   const ahora = new Date();
-  const diaActual = dias[ahora.getDay()];
-  const horarioDia = horarios[diaActual];
+  const indiceActual = ahora.getDay();
+  const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
+  const horarioDia = horarios[DIAS_SEMANA[indiceActual]];
+  const horarioAyer = horarios[DIAS_SEMANA[(indiceActual + 6) % 7]];
 
-  if (!horarioDia?.activo) {
-    return {
-      abierto: false,
-      detalle: buscarProximaApertura(
-        horarios,
-        ahora
-      ),
-    };
+  if (diaAbiertoTodoElDia(horarioDia)) {
+    return { abierto: true, detalle: "" };
   }
 
-  const minutosAhora =
-    ahora.getHours() * 60 + ahora.getMinutes();
-
-  for (const turno of horarioDia.turnos || []) {
-    const desde = convertirHoraAMinutos(
-      turno.desde
-    );
-    const hasta = convertirHoraAMinutos(
-      turno.hasta
-    );
-
-    if (
-      minutosAhora >= desde &&
-      minutosAhora < hasta
-    ) {
-      return {
-        abierto: true,
-        detalle: `Cierra a las ${turno.hasta}`,
-      };
+  // Un turno nocturno puede seguir abierto después de medianoche.
+  if (horarioAyer?.activo && Array.isArray(horarioAyer.turnos)) {
+    for (const turno of horarioAyer.turnos) {
+      const desde = convertirHoraAMinutos(turno.desde);
+      const hasta = convertirHoraAMinutos(turno.hasta);
+      if (Number.isFinite(desde) && Number.isFinite(hasta) &&
+          hasta < desde && minutosAhora < hasta && !turnoCubreDiaCompleto(turno)) {
+        return { abierto: true, detalle: `Cierra a las ${turno.hasta}` };
+      }
     }
   }
 
-  return {
-    abierto: false,
-    detalle: buscarProximaApertura(
-      horarios,
-      ahora
-    ),
-  };
+  if (horarioDia?.activo && Array.isArray(horarioDia.turnos)) {
+    for (const turno of horarioDia.turnos) {
+      const desde = convertirHoraAMinutos(turno.desde);
+      const hasta = convertirHoraAMinutos(turno.hasta);
+      if (!Number.isFinite(desde) || !Number.isFinite(hasta)) continue;
+
+      if (desde < hasta && minutosAhora >= desde && minutosAhora < hasta) {
+        return { abierto: true, detalle: `Cierra a las ${turno.hasta}` };
+      }
+      if (desde > hasta && minutosAhora >= desde) {
+        return { abierto: true, detalle: `Cierra a las ${turno.hasta}` };
+      }
+    }
+  }
+
+  return { abierto: false, detalle: buscarProximaApertura(horarios, ahora) };
 }
 
 function buscarProximaApertura(
   horarios: HorariosSemana,
   fechaActual: Date
 ) {
-  const dias = [
-    "domingo",
-    "lunes",
-    "martes",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sabado",
-  ];
-
   const etiquetas = [
     "domingo",
     "lunes",
@@ -319,29 +327,14 @@ function buscarProximaApertura(
   ];
 
   for (let desplazamiento = 1; desplazamiento <= 7; desplazamiento++) {
-    const indice =
-      (fechaActual.getDay() + desplazamiento) %
-      7;
-    const dia = horarios[dias[indice]];
+    const indice = (fechaActual.getDay() + desplazamiento) % 7;
+    const dia = horarios[DIAS_SEMANA[indice]];
     const primerTurno = dia?.turnos?.[0];
 
-    if (
-      dia?.activo &&
-      primerTurno?.desde
-    ) {
+    if (dia?.activo && primerTurno?.desde) {
       return `Abre ${etiquetas[indice]} a las ${primerTurno.desde}`;
     }
   }
 
   return "Horario no informado";
-}
-
-function convertirHoraAMinutos(
-  hora: string
-) {
-  const [horas, minutos] = hora
-    .split(":")
-    .map(Number);
-
-  return horas * 60 + minutos;
 }
